@@ -9,46 +9,52 @@ import { Role } from "src/Types";
 export type Level = -1 | 0 | 1;
 
 /**
- * Up／Down 領域のフィールド名（ONT-1 の `hierarchyLowerCase.abstract` / `.concrete`）。
- * 要素は `plugin.hierarchyLowerCase` と同じく小文字・空白→ハイフンに正規化済みであること。
+ * Up／Down 領域のフィールド名。ONT-1（LEV-106）が `plugin.hierarchyLowerCase` に足す
+ * `abstract` / `concrete` と同じキー名・同じ形（小文字・空白→ハイフン）で受け取る。
  */
 export type LevelHierarchy = {
   abstract: readonly string[];
   concrete: readonly string[];
 };
 
-/** フィールド名を `hierarchyLowerCase` と同じ形（前後の空白を落とし、小文字、空白→ハイフン）にそろえる。 */
-export const normalizeFieldName = (field: string): string =>
-  field.trim().toLowerCase().replaceAll(" ", "-");
-
-/** カンマ区切りの `typeDefinition` を正規化済みフィールド名の配列にする。空の要素は落とす。 */
-export const splitTypeDefinition = (typeDefinition: string | undefined): string[] =>
-  (typeDefinition ?? "")
-    .split(",")
-    .map(normalizeFieldName)
-    .filter((field) => field.length > 0);
+/**
+ * 関係のフィールドとは無関係に高さを 0 に固定する、対象ノードの属性（§3-1 の「兄弟は 0」「未解決は 0」）。
+ * 兄弟の Neighbour は親の `getChildren()` 由来で「兄弟→親」のフィールドを持ち、未解決（ゴースト）は
+ * `addUnresolvedPage` のあと定義済みのフィールドで結ばれるので、`typeDefinition` だけでは見分けられない。
+ */
+export type LevelSubject = {
+  /** `Scene.addNodes` の `isSibling`。 */
+  isSibling?: boolean;
+  /** `Page.isVirtual`（ファイルの無い未解決リンク）。 */
+  isVirtual?: boolean;
+};
 
 /**
  * 中心ノートとの関係から隣接ノードの高さを決める。
  *
+ * - 兄弟・未解決ページ（`subject`）→ 0
  * - 親（`Role.PARENT`）で、フィールドのどれかが Up／Down 領域に入る → +1
  * - 子（`Role.CHILD`）で、フィールドのどれかが Up／Down 領域に入る → -1
  * - それ以外（Parents／Children の親子、左右の友、推論リンク、file-tree・tag-tree）→ 0
  *
- * `typeDefinition` の各フィールドは Up でも Down でもよい。親子の向きは Page が既に決めていて、
- * 親が `down: [[中心]]` と書いた場合も `typeDefinition` は `down` のまま親側に付く（Page.addParent）ので、
- * 領域に入るかどうかだけを見て、符号は役割から取る。推論リンク（`typeDefinition` 無し）は 0。
+ * `typeDefinition` は `Page.addParent/addChild` が `hierarchyLowerCase` の要素を ", " で連結した文字列なので、
+ * `Link` と同じく分割と trim だけで比べる（再正規化はしない）。フィールドが Up と Down のどちらに入るかは
+ * 問わない: 親子の向きは Page が決めていて、親側のノートが `down: [[中心]]` と書いた関係も親に `down` のまま
+ * 付くので、領域に入るかどうかだけを見て符号は役割から取る。推論リンク（`typeDefinition` 無し）は 0。
  */
 export const levelOf = (
   typeDefinition: string | undefined,
   role: Role,
   hierarchy: LevelHierarchy,
+  subject: LevelSubject = {},
 ): Level => {
+  if (subject.isSibling || subject.isVirtual) return 0;
   if (role !== Role.PARENT && role !== Role.CHILD) return 0;
-  const fields = splitTypeDefinition(typeDefinition);
-  const onAxis = fields.some(
-    (field) => hierarchy.abstract.includes(field) || hierarchy.concrete.includes(field),
-  );
+  if (!typeDefinition) return 0;
+  const onAxis = typeDefinition
+    .split(",")
+    .map((field) => field.trim())
+    .some((field) => field !== "" && (hierarchy.abstract.includes(field) || hierarchy.concrete.includes(field)));
   if (!onAxis) return 0;
   return role === Role.PARENT ? 1 : -1;
 };
@@ -72,7 +78,7 @@ export type Projected = {
 };
 
 /**
- * §3-2 の式。`center` は Layout が決めた 2D の中心（中心ノート原点、`compressBands` 適用後）。
+ * §3-2 の式。`center` は Layout が決めた 2D の中心（中心ノート原点、`compressBands` のずれ適用後）。
  *
  * ```text
  * rx = gx·cos(yaw) − gy·sin(yaw)
@@ -81,6 +87,8 @@ export type Projected = {
  * y  = ry − level · levelHeight
  * depth = ry
  * ```
+ *
+ * 入力の検査はしない（params は設定の既定値から作る）。
  */
 export const project = (center: Point, level: Level, params: ProjectionParams): Projected => {
   const yaw = (params.yawDegrees * Math.PI) / 180;
@@ -95,15 +103,25 @@ export const project = (center: Point, level: Level, params: ProjectionParams): 
   };
 };
 
-/** 帯に入れるノード 1 つぶん。`y` は中心、`height` は箱の高さ（Layout の `rowHeight` でよい）。 */
-export type BandItem = { y: number; height: number };
+/** 帯が占める y の範囲（上端・下端）。Layout なら `top` と `top + rows·rowHeight`。 */
+export type BandExtent = { top: number; bottom: number };
 
-/** 北（親・兄弟）・中心（中心ノートと左右の友）・南（子）の 3 帯。 */
-export type Bands<T extends BandItem> = { north: T[]; center: T[]; south: T[] };
+/**
+ * 北（親）・中心（中心ノートと左右の友）・南（子）の 3 帯。無い帯は null。
+ * 兄弟は北の帯に入れない（親より中心に近い下端を持ちうるので隙間の測定を狂わせる）。
+ * 兄弟には北のずれをそのまま適用する。
+ */
+export type BandExtents = {
+  north: BandExtent | null;
+  center: BandExtent | null;
+  south: BandExtent | null;
+};
 
-type Extent = { top: number; bottom: number };
+/** 各帯の y に足す量。北は正（南へ寄る）、南は負（北へ寄る）。中心の帯は動かない。 */
+export type BandShifts = { north: number; south: number };
 
-const extentOf = (items: readonly BandItem[]): Extent | null => {
+/** `{ y, height }`（中心と箱の高さ）の並びから帯の範囲を求める。空なら null。 */
+export const extentOf = (items: readonly { y: number; height: number }[]): BandExtent | null => {
   if (items.length === 0) return null;
   let top = Infinity;
   let bottom = -Infinity;
@@ -114,30 +132,19 @@ const extentOf = (items: readonly BandItem[]): Extent | null => {
   return { top, bottom };
 };
 
-const shiftBand = <T extends BandItem>(items: readonly T[], shift: number): T[] =>
-  items.map((item) => ({ ...item, y: item.y + shift }));
-
 /**
- * §4-1: 帯と帯の「隙間」だけを `depthScale` 倍に潰す。帯の中の行間は変えないので、同じ段の箱は重ならない。
+ * §4-1: 帯と帯の「隙間」だけを `depthScale` 倍に潰す量を返す。帯の中は同じ量だけ動くので行間は変わらない。
  *
- * 隙間は箱の縁で測る（北の帯の最下端と中心の帯の最上端、中心の帯の最下端と南の帯の最上端）。
- * 隙間が 0 以下（既に接している・重なっている）なら動かさない。中心の帯が空なら何もしない。
- * `depthScale` は 0（帯が接する）〜1（2D のまま）に丸める。入力は変更せず、新しい配列を返す。
+ * 隙間は北の帯の下端と中心の帯の上端、中心の帯の下端と南の帯の上端で測る。
+ * 隙間が 0 以下（既に接している・重なっている）なら動かさない。中心の帯が無ければ何もしない。
+ * `depthScale` は 0（帯が接する）〜1（2D のまま）に丸め、NaN は 1 とみなす。
  */
-export const compressBands = <T extends BandItem>(bands: Bands<T>, depthScale: number): Bands<T> => {
-  const scale = Number.isFinite(depthScale) ? Math.min(1, Math.max(0, depthScale)) : 1;
-  const center = extentOf(bands.center);
-  const north = extentOf(bands.north);
-  const south = extentOf(bands.south);
-
-  const northGap = center && north ? center.top - north.bottom : 0;
-  const southGap = center && south ? south.top - center.bottom : 0;
-  const northShift = northGap > 0 ? northGap * (1 - scale) : 0;
-  const southShift = southGap > 0 ? southGap * (1 - scale) : 0;
-
-  return {
-    north: shiftBand(bands.north, northShift),
-    center: shiftBand(bands.center, 0),
-    south: shiftBand(bands.south, -southShift),
-  };
+export const compressBands = (extents: BandExtents, depthScale: number): BandShifts => {
+  const scale = Number.isNaN(depthScale) ? 1 : Math.min(1, Math.max(0, depthScale));
+  /** 隙間を減らす量（0 以上）。 */
+  const squeeze = (gap: number): number => (gap > 0 ? gap * (1 - scale) : 0);
+  const { north, center, south } = extents;
+  const northShift = center && north ? squeeze(center.top - north.bottom) : 0;
+  const southShift = center && south ? squeeze(south.top - center.bottom) : 0;
+  return { north: northShift, south: 0 - southShift }; // `-x` だと 0 が -0 になるので 0 - x
 };

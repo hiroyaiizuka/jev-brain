@@ -56,7 +56,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 ### 自動テスト（Vitest、Node）
 
 - ツーリング: `validate-release`（manifest／package／lock／versions の整合、配布物一致）、`version-bump`（`npm version x.y.z` の流れ）、`release-workflow`（release.yml がタグ限定・read-only トークン・配布物 3 ファイルであること）、`preflight`／`prepare-test-vault`（生成 Vault のマーカー、symlink・hard link 拒否、有効プラグインの集合、fixture の配置）。
-- 純ロジック: `linkRegex`（Markdown リンクと生 URL の抽出。括弧付き URL が途中で切れる上流の挙動もそのまま固定）、`getFilenameFromPath`／`splitFolderAndFilename`、`Projection`（`levelOf` の領域判定と正規化、`project` の回転・段差・depth、`compressBands` の帯間の圧縮。3d-brief §7 の 8 ノートを fixture にしている）。
+- 純ロジック: `linkRegex`（Markdown リンクと生 URL の抽出。括弧付き URL が途中で切れる上流の挙動もそのまま固定）、`getFilenameFromPath`／`splitFolderAndFilename`、`Projection`（`levelOf` の領域判定と兄弟・未解決の除外、`project` の回転・段差・depth、`compressBands` の帯間のずれ量。3d-brief §7 の 8 ノートを fixture にしている）。
 - `obsidian` モジュールは `tests/mocks/obsidian.ts` に置き換える（`TFile`／`TFolder`／`normalizePath`／`Vault.recurseChildren`／`moment.locale`）。`import ... from "src/..."` は `vitest.config.ts` の alias で解決する。
 
 ### 未カバー（実機のみ）

@@ -53,7 +53,7 @@
 - 3D オフで変更前とまったく同じ配置。クリック・ホバー・フィルター・ピン留めが 2D と同じ。
 - `Projection.ts` の `levelOf` / `project` / `compressBands` に単体テスト。
 
-現在の実装: `src/graph/Projection.ts`（`levelOf` / `project` / `compressBands`）と `tests/graph/projection.test.ts` は LEV-110 で追加。`levelOf` は役割で符号を決め、フィールドが Up／Down 領域のどちらかに入るかだけを見る（親が `down:` で書いた関係も +1）。`compressBands` は北・中心・南の帯ごとに分けた中心を受け取り、箱の縁で測った隙間だけ `depthScale` 倍にする。Layout の分割（LEV-111）、Node.level・Scene の 3D 分岐・柱・影・地面（LEV-112）、ゲート選び直し（LEV-113）、トグル（LEV-114）、実機（LEV-115）は未着手。
+現在の実装: `src/graph/Projection.ts`（`levelOf` / `project` / `compressBands`）と `tests/graph/projection.test.ts` が LEV-110 で入った。規則は `docs/3d-design.md` §3-1・§3-2・§4-1。Scene への接続以降（ONT-1 の `abstract` / `concrete`、Layout の分割、Node.level、3D 分岐、ゲート、トグル、実機）は未着手で、進捗は Linear（LEV-98 の子）。
 
 ### R1 ベータ配布（3D-1 の後）
 

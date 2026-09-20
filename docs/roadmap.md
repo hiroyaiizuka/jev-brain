@@ -15,7 +15,7 @@ H0 ハーネス ──┬── ONT-1 Up/Down 領域（2D の色）──── 
 | --- | --- | --- | --- | --- |
 | 0 | H0 ハーネス | `npm run check`、test-vault、CI、docs。エージェントと人が同じ条件で検証できる | `docs/harness.md` | 完了（実機 E01〜E11 は未実施） |
 | 1 | ONT-1 Up/Down 領域 | 設定に Up（抽象）／Down（具体）の領域。入れたフィールドの関係は 2D で専用の色になる | `docs/ontology-axis-design.md` | 未着手 |
-| 2 | 3D-1 固定視点トグル | ツールパネルの 3D で、Up の親が上、Down の子が下、由来の親は地面に出る。柱・影・地面。起動時は 2D | `docs/3d-design.md` | 未着手（フェーズ 0 調査は完了） |
+| 2 | 3D-1 固定視点トグル | ツールパネルの 3D で、Up の親が上、Down の子が下、由来の親は地面に出る。柱・影・地面。起動時は 2D | `docs/3d-design.md` | 着手（フェーズ 0 調査完了、`Projection.ts` と単体テストは LEV-110 で main へ。Scene 以降は未着手） |
 | 3 | R1 ベータ配布 | tag → GitHub Release → BRAT。本人と数名が日常で使う | `docs/harness.md`「リリース手順」 | 未着手（plugin ID の決定が要る） |
 | 3 | 3D-2 視点と設定 | ヨー角の切り替え、高さ・潰し率・柱・地面の設定 | `docs/3d-design.md` §5 | 未着手 |
 | 4 | 3D-3 実測と重なり | 親 20・子 30 での要素数・描画時間と重なりの追加対策 | 同上 | 未着手 |
