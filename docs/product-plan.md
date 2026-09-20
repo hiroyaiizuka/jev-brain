@@ -53,6 +53,8 @@
 - 3D オフで変更前とまったく同じ配置。クリック・ホバー・フィルター・ピン留めが 2D と同じ。
 - `Projection.ts` の `levelOf` / `project` / `compressBands` に単体テスト。
 
+現在の実装: `Layout.render()` を `place()`（中心を決める）と `renderNodes()`（順次描画）に分割し、`render()` は両方を順に呼ぶ。`Node.level`（−1 | 0 | 1、既定 0）を追加。描画は無改造で、2D の経路は分割前と同じ順序（`tests/graph/layout.test.ts`、LEV-111）。Projection.ts・Scene の 3D 分岐・トグル・柱・影・地面は未着手。2D の実機回帰（E01〜E03）は LEV-115 で。
+
 ### R1 ベータ配布（3D-1 の後）
 
 - plugin ID と名前を決める（上流と同じ `excalibrain` のままなら上流版と同時インストール不可）。

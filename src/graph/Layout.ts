@@ -54,7 +54,12 @@ export class Layout {
         : getRowLayout(itemCount % columns).map(idx => idx ? sortedNodes[i*columns+idx-1]:null));
   }
 
-  async render() {
+  /**
+   * Decides the centre of every node (rows, columns, top/bottom constraint) and stores it
+   * with `node.setCenter()`. Draws nothing, so a caller can move or reorder the nodes before
+   * they are rendered (3D projection and depth order, docs/3d-design.md §3-3).
+   */
+  place() {
     this.layout();
     const rows = this.renderedNodes.length;
     const height = rows * this.spec.rowHeight;
@@ -78,9 +83,25 @@ export class Layout {
             x: center00.x + idx*this.spec.columnWidth,
             y: center00.y + row*this.spec.rowHeight
           });
+        }
+      }
+    }
+  }
+
+  /** Renders the placed nodes one after the other, row by row, in the order `place()` laid them out. */
+  async renderNodes() {
+    for (const nodes of this.renderedNodes) {
+      for (const node of nodes) {
+        if(node) {
           await node.render();
         }
       }
     }
+  }
+
+  /** The 2D path: place, then render in the same order as before the split. */
+  async render() {
+    this.place();
+    await this.renderNodes();
   }
 }
