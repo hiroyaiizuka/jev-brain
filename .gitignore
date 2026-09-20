@@ -1,26 +1,23 @@
-# vscode
-.vscode 
-
-# Intellij
-*.iml
-.idea
-
-# npm
-node_modules
-dist/*
-
-# Don't include the compiled main.js file in the repo.
-# They should be uploaded to GitHub releases instead.
+node_modules/
 main.js
+main.js.map
+build-meta.json
+dist/
+coverage/
+artifacts/
+test-vault/
+.vitest/
+*.tsbuildinfo
+.DS_Store
 
-# Exclude sourcemaps
-*.map
+# editors
+.vscode
+.idea
+*.iml
 
-# obsidian
+# Obsidian plugin data written by a running vault
 data.json
 
-# Exclude macOS Finder (System Explorer) View States
-.DS_Store
-.aider*
-
+# scripts/generate-repository-zip.mjs
 repository.zip
+.aider*

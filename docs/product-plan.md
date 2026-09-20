@@ -1,0 +1,101 @@
+# jev-brain 製品計画
+
+更新日: 2026-09-20
+
+リポジトリの説明は「jev assisted 3d excalibrain」。ExcaliBrain（Obsidian の編集可能なグラフビュー）のフォークで、次を加える。順序と依存は `docs/roadmap.md`。
+
+1. **Up／Down 領域**: オントロジーの設定に、Parents／Children と並ぶ「Up（抽象）」「Down（具体）」の領域を足す。入れたフィールドの関係は 2D で専用の色になる。設計は `docs/ontology-axis-design.md`。
+2. **3D トグル**: Up の親を上、Down の子を下、それ以外を地面に置いた疑似 3D に切り替える検査モード。設計は `docs/3d-design.md`、経緯は `docs/3d-brief.md`。
+3. **Jev でリンクに型を付ける**: `[[X]]` の上でホットキーを押すと Jev がフィールドを順位付けし、`(field:: [[X]])` に書き換える。フォーク本体ではなく別プラグイン。設計は `docs/jev-link-typer-design.md`。
+
+本書は受入条件の正本で、進捗は Linear、検証手順は `docs/harness.md`、証跡は `artifacts/`。
+
+## 1. 現状
+
+- 上流 zsviczian/excalibrain 0.2.18 に作者の code scanner fixes を重ねた状態（2026-09-20 取り込み）。
+- 開発ハーネス（`npm run check`、test-vault、リリース workflow、AGENTS.md、docs）を Mappy と同じ作りで整備した。
+- 配布は未公開。BRAT・コミュニティ登録は未着手。
+- 上流の型エラー 26 件を型だけの変更で解消した。挙動の差分は実機未確認。
+- 3D のフェーズ 0（ソース調査）完了。本人の回答で、高さの元は Up／Down 領域、起動時は 2D、モバイル対象外と決まった。
+
+## 2. 方針
+
+1. 上流の挙動を壊さない。Vault のノートを書き換えるのは明示的な操作だけ。3D オフのときの表示と挙動は変更前と完全に同じ。Up／Down が空の設定は今までどおり動く。
+2. 機能を足す前に、検証できる土台（型・lint・実機ケース・証跡）を先に作る。
+3. フォーク側はネットワークを使わない。Jev への通信は別プラグインに閉じる。
+4. 上流に還元できる変更（型付け、lint 対応、Up／Down 領域）と、フォーク固有の変更（3D）を分けて記録する。3D の変更は `src/graph/Projection.ts` に寄せ、既存へのフックは最小限にする。
+
+## 3. 段階と受入条件
+
+### H0 ハーネス整備（完了、実機は未実施）
+
+- `npm run check` がローカルと GitHub Actions で通る。
+- `npm run harness:prepare` → Dataview／Excalidraw を手で入れる → `npm run harness:preflight` が通り、`Fixtures/` のグラフが実機で E01 の通りに出る。
+- `AGENTS.md`・`docs/` が揃い、Linear の起票テンプレートが使える。
+
+現在の実装: check・CI・test-vault・docs は用意した。実機の E01〜E11 は未実施（証跡なし）。Linear の Project は未作成。
+
+### ONT-1 Up／Down 領域
+
+受入条件は `docs/ontology-axis-design.md` §4。要点:
+- 設定の Ontology 節に Up (abstract) と Down (concrete) の text area。「Ontology に追加」モーダルとサジェスターでも選べる。
+- Up のフィールドは北、Down は南に今までどおり出て、リンクは領域のスタイル（既定: 緑・太さ 4.5）。フィールド別スタイルが優先。
+- Up と Parents に同じフィールドを書いたら Up が勝つ。Up／Down の無い既存設定は回帰なし（実機 E01〜E05）。
+- `Link` のスタイル重ね順と領域の排他に単体テスト。
+
+### 3D-1 固定視点の 3D トグル（ONT-1 の後）
+
+受入条件は `docs/3d-design.md` §5。要点:
+- ツールパネルに 3D トグル。デスクトップのみ。起動時は常に 2D で、トグルの状態は保存しない。
+- Up の親が +1、Down の子が −1、それ以外は 0。8 ノートの fixture で「行動デザイン」が +1、「読書メモ：習慣の本」が北の地面、「歯磨き後に腕立て」が −1。
+- 地面にいないノードから破線の柱と影。地面と方角ラベル。奥から手前の順に描き、由来の親が下に来てもリンクが箱を突っ切らない。
+- 帯の間だけ潰し、帯の中の行間は 2D のまま。親 12・子 12 で箱が重ならない。`maxItemCount3D`（既定 12）。
+- 3D オフで変更前とまったく同じ配置。クリック・ホバー・フィルター・ピン留めが 2D と同じ。
+- `Projection.ts` の `levelOf` / `project` / `compressBands` に単体テスト。
+
+### R1 ベータ配布（3D-1 の後）
+
+- plugin ID と名前を決める（上流と同じ `excalibrain` のままなら上流版と同時インストール不可）。
+- `npm version x.y.z` → tag → Release → BRAT で導入できる。`artifacts/` に導入の記録。
+
+### 3D-2 視点と設定
+
+- ヨー角を 15° 刻みで変える UI。変更ごとに 1 回の再描画で済む。
+- 設定画面に levelHeight / depthScale / widthScale / showPillars / showGround。
+
+### 3D-3 実測と重なりの追加対策
+
+- 親 20・子 30 の fixture で要素数と描画時間を `artifacts/` に記録し、重なりの残りを判断する。
+
+### H1 引き継ぎコードの整地（3D-1 の後）
+
+- `eslint.config.mjs` の「引き継ぎ時のベースライン」ブロックが空になる（恒久の command ID を除く）。
+- `tsconfig` に `strict: true` が入り `npm run typecheck` が通る。
+- 設定画面の見出しを `Setting.setHeading()` に変え、実機（E09）で確認して証跡を残す。
+- `Pages`／`Page` の関係判定に plugin スタブ付きの単体テストが付く。
+
+3D-1 と同じファイル（`Scene.ts`、`Layout.ts`、`Link.ts`）を触るので、3D-1 の merge 後に始める。
+
+### JEV-1 リンクに型を付ける別プラグイン
+
+- 別リポジトリ（本人の判断）。受入条件は `docs/jev-link-typer-design.md` §3 の流れが 1 リンクで動くこと。
+- 着手前に Jev の API とキーの扱いを決める（同 §4）。
+
+## 4. 応答性の目安
+
+未計測。上流の `maxItemCount` と `compactView` の既定値のまま。3D-3 で fixture を使って計る。
+
+## 5. 主要な判断と残る課題
+
+| 論点 | 現時点の判断 | 決める人・時期 |
+| --- | --- | --- |
+| plugin ID と名前 | 上流と同じ（`excalibrain`）。同時インストール不可 | 本人。R1 の前 |
+| 「Jev 支援」の意味 | 決定: 貼った後の `[[X]]` にオントロジーのフィールドを順位付けして付ける別プラグイン。既存サジェスターには足さない | 決定済み（2026-09-20） |
+| 「3D」の意味 | 決定: Up／Down 領域を高さにした疑似 3D の検査モード。本物の 3D はやらない | 決定済み（2026-09-20） |
+| 抽象度のデータ | 決定: ノート属性は使わず、オントロジーの領域（Up／Down）で決める。既定値で決め打ちしない | 決定済み（2026-09-20） |
+| 領域の名前 | 暫定: 表示は Up (abstract) / Down (concrete)、コードは `abstract` / `concrete` | 本人。ONT-1 の前 |
+| 3D の永続化 | 決定: 起動時は常に 2D。数値の設定だけ保存 | 決定済み |
+| モバイル | 3D は対象外（トグルを出さない）。2D は上流のまま `isDesktopOnly: false` | 決定済み |
+| 上流追従 | `upstream` remote を切って手動 merge。設定ファイルは取り込まない | 各 merge 時 |
+| Linear | Team LEV に Project「jev-brain」を Linear 側で作り、フェーズごとの親 issue を切る（`docs/roadmap.md`） | 本人が Project を作る |
+| Jev の API・キー | 未確認 | 本人。JEV-1 の前 |

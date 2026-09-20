@@ -21,12 +21,6 @@ export interface CalendarPluginLike {
   };
 }
 
-export interface DailyNotesInternalPluginLike {
-  instance?: {
-    options?: PeriodicNoteSettingsLike;
-  };
-}
-
 export interface BookmarkItemLike {
   type: string;
   path?: string;
@@ -43,7 +37,7 @@ export interface InternalPluginLike {
 }
 
 export interface InternalPluginsLike {
-  getPluginById(id: string): InternalPluginLike | DailyNotesInternalPluginLike | undefined;
+  getPluginById(id: string): InternalPluginLike | undefined;
 }
 
 export interface CommunityPluginsLike {

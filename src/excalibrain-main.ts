@@ -22,6 +22,9 @@ declare module "obsidian" {
       disablePlugin(plugin: string): Promise<void>;
       plugins: { [key: string]: Plugin; };
     };
+    commands: {
+      executeCommandById(id: string): boolean | Promise<boolean>;
+    };
   }
   interface WorkspaceLeaf {
     id: string;
@@ -167,8 +170,8 @@ export default class ExcaliBrain extends Plugin {
 
   private registerEvents() {
     this.registerEvent(
-      this.app.workspace.on("editor-menu", (menu, editor, view) => {
-        this.handleEditorMenu(menu, editor, view);
+      this.app.workspace.on("editor-menu", (menu, editor) => {
+        this.handleEditorMenu(menu, editor);
       })
     );
   }
@@ -193,7 +196,7 @@ export default class ExcaliBrain extends Plugin {
     return lastMatch !== null ? lastMatch[1] : null;
   }
 
-  private handleEditorMenu(menu: Menu, editor: Editor, view: MarkdownView) {
+  private handleEditorMenu(menu: Menu, editor: Editor) {
     const field = this.getFieldName(editor);
     if(field) {
       menu.addItem((item: MenuItem) => {
@@ -398,7 +401,7 @@ export default class ExcaliBrain extends Plugin {
         .find((popover) => popover.leaves()[0] === this.scene?.leaf);
       if(activeEditor) {
         if(this.scene.leaf.view.containerEl.offsetHeight === 0) {
-          activeEditor.titleEl.querySelector("a.popover-action.mod-minimize").click();
+          activeEditor.titleEl.querySelector<HTMLElement>("a.popover-action.mod-minimize").click();
         }
       }
     }
@@ -603,7 +606,7 @@ export default class ExcaliBrain extends Plugin {
             if(activeEditor) {
               void this.app.workspace.revealLeaf(brainLeaf);
               if(brainLeaf.view.containerEl.offsetHeight === 0) { //if hover editor is minimized
-                activeEditor.titleEl.querySelector("a.popover-action.mod-maximize").click();
+                activeEditor.titleEl.querySelector<HTMLElement>("a.popover-action.mod-maximize").click();
               }
               void (async (): Promise<void> => {
                 await this.start(brainLeaf);
@@ -1051,7 +1054,7 @@ export default class ExcaliBrain extends Plugin {
       return;
     }
 
-    if(this.startPromise && this.startLeafId === leaf.id) {
+    if(this.startPromise !== null && this.startLeafId === leaf.id) {
       return this.startPromise;
     }
 
@@ -1116,7 +1119,7 @@ export default class ExcaliBrain extends Plugin {
       await scene.initialize(this.focusSearchAfterInitiation);
       this.focusSearchAfterInitiation = false;
     } catch(error) {
-      errorlog({where: "ExcaliBrain.start()", fn: "ExcaliBrain.start", error});
+      errorlog({where: "ExcaliBrain.start()", fn: "ExcaliBrain.start", message: "Scene initialization failed", error});
       if(this.scene === scene) {
         scene.unloadScene(false, true);
         this.scene = null;

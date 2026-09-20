@@ -1,3 +1,5 @@
+> **jev-brain**: [ExcaliBrain](https://github.com/zsviczian/excalibrain)（MIT、Zsolt Viczián 作）のフォーク。Jev による支援と 3D 表示を加える構想で、現在は上流 0.2.18 に開発ハーネスを足した段階。開発の進め方は末尾の「開発」と `AGENTS.md`、`docs/` を参照。以下は上流の README。
+
 # ExcaliBrain
 
 ![image](https://user-images.githubusercontent.com/14358394/169708284-9b81233c-a672-4346-ab01-2ea6241c8a6f.png)
@@ -51,3 +53,11 @@ You can find me on Twitter [@zsviczian](https://twitter.com/zsviczian), on Disco
 
 [<img style="float:left" src="https://user-images.githubusercontent.com/14358394/115450238-f39e8100-a21b-11eb-89d0-fa4b82cdbce8.png" width="200">](https://ko-fi.com/zsolt)
 
+
+# 開発
+
+- 規約: `AGENTS.md`（`CLAUDE.md` から参照）。要件は `docs/product-plan.md`、設計は `docs/architecture.md`、検証は `docs/harness.md`、チケットは `docs/linear-workflow.md`。
+- 準備: Node は `.nvmrc`（22.22.3）。`npm ci` のあと `npm run check`（validate → lint → test → build → package）。任意で `npm run hooks:install`。
+- 開発中: `npm run dev`（esbuild watch、ルートに `main.js`）。実機は `npm run harness:prepare` で作る `test-vault/` に Dataview と Excalidraw を入れて `npm run harness:preflight`。
+- リリース: `npm version x.y.z` → タグ push → GitHub Actions が Release に配布物を添付（`docs/harness.md`「リリース手順」）。
+- 上流の技術仕様: `EXCALIBRAIN_DETAILED_SPECIFICATION.md`。

@@ -1,1 +1,0 @@
-obsidian-plugin dev -S=./styles.css -e="esbuild.config.json" -v="../../Obsidian/Demo" main.js

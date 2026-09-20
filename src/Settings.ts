@@ -1021,7 +1021,7 @@ private normalizeSettings() {
       t("NODESTYLE_SHARPNESS"),
       null,
       {"sharp":"Sharp","round":"Round"},
-      () => setting.strokeShaprness,
+      () => (typeof setting.strokeShaprness === "string" ? setting.strokeShaprness : ""),
       (val) => {
         if(val === "sharp" || val === "round") {
           setting.strokeShaprness = val;
@@ -1033,7 +1033,7 @@ private normalizeSettings() {
         void this.updateNodeDemoImg();
       },
       allowOverride,
-      inheritedStyle.strokeShaprness,
+      String(inheritedStyle.strokeShaprness ?? ""),
     )
 
     this.numberslider(

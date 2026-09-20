@@ -215,17 +215,21 @@ export class Page {
       }
       return this.url ?? "";
     }
+    // Dataview's file.aliases is a DataArray whose .values holds the alias strings.
+    const dvFile = this.dvPage?.file as { aliases?: { values?: unknown[] } } | undefined;
     const aliases = (this.file && this.plugin.settings.renderAlias)
-      ? (this.dvPage?.file?.aliases?.values??[])
+      ? (dvFile?.aliases?.values ?? [])
       : [];
-    let defaultName = aliases.length > 0 
-      ? aliases[0] 
+    let defaultName = aliases.length > 0
+      ? String(aliases[0])
       : this.name
 
     //when the alias contains a colon, it is parsed by DataView as an object
     if(defaultName === "[object Object]") {
-      if(this.dvPage?.aliases?.[0]) {
-        defaultName = Object.entries(this.dvPage.aliases[0])[0].join(": ");
+      const rawAlias = (this.dvPage?.aliases as unknown[] | undefined)?.[0];
+      if(rawAlias) {
+        const [key, value] = Object.entries(rawAlias as Record<string, unknown>)[0];
+        defaultName = `${key}: ${String(value)}`;
       } else {
         defaultName = this.name;
       }

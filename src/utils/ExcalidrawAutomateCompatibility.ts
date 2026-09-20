@@ -1,4 +1,4 @@
-import type { TFile, WorkspaceLeaf } from "obsidian";
+import type { Editor, TFile, WorkspaceLeaf } from "obsidian";
 
 /**
  * Minimal structural types for the public ExcalidrawAutomate surface consumed
@@ -9,6 +9,11 @@ export type FillStyle = string;
 export type StrokeStyle = string;
 export type StrokeRoundness = "round" | "sharp" | number | null;
 export type Arrowhead = string | null;
+
+/** What `getActiveEmbeddableViewOrEditor` hands back: an embedded leaf view, or a bare editor. */
+export type EmbeddableViewOrEditorLike =
+  | { view: { editor?: Editor } }
+  | { editor: Editor };
 
 export type Literal = Record<string, unknown> & {
   file?: {
@@ -145,7 +150,8 @@ export interface ExcalidrawAutomate {
   isExcalidrawFile(file: TFile): boolean;
   getLeaf(leaf?: WorkspaceLeaf | null, openState?: string): WorkspaceLeaf;
   openFileInNewOrAdjacentLeaf(file: TFile, openState?: { active?: boolean }): WorkspaceLeaf;
-  getActiveEmbeddableViewOrEditor?(view: unknown): unknown;
+  getActiveEmbeddableViewOrEditor?(view: unknown): EmbeddableViewOrEditorLike | null;
+  newFilePrompt(newFileNameOrPath: string, shouldOpenNewFile: boolean, targetPane?: string, parentFile?: TFile): Promise<TFile | null>;
   clear(): void;
   reset(): void;
   copyViewElementsToEAforEditing(elements: ExcalidrawElement[]): void;
