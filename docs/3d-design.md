@@ -53,6 +53,7 @@ Evergreens の `hierarchyLinkStyles` で色・太さを変えているフィー�
   - Down のフィールドで結ばれた子 → −1
   - それ以外（Parents／Children の親子、友、前後、推論リンク、フォルダ・タグ・URL・未解決）→ 0
 - 1 ノートが複数のフィールドで結ばれている場合（`typeDefinition` がカンマ区切り）は、+1 が 1 つでもあれば +1、無ければ −1 があれば −1。
+- フィールドが Up と Down のどちらに入るかは問わず、符号は役割（親＝+1、子＝−1）から取る。親側のノートが `down:` で中心を指した関係も `typeDefinition` は `down` のまま親に付く（`Page.addParent`）ので、その親は +1（LEV-110 の `levelOf`）。
 - 兄弟（siblings）は親を介した関係なので 0。
 - 3D 固有の設定は追加しない。領域は ONT-1 の設定をそのまま使う。
 
@@ -80,7 +81,7 @@ depth = ry
 src/graph/Projection.ts   新規。純関数。Obsidian・Excalidraw に依存しない → Vitest で単体テスト
   levelOf(typeDefinition, role, hierarchyLowerCase) → -1 | 0 | 1
   project(center, level, params) → { x, y, depth }
-  compressBands(centers, ...) → 帯の間だけ潰した中心（§4-1）
+  compressBands(bands, depthScale) → 北・中心・南の帯ごとの中心（帯の間の隙間だけ潰す。§4-1）
 src/graph/Layout.ts       render() を place()（中心を決める）と renderNodes() に分割。2D は今の順番のまま
 src/graph/Node.ts         level を 1 つ持つ（既定 0）。描画は無改造
 src/Scene.ts              render() に分岐 1 つ: 3D なら place → level → project → depth 順に render → 柱・影・地面
