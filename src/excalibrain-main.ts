@@ -3,7 +3,7 @@ import { Page } from './graph/Page';
 import { DEFAULT_SETTINGS, ExcaliBrainSettings, ExcaliBrainSettingTab } from './Settings';
 import { errorlog, keepOnTop } from './utils/utils';
 import { t } from './lang/helpers';
-import { DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, MINEXCALIDRAWVERSION, PLUGIN_NAME, PREDEFINED_LINK_STYLES } from './constants/constants';
+import { DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, MINEXCALIDRAWVERSION, PLUGIN_NAME, PREDEFINED_LINK_STYLES } from './constants/constants';
 import { Pages } from './graph/Pages';
 import { Scene } from './Scene';
 import { LinkStyles, NodeStyles, LinkStyle, RelationType, LinkDirection } from './Types';
@@ -15,6 +15,7 @@ import { NavigationHistory } from './Components/NavigationHistory';
 import { getDailyNoteSettings, IPeriodicNoteSettings } from './utils/datehelpers';
 import { ExcalidrawAutomate, Literal, destroyViewEA, getEA, waitForExcalidrawViewReady } from './utils/ExcalidrawAutomateCompatibility';
 import type { BookmarkItemLike, DataviewApiLike, InternalPluginsLike } from './utils/ExternalPluginTypes';
+import { HierarchyLowerCase, buildHierarchyLowerCase, createEmptyHierarchyLowerCase } from './utils/hierarchy';
 
 declare module "obsidian" {
   interface App {
@@ -60,15 +61,7 @@ export default class ExcaliBrain extends Plugin {
   declare settings:ExcaliBrainSettings;
   public nodeStyles: NodeStyles;
   public linkStyles: LinkStyles;
-  public hierarchyLowerCase: {
-    hidden: string[],
-    parents: string[],
-    children: string[],
-    leftFriends: string[],
-    rightFriends: string[],
-    previous: string[],
-    next: string[],
-  } = {hidden: [], parents: [], children: [], leftFriends: [], rightFriends: [], previous: [], next: []};
+  public hierarchyLowerCase: HierarchyLowerCase = createEmptyHierarchyLowerCase();
   public hierarchyLinkStylesExtended: {[key: string]: LinkStyle}; //including datafields lowercase and "-" instead of " "
   public pages: Pages;
   public DVAPI: DataviewApiLike;
@@ -832,9 +825,6 @@ export default class ExcaliBrain extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    if(!this.settings.hierarchy.exclusions) {
-      this.settings.hierarchy.exclusions = DEFAULT_HIERARCHY_DEFINITION.exclusions;
-    }
 
     this.loadCustomNodeLabelFunction();
     this.settings.baseLinkStyle = {
@@ -845,71 +835,11 @@ export default class ExcaliBrain extends Plugin {
       ...DEFAULT_NODE_STYLE,
       ...this.settings.baseNodeStyle,
     };
-    
-    this.hierarchyLowerCase.hidden = [];
-    if(!this.settings.hierarchy.hidden) {
-      this.settings.hierarchy.hidden = [""];
-    }
-    this.settings.hierarchy.hidden = this.settings.hierarchy.hidden.sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-    this.settings.hierarchy.hidden.forEach(f=>this.hierarchyLowerCase.hidden.push(f.toLowerCase().replaceAll(" ","-")));
-    let masterHierarchyList:string[] = [...this.hierarchyLowerCase.hidden];    
 
-
-    this.hierarchyLowerCase.parents = [];
-    this.settings.hierarchy.parents = this.settings.hierarchy.parents.sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-    this.settings.hierarchy.parents.forEach(f=>this.hierarchyLowerCase.parents.push(f.toLowerCase().replaceAll(" ","-")));
-    masterHierarchyList = [...masterHierarchyList, ...this.hierarchyLowerCase.parents];    
-
-    this.hierarchyLowerCase.children = [];
-    this.settings.hierarchy.children = this.settings.hierarchy.children
-      .filter(x=>!masterHierarchyList.includes(x.toLowerCase().replaceAll(" ","-")))
-      .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-    this.settings.hierarchy.children.forEach(f=>this.hierarchyLowerCase.children.push(f.toLowerCase().replaceAll(" ","-")));
-    masterHierarchyList = [...masterHierarchyList,...this.hierarchyLowerCase.children];
-
-    this.hierarchyLowerCase.leftFriends = [];
-    if(!this.settings.hierarchy.leftFriends) {
-      this.settings.hierarchy.leftFriends = this.settings.hierarchy.friends ?? DEFAULT_HIERARCHY_DEFINITION.leftFriends; //migrate legacy settings
-    }
-    this.settings.hierarchy.leftFriends = this.settings.hierarchy.leftFriends
-      .filter(x=>!masterHierarchyList.includes(x.toLowerCase().replaceAll(" ","-")))
-      .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-    this.settings.hierarchy.leftFriends.forEach(f=>this.hierarchyLowerCase.leftFriends.push(f.toLowerCase().replaceAll(" ","-")));
-    masterHierarchyList = [...masterHierarchyList,...this.hierarchyLowerCase.leftFriends];
-
-    this.hierarchyLowerCase.rightFriends = [];
-    if(!this.settings.hierarchy.rightFriends) {
-      this.settings.hierarchy.rightFriends = DEFAULT_HIERARCHY_DEFINITION.rightFriends;
-    }
-    this.settings.hierarchy.rightFriends = this.settings.hierarchy.rightFriends
-      .filter(x=>!masterHierarchyList.includes(x.toLowerCase().replaceAll(" ","-")))
-      .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-    this.settings.hierarchy.rightFriends.forEach(f=>this.hierarchyLowerCase.rightFriends.push(f.toLowerCase().replaceAll(" ","-")));
-    masterHierarchyList = [...masterHierarchyList,...this.hierarchyLowerCase.rightFriends];
-
-    this.hierarchyLowerCase.previous = [];
-    if(!this.settings.hierarchy.previous) {
-      this.settings.hierarchy.previous = DEFAULT_HIERARCHY_DEFINITION.previous;
-    }
-    this.settings.hierarchy.previous = this.settings.hierarchy.previous
-      .filter(x=>!masterHierarchyList.includes(x.toLowerCase().replaceAll(" ","-")))
-      .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-    this.settings.hierarchy.previous.forEach(f=>this.hierarchyLowerCase.previous.push(f.toLowerCase().replaceAll(" ","-")));
-    masterHierarchyList = [...masterHierarchyList,...this.hierarchyLowerCase.previous];
-
-    this.hierarchyLowerCase.next = [];
-    if(!this.settings.hierarchy.next) {
-      this.settings.hierarchy.next = DEFAULT_HIERARCHY_DEFINITION.next;
-    }
-    this.settings.hierarchy.next = this.settings.hierarchy.next
-      .filter(x=>!masterHierarchyList.includes(x.toLowerCase().replaceAll(" ","-")))
-      .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-    this.settings.hierarchy.next.forEach(f=>this.hierarchyLowerCase.next.push(f.toLowerCase().replaceAll(" ","-")));
-    masterHierarchyList = [...masterHierarchyList,...this.hierarchyLowerCase.next];
-
-    this.settings.hierarchy.exclusions = this.settings.hierarchy.exclusions
-      .filter(x=>!masterHierarchyList.includes(x.toLowerCase().replaceAll(" ","-")))  
-      .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
+    // Defaults, the Up-over-Parents exclusivity and the sort live in src/utils/hierarchy.ts (unit-tested).
+    const { hierarchy, hierarchyLowerCase } = buildHierarchyLowerCase(this.settings.hierarchy);
+    this.settings.hierarchy = hierarchy;
+    this.hierarchyLowerCase = hierarchyLowerCase;
 
     this.setHierarchyLinkStylesExtended();
 

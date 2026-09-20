@@ -22,7 +22,7 @@
 | --- | --- |
 | `src/Types.ts` `Hierarchy` | `abstract: string[]`、`concrete: string[]` を追加 |
 | `src/constants/constants.ts` `DEFAULT_HIERARCHY_DEFINITION` | 両方とも空配列。既存ユーザーの設定は変えない |
-| `src/excalibrain-main.ts` `loadSettings` 付近（`hierarchyLowerCase` の組み立て、`masterHierarchyList` の排他） | `abstract` / `concrete` を **parents / children より先** に処理し、重複は後の領域から落とす（Up が勝つ）。未定義なら空配列で移行 |
+| `src/utils/hierarchy.ts`（LEV-106 で `loadSettings` から切り出した純関数 `buildHierarchyLowerCase` / `axisOf`。`excalibrain-main.ts` は呼ぶだけ） | `abstract` / `concrete` を **parents / children より先** に処理し、重複は後の領域から落とす（Up が勝つ）。未定義なら空配列で移行。`axisOf(field, hierarchyLowerCase)` が `"abstract"` / `"concrete"` / `null` を返す |
 | `src/graph/Page.ts` `addDVFieldLinksToPage` | `hierarchyLowerCase.abstract` を親のループと同じ処理、`concrete` を子のループと同じ処理に通す（関係の判定は変えず、`item.field` がそのまま定義名として残る） |
 | `src/graph/Link.ts` コンストラクタ | スタイルの重ね順を base → inferred → **領域（up/down）** → フィールド別 にする。領域の判定は `hierarchyDefinition` のフィールドが `plugin.hierarchyLowerCase.abstract / concrete` に入るか |
 | `src/Settings.ts` | Ontology 節に text area を 2 つ（Parents の前）、`assigned` の集合（1388 行付近）と demo link の役割判定（321／356 行付近）に領域を追加。Link style 節に `upLinkStyle` / `downLinkStyle` |

@@ -1,4 +1,4 @@
-import { NodeStyle, LinkStyle } from "../Types";
+import { NodeStyle, LinkStyle, Hierarchy } from "../Types";
 
 export const APPNAME = "ExcaliBrain";
 export const PLUGIN_NAME = "excalibrain"
@@ -40,11 +40,14 @@ export const DEFAULT_NODE_STYLE:NodeStyle = {
   gateFillStyle: "solid"
 }
 
-export const DEFAULT_HIERARCHY_DEFINITION = {
+export const DEFAULT_HIERARCHY_DEFINITION: Hierarchy = {
   exclusions: ["excalidraw-font","excalidraw-font-color","excalidraw-css","excalidraw-plugin",
     "excalidraw-link-brackets","excalidraw-link-prefix","excalidraw-border-color","excalidraw-default-mode",
     "excalidraw-export-dark","excalidraw-export-transparent","excalidraw-export-svgpadding","excalidraw-export-pngscale",
     "excalidraw-url-prefix", "excalidraw-linkbutton-opacity", "excalidraw-onload-script", "kanban-plugin"],
+  // Up / Down start empty: existing users move fields here themselves (docs/ontology-axis-design.md §3).
+  abstract: [],
+  concrete: [],
   parents: ["Parent", "Parents", "up", "u", "North", "origin", "inception", "source", "parent domain"],
   children: ["Children", "Child", "down", "d", "South", "leads to", "contributes to", "nurtures"],
   leftFriends: ["Friends", "Friend", "Jump", "Jumps", "j", "similar", "supports", "alternatives", "advantages", "pros"],

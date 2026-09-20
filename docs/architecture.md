@@ -46,7 +46,8 @@ Obsidian metadataCache / Dataview index
 | D4 | lint のベースラインはルール×ファイルで止める（グローバルに off にしない） | 新しいファイルと直したファイルには recommended が全部かかる。内訳は `docs/harness.md` |
 | D5 | 上流の型エラー 26 件は型だけの変更で解消した | 内訳: `InternalPluginsLike.getPluginById` の戻り型を 1 つに統合、`App` 拡張に `commands`、EA 型に `newFilePrompt` と `getActiveEmbeddableViewOrEditor` の戻り型、`querySelector<HTMLElement>`、`errorlog` の `message` 追加、`startPromise !== null`、`editor-menu` ハンドラの未使用引数削除、`Page.getTitle` の alias の型絞り込み（`String()` で従来と同じ値）、`Settings` の `strokeShaprness` を文字列のときだけ渡す |
 | D6 | 実機の前提として Dataview と Excalidraw を preflight で必須にする | 無いと起動しないので、欠けた状態の実機結果に意味がない |
+| D7 | Ontology の読み込み（既定値・領域間の排他・ソート）を `src/utils/hierarchy.ts` の純関数に移し、排他を hidden → Up → Down → Parents → Children → 左右 → 前後 → exclusions の一本の順序に揃えた（LEV-106） | 上流の `loadSettings` は Parents だけ hidden との重複を落としておらず（hidden の追加時の抜け）、同じフィールドが両方に残った。他の全領域と同じく hidden が勝つ排他にする。差が出るのは hidden と Parents に同じフィールドを書いた設定だけで、hidden が優先されるので描画上の見え方は変わらない。あわせて、返り値を新しい配列にして `DEFAULT_HIERARCHY_DEFINITION` をその場でソートしなくし、`parents`／`children` が無い data.json でも落ちずに既定値を使う。それ以外（小文字化・空白→ハイフン・ソートの比較関数・hidden の `[""]` 既定・`friends` の移行）は上流と同じ結果で、`tests/utils/hierarchy.test.ts` が上流アルゴリズムの写しと突き合わせている |
 
 ## 5. フォークで変えていないもの
 
-`src/` と `styles.css` の挙動は上流 0.2.18（＋作者による code scanner fixes）のまま。D5 の変更は型のみで、実機での差分確認は未実施（`docs/harness.md` E01〜E11）。
+`src/` と `styles.css` の挙動は上流 0.2.18（＋作者による code scanner fixes）のまま。例外は D7（Ontology 読み込みの排他の順序と Up／Down 領域の追加）。D5 の変更は型のみで、実機での差分確認は未実施（`docs/harness.md` E01〜E11）。
