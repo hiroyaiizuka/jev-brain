@@ -6,7 +6,19 @@ Mappy の運用（`projects/Mappy/docs/linear-workflow.md`）をそのまま使�
 
 Linear を読み書きするのはエージェントだけである。本人は Linear の UI を使わず、Orca の worktree 一覧・コメントとチャットで進捗を見る。状態・優先度・親子関係の変更、Project への紐づけはすべて `orca linear` で行う。
 
-jev-brain の Linear Project はまだ無い（`product-plan.md` §5）。Team LEV に Project「jev-brain」を Linear 側で作ってから、`docs/roadmap.md` のフェーズごとに親 issue（H0 / ONT-1 / 3D-1 / R1 / 3D-2 / 3D-3 / H1 / JEV-1 / Ideas）を切り、子 issue は受入条件 1 件ずつにする。最初に子を切るのは ONT-1 と 3D-1 だけ。
+Linear は Team LEV の Project「Jevbrain」（2026-09-20 に本人が作成）。`docs/roadmap.md` のフェーズごとに親 issue を切り、子 issue は受入条件 1 件ずつ。依存は Linear の blocks 関係で表す。
+
+| フェーズ | 親 issue | 子 issue（2026-09-20 起票） |
+| --- | --- | --- |
+| H0 ハーネス整備 | LEV-96 | LEV-105（実機 E01〜E11、needs-human） |
+| ONT-1 Up／Down 領域 | LEV-97 | LEV-106（型・読み込み・純関数）→ LEV-107（関係判定とリンクスタイル）→ LEV-108（設定画面・モーダル・サジェスター）→ LEV-109（実機、needs-human） |
+| 3D-1 固定視点の 3D トグル | LEV-98 | LEV-110（Projection.ts）・LEV-111（Layout の分割）は今すぐ → LEV-112（Scene の分岐）→ LEV-113（ゲート選び直し）・LEV-114（トグル）→ LEV-115（実機、needs-human） |
+| R1 ベータ配布 | LEV-99 | plugin ID の決定後 |
+| 3D-2 視点と設定 | LEV-100 | 3D-1 の実機確認後 |
+| 3D-3 実測と重なり | LEV-101 | 同上 |
+| H1 整地 | LEV-102 | 3D-1 の merge 後 |
+| JEV-1 別プラグイン | LEV-103 | Jev の API・キー・リポジトリ名の決定後 |
+| Ideas | LEV-104 | 区分 idea の子だけ |
 
 ## 正本の分担
 

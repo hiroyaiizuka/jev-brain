@@ -33,7 +33,7 @@
 - `npm run harness:prepare` → Dataview／Excalidraw を手で入れる → `npm run harness:preflight` が通り、`Fixtures/` のグラフが実機で E01 の通りに出る。
 - `AGENTS.md`・`docs/` が揃い、Linear の起票テンプレートが使える。
 
-現在の実装: check・CI・test-vault・docs は用意した。実機の E01〜E11 は未実施（証跡なし）。Linear の Project は未作成。
+現在の実装: check・CI・test-vault・docs は main（b94bdc3）に入っている。実機の E01〜E11 は未実施（LEV-105）。Linear の Project「Jevbrain」は作成済み。
 
 ### ONT-1 Up／Down 領域
 
@@ -97,5 +97,5 @@
 | 3D の永続化 | 決定: 起動時は常に 2D。数値の設定だけ保存 | 決定済み |
 | モバイル | 3D は対象外（トグルを出さない）。2D は上流のまま `isDesktopOnly: false` | 決定済み |
 | 上流追従 | `upstream` remote を切って手動 merge。設定ファイルは取り込まない | 各 merge 時 |
-| Linear | Team LEV に Project「jev-brain」を Linear 側で作り、フェーズごとの親 issue を切る（`docs/roadmap.md`） | 本人が Project を作る |
+| Linear | Project「Jevbrain」（Team LEV）に親 LEV-96〜104、子 LEV-105〜115 を起票済み（`docs/linear-workflow.md`） | 決定済み（2026-09-20） |
 | Jev の API・キー | 未確認 | 本人。JEV-1 の前 |

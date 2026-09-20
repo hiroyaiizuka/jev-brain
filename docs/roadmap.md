@@ -22,11 +22,9 @@ H0 ハーネス ──┬── ONT-1 Up/Down 領域（2D の色）──── 
 | 4 | H1 整地 | strict 化、lint ベースラインの解消、設定画面の見出し | `docs/harness.md`「lint のベースライン」 | 未着手（3D-1 の merge 後） |
 | 任意 | JEV-1 別プラグイン | `[[X]]` の上でホットキー → Jev がフィールドを順位付け → `(field:: [[X]])` | `docs/jev-link-typer-design.md` | 未着手（Jev の API・キー・リポジトリ名待ち） |
 
-## Linear への写し方（案）
+## Linear
 
-- Team LEV、Project「jev-brain」（Linear 側で作成。`orca linear` は Project を作れない）。
-- 親 issue はフェーズごと（H0 / ONT-1 / 3D-1 / R1 / 3D-2 / 3D-3 / H1 / JEV-1）と「Ideas: 将来候補」。親は誰にも渡さない。
-- 子 issue は受入条件 1 件ずつ。最初に切るのは ONT-1 と 3D-1 の子だけ。運用は `docs/linear-workflow.md`。
+Team LEV の Project「Jevbrain」に 2026-09-20 起票済み。親と子の対応表は `docs/linear-workflow.md`。親は誰にも渡さない。子 issue は受入条件 1 件ずつで、依存は blocks 関係。
 
 ## やらないこと
 
