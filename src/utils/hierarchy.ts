@@ -38,78 +38,91 @@ export type NormalizedHierarchy = {
 /** Dataview's key form of a field name: lower case, spaces replaced by hyphens. */
 export const toHierarchyKey = (field: string): string => field.toLowerCase().replaceAll(" ", "-");
 
-/** Upstream comparator, kept verbatim so the stored order of existing settings does not change. */
-const byLowerCase = (a: string, b: string): number => (a.toLowerCase() < b.toLowerCase() ? -1 : 1);
+/**
+ * Upstream's sort order for ontology lists, kept verbatim (it never returns 0)
+ * so the stored order of existing settings does not change. The settings tab
+ * and the ontology modal sort with the same rule.
+ */
+export const compareFieldsIgnoringCase = (a: string, b: string): number =>
+  a.toLowerCase() < b.toLowerCase() ? -1 : 1;
 
-export const createEmptyHierarchyLowerCase = (): HierarchyLowerCase => ({
-  hidden: [],
-  abstract: [],
-  concrete: [],
-  parents: [],
-  children: [],
-  leftFriends: [],
-  rightFriends: [],
-  previous: [],
-  next: [],
-});
+const emptyRegions = (): HierarchyLowerCase =>
+  Object.fromEntries(HIERARCHY_REGIONS.map((region) => [region, [] as string[]])) as HierarchyLowerCase;
+
+export const createEmptyHierarchyLowerCase = emptyRegions;
+
+/**
+ * What a region falls back to when data.json does not carry a list for it.
+ * `hidden` keeps upstream's `[""]` placeholder (the settings tab shows it as an
+ * empty text area) and `leftFriends` migrates the pre-0.2 `friends` list.
+ * Up/Down default to the empty lists in `DEFAULT_HIERARCHY_DEFINITION`, so
+ * existing settings behave as before.
+ */
+const defaultFor = (region: HierarchyRegion, source: Partial<Hierarchy>): string[] => {
+  if (region === "hidden") return [""];
+  if (region === "leftFriends" && Array.isArray(source.friends)) return source.friends;
+  return DEFAULT_HIERARCHY_DEFINITION[region];
+};
+
+/** Upstream replaced any falsy value with the default; a non-array (a hand-edited data.json) gets the same treatment. */
+const listOrDefault = (value: unknown, fallback: () => string[]): string[] =>
+  Array.isArray(value) ? (value as string[]) : fallback();
 
 /**
  * Normalises the ontology loaded from data.json. Pure: the input is not
  * mutated and the result only depends on the argument.
  *
- * - Missing regions get their default. Up/Down start empty so existing
- *   settings behave as before; `hidden` keeps upstream's `[""]` placeholder;
- *   `leftFriends` migrates the pre-0.2 `friends` list.
+ * - Missing or malformed regions get their default (see {@link defaultFor}).
  * - Regions are processed in {@link HIERARCHY_REGIONS} order; a field already
  *   claimed by an earlier region is dropped (compared as Dataview keys).
- * - Each region is sorted case-insensitively, as upstream did.
+ * - Each region is sorted with {@link compareFieldsIgnoringCase}, as upstream did.
+ * - Only the regions and `exclusions` are returned: the legacy `friends` list
+ *   is consumed by the migration and unknown keys are not carried over.
  */
 export const buildHierarchyLowerCase = (hierarchy: Partial<Hierarchy> | null | undefined): NormalizedHierarchy => {
   const source: Partial<Hierarchy> = hierarchy ?? {};
-  const input: Record<HierarchyRegion, string[]> = {
-    hidden: source.hidden ?? [""],
-    abstract: source.abstract ?? [],
-    concrete: source.concrete ?? [],
-    parents: source.parents ?? DEFAULT_HIERARCHY_DEFINITION.parents,
-    children: source.children ?? DEFAULT_HIERARCHY_DEFINITION.children,
-    leftFriends: source.leftFriends ?? source.friends ?? DEFAULT_HIERARCHY_DEFINITION.leftFriends,
-    rightFriends: source.rightFriends ?? DEFAULT_HIERARCHY_DEFINITION.rightFriends,
-    previous: source.previous ?? DEFAULT_HIERARCHY_DEFINITION.previous,
-    next: source.next ?? DEFAULT_HIERARCHY_DEFINITION.next,
-  };
-
   const taken = new Set<string>();
-  const regions = createEmptyHierarchyLowerCase();
-  const hierarchyLowerCase = createEmptyHierarchyLowerCase();
+  const regions = emptyRegions();
+  const hierarchyLowerCase = emptyRegions();
   for (const region of HIERARCHY_REGIONS) {
-    const fields = input[region].filter((field) => !taken.has(toHierarchyKey(field))).sort(byLowerCase);
+    const fields = listOrDefault(source[region], () => defaultFor(region, source))
+      .filter((field) => !taken.has(toHierarchyKey(field)))
+      .sort(compareFieldsIgnoringCase);
     const keys = fields.map(toHierarchyKey);
     keys.forEach((key) => taken.add(key));
     regions[region] = fields;
     hierarchyLowerCase[region] = keys;
   }
 
-  const exclusions = (source.exclusions ?? DEFAULT_HIERARCHY_DEFINITION.exclusions)
+  const exclusions = listOrDefault(source.exclusions, () => DEFAULT_HIERARCHY_DEFINITION.exclusions)
     .filter((field) => !taken.has(toHierarchyKey(field)))
-    .sort(byLowerCase);
+    .sort(compareFieldsIgnoringCase);
 
   return {
-    hierarchy: { ...source, ...regions, exclusions },
+    hierarchy: { ...regions, exclusions },
     hierarchyLowerCase,
   };
 };
 
 /**
- * Which axis a relation's field belongs to, or null for Parents/Children,
- * friends, inferred links and everything else. Accepts the field as written
- * or as a Dataview key.
+ * Which axis a relation belongs to, or null for Parents/Children, friends,
+ * inferred links (no definition) and everything else.
+ *
+ * `typeDefinition` is what Page/Link carry: one field, or several joined with
+ * ", " when a note reaches the same neighbour through more than one field.
+ * Fields may be written as in the note or as Dataview keys. Up wins over Down
+ * when both are present; empty entries are ignored.
  */
 export const axisOf = (
-  field: string,
+  typeDefinition: string | null | undefined,
   hierarchyLowerCase: Pick<HierarchyLowerCase, HierarchyAxis>,
 ): HierarchyAxis | null => {
-  const key = toHierarchyKey(field);
-  if (hierarchyLowerCase.abstract.includes(key)) return "abstract";
-  if (hierarchyLowerCase.concrete.includes(key)) return "concrete";
+  if (!typeDefinition) return null;
+  const keys = typeDefinition
+    .split(",")
+    .map((field) => toHierarchyKey(field.trim()))
+    .filter((key) => key !== "");
+  if (keys.some((key) => hierarchyLowerCase.abstract.includes(key))) return "abstract";
+  if (keys.some((key) => hierarchyLowerCase.concrete.includes(key))) return "concrete";
   return null;
 };

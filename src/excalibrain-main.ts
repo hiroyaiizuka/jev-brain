@@ -15,7 +15,7 @@ import { NavigationHistory } from './Components/NavigationHistory';
 import { getDailyNoteSettings, IPeriodicNoteSettings } from './utils/datehelpers';
 import { ExcalidrawAutomate, Literal, destroyViewEA, getEA, waitForExcalidrawViewReady } from './utils/ExcalidrawAutomateCompatibility';
 import type { BookmarkItemLike, DataviewApiLike, InternalPluginsLike } from './utils/ExternalPluginTypes';
-import { HierarchyLowerCase, buildHierarchyLowerCase, createEmptyHierarchyLowerCase } from './utils/hierarchy';
+import { HierarchyLowerCase, buildHierarchyLowerCase, createEmptyHierarchyLowerCase, toHierarchyKey } from './utils/hierarchy';
 
 declare module "obsidian" {
   interface App {
@@ -783,7 +783,7 @@ export default class ExcaliBrain extends Plugin {
   public setHierarchyLinkStylesExtended() {
     this.hierarchyLinkStylesExtended = {};
     Object.entries(this.settings.hierarchyLinkStyles).forEach(item=>{
-      const lowercase = item[0].toLowerCase().replaceAll(" ","-");
+      const lowercase = toHierarchyKey(item[0]);
       this.hierarchyLinkStylesExtended[item[0]] = item[1];
       if(item[0]!==lowercase) {
         this.hierarchyLinkStylesExtended[lowercase] = item[1];
