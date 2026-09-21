@@ -70,25 +70,6 @@ export type Point = { x: number; y: number };
 /** 2D の範囲（中心ノート原点、y は北が負）。床の平行四辺形は `floorPlan` がこれを足元から作り、Scene が床の高さに投影する。 */
 export type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
 
-/** `boundsOf` の入力。`x`/`y` は中心。 */
-export type Box = Point & { width: number; height: number };
-
-/** 箱の外周の範囲に `margin` を四方に足したもの。空なら null。 */
-export const boundsOf = (boxes: readonly Box[], margin = 0): Bounds | null => {
-  if (boxes.length === 0) return null;
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const box of boxes) {
-    minX = Math.min(minX, box.x - box.width / 2);
-    maxX = Math.max(maxX, box.x + box.width / 2);
-    minY = Math.min(minY, box.y - box.height / 2);
-    maxY = Math.max(maxY, box.y + box.height / 2);
-  }
-  return { minX: minX - margin, maxX: maxX + margin, minY: minY - margin, maxY: maxY + margin };
-};
-
 /**
  * 床の平面図（§6-2）。すべて 2D の地面座標で、Scene が各点を `project(·, floor, params)` で床の高さに投影する
  * （東西は水平のまま、南北は northShearX／northRise の向きに傾く平行四辺形になる）。
@@ -121,14 +102,23 @@ const gridPositions = (min: number, max: number, origin: number, spacing: number
 };
 
 /**
- * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の足元（2D の中心）、`origin` は中心ノートの足元
- * （十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので十字は必ず床の内側にある。
- * 余白 `margin` は既定で `spacing`（Scene はどちらも nodeHeight）。足元が 1 つも無ければ（`origin` だけでも）その点の周りに
- * 余白だけの床を返す。
+ * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の地面の位置（浮いたノードは 2D の中心、床のノードは
+ * 接地影を `unproject` した点）、`origin` は中心ノートの足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。
+ * `origin` も範囲に含めるので十字は必ず床の内側にある。余白 `margin` は既定で `spacing`（Scene はどちらも nodeHeight）。
+ * 足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
  */
 export const floorPlan = (feet: readonly Point[], origin: Point, spacing: number, margin = spacing): FloorPlan => {
-  // origin を含めるので空にはならない（boundsOf が null を返すのは空のときだけ）
-  const bounds = boundsOf([origin, ...feet].map((foot) => ({ ...foot, width: 0, height: 0 })), margin);
+  const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
+  for (const foot of feet) {
+    bounds.minX = Math.min(bounds.minX, foot.x);
+    bounds.maxX = Math.max(bounds.maxX, foot.x);
+    bounds.minY = Math.min(bounds.minY, foot.y);
+    bounds.maxY = Math.max(bounds.maxY, foot.y);
+  }
+  bounds.minX -= margin;
+  bounds.maxX += margin;
+  bounds.minY -= margin;
+  bounds.maxY += margin;
   const offset = margin / 2;
   return {
     bounds,
@@ -213,6 +203,16 @@ export const project = (center: Point, level: Level, params: ProjectionParams): 
     y: 0 - north * params.northRise - level * params.levelHeight,
     depth: north,
   };
+};
+
+/**
+ * `project` の逆: 画面の点が高さ `level` にあるとして、その 2D の地面の位置を返す。床にいるノードの接地影（箱の下端の直下、
+ * 画面座標で決まる）を床の範囲（`floorPlan`、地面座標）に含めるために使う。`northRise` が 0 だと決まらない
+ * （設定の下限は 0.2）。`0 -` は −0 を避けるため。
+ */
+export const unproject = (screen: Point, level: Level, params: ProjectionParams): Point => {
+  const north = 0 - (screen.y + level * params.levelHeight) / params.northRise;
+  return { x: screen.x - north * params.northShearX, y: 0 - north };
 };
 
 /**

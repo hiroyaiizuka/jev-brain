@@ -6,7 +6,6 @@ import {
   LevelHierarchy,
   Point,
   ProjectionParams,
-  boundsOf,
   compareDrawOrder,
   floorOf,
   floorPlan,
@@ -14,6 +13,7 @@ import {
   levelOf,
   pillarTickLevels,
   project,
+  unproject,
 } from 'src/graph/Projection';
 
 /**
@@ -308,15 +308,6 @@ describe('compareDrawOrder', () => {
   });
 });
 
-describe('boundsOf (Scene の地面が使う純関数)', () => {
-  it('takes the outer edges of the boxes, adds the margin on all four sides, and is null when empty', () => {
-    expect(boundsOf([])).toBeNull();
-    expect(boundsOf([{ x: 0, y: 0, width: 200, height: 40 }])).toEqual({ minX: -100, maxX: 100, minY: -20, maxY: 20 });
-    expect(boundsOf([{ x: -120, y: -200, width: 200, height: 40 }, { x: 300, y: 0, width: 100, height: 40 }, { x: 0, y: 220, width: 200, height: 40 }], 75))
-      .toEqual({ minX: -295, maxX: 425, minY: -295, maxY: 315 });
-  });
-});
-
 describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   // artifacts/3d1-e2e の 2D の中心（友は friendBandShift 後で中心と同じ y −12）。nodeHeight 76 が余白とグリッド間隔。
   const nodeHeight = 76;
@@ -339,14 +330,22 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
     }
   });
 
-  it("puts the cross through the central note's foot and the friends' feet on its east-west axis, parents north of it, children south", () => {
+  it("puts the cross through the central note's foot, so on screen the friends' shadows sit on its east-west axis, parents' above-right, children's below-left", () => {
     const plan = floorPlan(feet, origin, nodeHeight);
     expect(plan.origin).toEqual(origin);
     expect(plan.origin).not.toBe(origin);
-    const axisY = plan.origin.y;
-    expect(feet.filter((f) => f.y === axisY).map((f) => f.x)).toEqual([0, -454, 425]);
-    expect(feet.filter((f) => f.y < axisY)).toHaveLength(2);
-    expect(feet.filter((f) => f.y > axisY)).toHaveLength(3);
+    // 東西軸 = origin.y の線（W から E まで）、南北軸 = origin.x の線（N から S まで）。
+    expect(plan.compass.west.y).toBe(origin.y);
+    expect(plan.compass.east.y).toBe(origin.y);
+    expect(plan.compass.north.x).toBe(origin.x);
+    expect(plan.compass.south.x).toBe(origin.x);
+    // 床の高さ −1 に投影した東西軸は画面で水平。友の足元はその上、親は上（北）、子は下（南）。
+    const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * nodeHeight };
+    const axis = (x: number) => project({ x, y: plan.origin.y }, -1, params);
+    expect(axis(plan.bounds.minX).y).toBe(axis(plan.bounds.maxX).y);
+    const screenY = (foot: Point) => project(foot, -1, params).y;
+    expect(feet.slice(0, 5).map(screenY)).toEqual([axis(0).y, axis(0).y - 291 * 0.3 + 12 * 0.3, axis(0).y - 291 * 0.3 + 12 * 0.3, axis(0).y, axis(0).y]);
+    for (const child of feet.slice(5)) expect(screenY(child)).toBeGreaterThan(axis(0).y);
   });
 
   it('spaces the grid one nodeHeight apart from the cross, inside the floor, leaving out the two lines the cross already draws', () => {
@@ -429,5 +428,35 @@ describe('pillarTickLevels (柱の目盛り、3d-design §6-2)', () => {
     expect(segments('行動デザイン')).toBe(2);
     expect(segments('読書メモ：習慣の本')).toBe(1);
     expect(segments('歯磨き後に腕立て')).toBe(0);
+  });
+});
+
+describe('unproject', () => {
+  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * 76 };
+
+  it('inverts project at every level for the brief fixture and the origin', () => {
+    for (const center of [centralNote, ...neighbours.map((n) => n.center)]) {
+      for (const level of [-1, 0, 1] as const) {
+        const back = unproject(project(center, level, params), level, params);
+        expect(back.x).toBeCloseTo(center.x, 9);
+        expect(back.y).toBeCloseTo(center.y, 9);
+      }
+    }
+    expect(unproject({ x: 0, y: 0 }, 0, params)).toEqual({ x: 0, y: 0 });
+    expect(Object.is(unproject({ x: 0, y: 0 }, 0, params).y, -0)).toBe(false);
+  });
+
+  it('maps the ground shadow of a floor node (box bottom + half a shadow, straight below the foot on screen) to a point south and east of the foot', () => {
+    // 床 −1 のノード（足元 = 2D の中心）。箱の高さ 44、影の高さ 19: 接地影の中心は画面で足元の 22 + 9.5 下。
+    const foot: Point = { x: 280, y: 214 };
+    const screenFoot = project(foot, -1, params);
+    const shadow = unproject({ x: screenFoot.x, y: screenFoot.y + 22 + 9.5 }, -1, params);
+    // 画面で真下 → 地面では南（y 大）へ 31.5 / 0.3 = 105、東西は shear の分だけ東（x 大）へ 105 × 0.4 = 42。
+    expect(shadow.y).toBeCloseTo(214 + 105, 9);
+    expect(shadow.x).toBeCloseTo(280 + 42, 9);
+    // 床の範囲に入れると、南の縁は接地影の nodeHeight 南になる。
+    const plan = floorPlan([shadow], { x: 0, y: -12 }, 76);
+    expect(plan.bounds.maxY).toBeCloseTo(214 + 105 + 76, 9);
+    expect(project({ x: shadow.x, y: plan.bounds.maxY }, -1, params).y).toBeGreaterThan(screenFoot.y + 22 + 9.5 + 9.5);
   });
 });

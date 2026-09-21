@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { FloorPlan, Level, Point, Projected, ProjectionParams, compareDrawOrder, floorOf, floorPlan, friendBandShift, levelOf, pillarTickLevels, project } from "./graph/Projection";
+import { FloorPlan, Level, Point, Projected, ProjectionParams, compareDrawOrder, floorOf, floorPlan, friendBandShift, levelOf, pillarTickLevels, project, unproject } from "./graph/Projection";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
@@ -1074,12 +1074,13 @@ export class Scene {
   }
 
   /**
-   * 3D の描画（docs/3d-design.md §6-1・§6-2）。配置 → 友の帯を中心の y に揃える → 床の高さ → 投影 → 床（外周・グリッド・十字・方角）
-   * → north 降順にノード（それぞれ影と、床にいないノードには柱）。2D と同じ `place()` の中心を投影で置き換えるだけで、
-   * Node の描画は無改造。埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は
-   * 中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は 3D でも合う（床のほうが `floor` のぶん下がる）。
+   * 3D の描画（docs/3d-design.md §6-1・§6-2）。配置 → 友の帯を中心の y に揃える → 床の高さ → 投影 → north 降順にノード
+   * （それぞれ影と、床にいないノードには柱）→ 床（外周・グリッド・十字・方角）。2D と同じ `place()` の中心を投影で
+   * 置き換えるだけで、Node の描画は無改造。埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、
+   * 原点は中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は 3D でも合う（床のほうが `floor` のぶん下がる）。
    * `friendLayouts`（左右の友）だけ `friendBandShift` で 2D の y を動かす（上流の Layout の半行のずれを 3D でだけ戻す）。
-   * 戻り値は床 → 影 → 柱の順に並べた要素で、`render()` がこの順のままリンクとノードの後ろに置く（§6-2 の重ね順）。
+   * 床は影の位置（床のノードは箱の高さで決まる）を囲むので最後に描くが、戻り値は床 → 影 → 柱の順に並べた要素で、
+   * `render()` がこの順のままリンクとノードの後ろに置く（§6-2 の重ね順。z 順は `ea.elementsDict` の並びだけで決まる）。
    * link は付けず、ノードのグループにも入れない。床・影・柱が変えた `ea.style` は元に戻すので、続く `links.render()` が
    * 受け取るスタイルは 2D と同じ（最後のノードが残したもの）。
    */
@@ -1110,28 +1111,36 @@ export class Scene {
     }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
-    // 床（§6-2）: 影の足元 = 2D の中心を囲む最小の範囲に nodeHeight の余白、グリッドは nodeHeight 間隔、十字は中心ノートの足元
-    const plan = floorPlan(placed.map(p => p.center), rootCenter, this.nodeHeight);
-    const floorIds = this.keepingStyle(() => this.renderFloor(plan, floor, params));
-
-    // 奥（north 大）から手前へ逐次描く（§6-1）。影と柱は箱の下端が要るのでノードの直後に描き、並びは §6-2 の重ね順に組み直す
+    // 奥（north 大）から手前へ逐次描く（§6-1）。影と柱は箱の下端が要るのでノードの直後に描く
     placed.sort((a, b) => compareDrawOrder(a.projected, b.projected));
     const shadowIds: string[] = [];
     const pillarIds: string[] = [];
+    /** 各影の地面の位置（床の範囲はこれを囲む） */
+    const feet: Point[] = [];
     for (const p of placed) {
       await p.node.render();
+      const box = ea.getElement(p.node.id);
+      if(!box) continue; // 保持した埋め込みの中心の要素がキャンバスから消えている: 影も柱も描かない
+      const bottom: Point = {x: box.x + box.width / 2, y: box.y + box.height};
       this.keepingStyle(() => {
-        const box = ea.getElement(p.node.id);
         if(p.node.level === floor) {
-          // 床にいるノード: 柱なし、箱の下端の直下に接地影
-          shadowIds.push(this.renderShadow({x: box.x + box.width / 2, y: box.y + box.height}));
+          // 床にいるノード: 柱なし。箱の下端に上端が接する接地影（箱の背景は半透明なので下に潜らせない）
+          const shadow: Point = {x: bottom.x, y: bottom.y + this.shadowSize().height / 2};
+          shadowIds.push(this.renderShadow(shadow));
+          feet.push(unproject(shadow, floor, params));
         } else {
           const foot = project(p.center, floor, params);
           shadowIds.push(this.renderShadow(foot));
-          pillarIds.push(...this.renderPillar(box, foot, p, floor, params));
+          pillarIds.push(...this.renderPillar(bottom, p.node, p.center, floor, params));
+          feet.push(p.center);
         }
       });
     }
+
+    // 床（§6-2）: 影の地面の位置を囲む最小の範囲に nodeHeight の余白、グリッドは nodeHeight 間隔、十字は中心ノートの足元
+    const plan = floorPlan(feet, rootCenter, this.nodeHeight);
+    const floorIds = this.keepingStyle(() => this.renderFloor(plan, floor, params));
+
     return [...floorIds, ...shadowIds, ...pillarIds].map(id => ea.getElement(id));
   }
 
@@ -1212,10 +1221,14 @@ export class Scene {
     return ids;
   }
 
-  /** 影（§6-2）: 全ノード同じ大きさの楕円（面だけ、縁取り無し）を `center` に置く（柱の下端、床のノードなら箱の下端）。 */
+  /** 影の大きさ（§6-2「全ノード同じ小さな楕円」）: nodeHeight に対する比。 */
+  private shadowSize(): {width: number; height: number} {
+    return { width: this.nodeHeight * VIEW_3D.shadowWidthRatio, height: this.nodeHeight * VIEW_3D.shadowHeightRatio };
+  }
+
+  /** 影（§6-2）: `shadowSize()` の楕円（面だけ、縁取り無し）を `center` に置く（柱の下端、床のノードなら箱のすぐ下）。 */
   private renderShadow(center: Point): string {
-    const width = this.nodeHeight * VIEW_3D.shadowWidthRatio;
-    const height = this.nodeHeight * VIEW_3D.shadowHeightRatio;
+    const {width, height} = this.shadowSize();
     this.applySceneryStyle({
       strokeColor: "transparent",
       backgroundColor: withAlpha(this.plugin.settings.baseNodeStyle.textColor, VIEW_3D.shadowAlpha),
@@ -1225,20 +1238,20 @@ export class Scene {
   }
 
   /**
-   * 柱（§6-2）: 箱の下端の中央から足元（`foot`）へ破線を引き、床と箱の段の間の各段（`pillarTickLevels`）に短い横線の目盛りを置く。
-   * 箱の位置は描画済みの要素（`node.id`: テキストなら枠、埋め込みなら iframe／画像。保持した埋め込みでも `Node.render()` が
-   * `id` を付け直す）から読む。目盛りの x は柱と同じ（`project` は level で x を変えない）。
+   * 柱（§6-2）: 箱の下端の中央（`top`）から足元（`center` を床の高さに投影した点 = 影の位置）へ破線を引き、床と箱の段の間の
+   * 各段（`pillarTickLevels`）に短い横線の目盛りを置く。目盛りの x は柱と同じ（`project` は level で x を変えない）。
    */
-  private renderPillar(box: ExcalidrawElement, foot: Projected, p: PlacedNode, floor: Level, params: ProjectionParams): string[] {
+  private renderPillar(top: Point, node: Node, center: Point, floor: Level, params: ProjectionParams): string[] {
     const ea = this.ea;
     const pillarColor = withAlpha(this.plugin.settings.baseNodeStyle.textColor, VIEW_3D.pillarAlpha);
+    const foot = project(center, floor, params);
     this.applySceneryStyle({ strokeColor: pillarColor, strokeWidth: VIEW_3D.pillarWidth, strokeStyle: "dashed" });
-    const ids = [ea.addLine([[box.x + box.width / 2, box.y + box.height], [foot.x, foot.y]])];
+    const ids = [ea.addLine([[top.x, top.y], [foot.x, foot.y]])];
 
     this.applySceneryStyle({ strokeColor: pillarColor, strokeWidth: VIEW_3D.pillarWidth });
-    const halfTick = (p.node.style.gateRadius * VIEW_3D.tickWidthInGateRadii) / 2;
-    for (const level of pillarTickLevels(p.node.level, floor)) {
-      const tick = project(p.center, level, params);
+    const halfTick = (node.style.gateRadius * VIEW_3D.tickWidthInGateRadii) / 2;
+    for (const level of pillarTickLevels(node.level, floor)) {
+      const tick = project(center, level, params);
       ids.push(ea.addLine([[tick.x - halfTick, tick.y], [tick.x + halfTick, tick.y]]));
     }
     return ids;
