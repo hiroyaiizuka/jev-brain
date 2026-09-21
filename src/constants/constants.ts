@@ -29,11 +29,21 @@ export const DEFAULT_AXIS_LINK_STYLE:LinkStyle = {
   strokeWidth: 4.5,
 }
 
-/** 3D view (docs/3d-design.md §6-1). `loadSettings()` merges these into a saved `view3D` object. */
+/**
+ * 3D view (docs/3d-design.md §6-1, §6-6). `loadSettings()` merges these into a saved `view3D` object.
+ * The factors are the layout the author dragged out on 2026-09-21 (LEV-128), in multiples of nodeHeight (77px):
+ * Up 241, Down 274, vertical gap 293, bands 300, floor 546 north / 443 south / 115 margin.
+ */
 export const DEFAULT_VIEW_3D_SETTINGS: Readonly<View3DSettings> = {
   northShearX: 0.4,
   northRise: 0.3,
-  levelHeightFactor: 2.2,
+  upHeightFactor: 3.1,
+  downHeightFactor: 3.6,
+  verticalGapFactor: 3.8,
+  bandDistanceFactor: 3.9,
+  floorNorthFactor: 7.1,
+  floorSouthFactor: 5.75,
+  floorMarginFactor: 1.5,
 };
 
 /**

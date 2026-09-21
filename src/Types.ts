@@ -138,8 +138,20 @@ export type View3DSettings = {
   northShearX: number;
   /** Screen y rise per unit of north. */
   northRise: number;
-  /** Height of one level = nodeHeight × this. A bit over twice the node height (3d-feedback §1). */
-  levelHeightFactor: number;
+  /** Height of the Up level above the centre = nodeHeight × this (LEV-128: the author's 241px is 3.1). */
+  upHeightFactor: number;
+  /** Depth of the Down level below the centre = nodeHeight × this (LEV-128: the author's 274px is 3.6). */
+  downHeightFactor: number;
+  /** East-west gap between several Ups (or Downs) on the vertical axis = nodeHeight × this. */
+  verticalGapFactor: number;
+  /** Distance from the centre to the nearest row of the level-0 Parents/Children bands = nodeHeight × this. */
+  bandDistanceFactor: number;
+  /** Smallest floor reach north of the centre = nodeHeight × this (the feet widen it further). */
+  floorNorthFactor: number;
+  /** Smallest floor reach south of the centre = nodeHeight × this: the depth in front (3d-feedback 追記 3). */
+  floorSouthFactor: number;
+  /** Margin left around the feet at the edge of the floor = nodeHeight × this. */
+  floorMarginFactor: number;
 };
 
 export type LayoutSpecification = {
