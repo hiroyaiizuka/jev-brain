@@ -43,6 +43,8 @@
 - Up と Parents に同じフィールドを書いたら Up が勝つ。Up／Down の無い既存設定は回帰なし（実機 E01〜E05）。
 - `Link` のスタイル重ね順と領域の排他に単体テスト。
 
+現在の実装: LEV-106 で `Hierarchy` に `abstract`／`concrete`（既定は空配列）を足し、読み込み時の既定値・排他（hidden → Up → Down → Parents → Children → 左右 → 前後 → exclusions の順に後ろから落とす）・ソートを `src/utils/hierarchy.ts` の純関数 `buildHierarchyLowerCase` と `axisOf` に移し、`loadSettings` から呼ぶ。`tests/utils/hierarchy.test.ts` が上流 0.2.18 のアルゴリズムの写しをオラクルにして「Up／Down の無い設定は同じ結果」を固定し、Up 対 Parents の排他・正規化・`axisOf` を検証する。関係判定とリンクスタイル（LEV-107）、設定画面・モーダル・サジェスター（LEV-108）、実機 E01〜E05 の回帰確認（LEV-109）は未着手。
+
 ### 3D-1 固定視点の 3D トグル（ONT-1 の後）
 
 受入条件は `docs/3d-design.md` §5。要点:
@@ -53,7 +55,7 @@
 - 3D オフで変更前とまったく同じ配置。クリック・ホバー・フィルター・ピン留めが 2D と同じ。
 - `Projection.ts` の `levelOf` / `project` / `compressBands` に単体テスト。
 
-現在の実装: `src/graph/Projection.ts`（`levelOf` / `project` / `compressBands`）と `tests/graph/projection.test.ts` が LEV-110 で入った。規則は `docs/3d-design.md` §3-1・§3-2・§4-1。Scene への接続以降（ONT-1 の `abstract` / `concrete`、Layout の分割、Node.level、3D 分岐、ゲート、トグル、実機）は未着手で、進捗は Linear（LEV-98 の子）。
+現在の実装（LEV-110・LEV-111）: `src/graph/Projection.ts`（`levelOf` / `project` / `compressBands`）と `tests/graph/projection.test.ts` が LEV-110 で入った（規則は `docs/3d-design.md` §3-1・§3-2・§4-1）。`Layout.render()` を `place()`（中心を決める）と `renderNodes()`（配置済みノードを行順に描く）に分割し、`render()` は両方を順に呼ぶ。`Node.level`（−1 | 0 | 1、既定 0）を追加。描画は無改造で、2D は `render()` のまま、ノードの描画順も分割前と同じ（`tests/graph/layout.test.ts`）。Scene の 3D 分岐・柱・影・地面（LEV-112）、ゲート選び直し（LEV-113）、トグル（LEV-114）、実機（LEV-115、2D 回帰 E01〜E03 を含む）は未着手。
 
 ### R1 ベータ配布（3D-1 の後）
 

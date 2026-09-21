@@ -3,7 +3,7 @@ import {Node} from "./Node";
 
 export class Layout {
   nodes: Node[] = [];
-  renderedNodes: Node[][] = [];
+  renderedNodes: (Node | null)[][] = [];
   spec: LayoutSpecification;
 
   constructor(spec: LayoutSpecification) {
@@ -12,7 +12,7 @@ export class Layout {
 
   layout(columns = this.spec.columns) {
     const generateOddLayoutVector = (pattern:number[]) => {
-      const res:number[] = [];
+      const res:(number | null)[] = [];
       let cur = 1;
       let state = true;
       pattern
@@ -25,7 +25,7 @@ export class Layout {
     }
 
     const generateEvenLayoutVector = (pattern: number[]) => {
-      const res:number[] = [];
+      const res:(number | null)[] = [];
       let i = 0;
       for(i=columns/2;i>pattern[0];i--) res.push(null);
       for(i=0;i<pattern[0];i++) res.push(i+1);
@@ -44,6 +44,7 @@ export class Layout {
     const sortedNodes = this.nodes.sort((a,b) => a.title.toLowerCase() < b.title.toLowerCase() ? -1 : 1)
     const itemCount = sortedNodes.length;
     if(itemCount === 0) {
+      this.renderedNodes = [];
       return;
     }
     const rowCount = Math.ceil(itemCount / columns);
@@ -54,7 +55,13 @@ export class Layout {
         : getRowLayout(itemCount % columns).map(idx => idx ? sortedNodes[i*columns+idx-1]:null));
   }
 
-  async render() {
+  /**
+   * Decides the centre of every node (rows, columns, top/bottom constraint) and stores it
+   * with `node.setCenter()`. Draws nothing: the 3D branch of Scene runs this first, then sets
+   * `node.level`, projects the centres and calls `node.render()` itself in depth order
+   * (docs/3d-design.md §3-3, §3-5). Calling it again re-sorts and re-places from `nodes`.
+   */
+  place() {
     this.layout();
     const rows = this.renderedNodes.length;
     const height = rows * this.spec.rowHeight;
@@ -78,9 +85,28 @@ export class Layout {
             x: center00.x + idx*this.spec.columnWidth,
             y: center00.y + row*this.spec.rowHeight
           });
+        }
+      }
+    }
+  }
+
+  /**
+   * Renders the nodes `place()` laid out, one after the other, row by row. Call `place()` first.
+   * Only the 2D path uses this; the 3D branch orders `node.render()` by depth on its own.
+   */
+  async renderNodes() {
+    for (const nodes of this.renderedNodes) {
+      for (const node of nodes) {
+        if(node) {
           await node.render();
         }
       }
     }
+  }
+
+  /** The 2D path: place, then render. The nodes are rendered in the same order as before the split. */
+  async render() {
+    this.place();
+    await this.renderNodes();
   }
 }

@@ -47,6 +47,10 @@ export type Relation = {
 
 export type Hierarchy = {
   hidden: string[],
+  /** Up region: fields whose target is more abstract than the page (docs/ontology-axis-design.md). Wins over parents. */
+  abstract: string[],
+  /** Down region: fields whose target is more concrete than the page. Wins over children. */
+  concrete: string[],
   parents: string[],
   children: string[],
   leftFriends: string[],
