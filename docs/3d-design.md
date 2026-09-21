@@ -51,7 +51,7 @@ Evergreens の `hierarchyLinkStyles` で色・太さを変えているフィー�
 - 中心ノートは 0。隣接ノードの高さは 1 つの規則で決める（`Projection.levelOf`、LEV-110）:
   - 中心との関係が親（`Role.PARENT`）または子（`Role.CHILD`）で、`typeDefinition`（カンマ区切り）のフィールドのどれかが `hierarchy.abstract`（Up）か `hierarchy.concrete`（Down）に入っていれば、親は +1、子は −1。
   - それ以外（Parents／Children の親子、友、前後、推論リンク、フォルダ・タグ・URL）は 0。
-  - 兄弟（親を介した関係）と未解決リンク（ゴースト）は、フィールドに関係なく 0。兄弟の `Neighbour` は親の `getChildren()` 由来で「兄弟→親」のフィールドを持ち、未解決ページも定義済みのフィールドで結ばれるので、`typeDefinition` では見分けられない。Scene が `isSibling` と `page.isVirtual` を `levelOf` の第 4 引数で渡す。
+  - 兄弟（親を介した関係）は、フィールドに関係なく 0。兄弟の `Neighbour` は親の `getChildren()` 由来で「兄弟→親」のフィールドを持ち、`typeDefinition` では見分けられないので、Scene が `isSibling` を `levelOf` の第 4 引数で渡す。未解決リンク（ゴースト）も 0 にしていたが、LEV-124 でやめた（§6-5）: 未解決の `up:: [[…]]` も解決済みの Up と同じ段に立つ。
 - フィールドが Up と Down のどちらに入るかは問わず、符号は役割から取る。親子の向きは Page が解決済みで、親側のノートが `down: [[中心]]` と書いた関係も `typeDefinition` は `down` のまま親に付く（`Page.addParent`）ため。普通の使い方（中心が `up:` で親を、`down:`／`example:` で子を指す）では「Up の親 → +1、Down の子 → −1」と同じ結果になる。
 - 3D 固有の設定は追加しない。領域は ONT-1 の設定をそのまま使う。
 
@@ -165,13 +165,14 @@ depth = north                                   描画順は north の大きい�
 | 3D-2-2 床・柱・影 | `src/Scene.ts` の床・柱・影の描画（3D-2-1 の後） |
 | 3D-2-3 リンク・ゲート・色・ラベル | `src/graph/Link.ts`、`src/graph/Node.ts`、`src/Settings.ts`（`levelColors`）、`tests/graph/link-gates.test.ts` の置き換え（3D-2-1 の後。3D-2-2 と並走可） |
 | 3D-2-4 実機 | フィードバックの「合格の目安」4 点を CDP と本人の目視で |
-
-## 7. 開いている論点（本人に確認）
-
-- 模式図では「朝のルーティン手順（down）」が L2、「歯磨き後に腕立て／9月20日 朝ランの記録（example）」が L1 と段が分かれているが、今の高さは Up +1／Down −1／他 0 の 3 段で、`down` も `example` も同じ段（床の下）に置かれる。段を分けるなら (a) Down の中で `down` を −1、`example` を −2 にする第 3 の領域を足す、(b) フィールドごとに段を設定できるようにする、のどちらか。3D-2 では 3 段のまま進め、決まったら別チケット。
+| 3D-2-5 Up／Down の垂直軸（§6-5、LEV-124） | `src/graph/Projection.ts`（`verticalSpread` を足し、`levelOf` の未解決の除外をやめる）、`src/Scene.ts`（`render3D()` の配置: level ≠ 0 を中心の行へ）、`tests/graph/projection.test.ts`、`tests/fixtures/`（2 つ目の Up と未解決の Up） |
 
 ### 6-5. Up／Down は垂直軸、床の帯は level 0 だけ（追記 2、LEV-124）
 
 - 3D の配置で level ≠ 0 のノードは 2D の帯の位置を使わず、`north = 0`・`x = 中心 + 東西の等間隔`（`Projection.verticalSpread`: 1 つなら 0、n 個なら中心を挟んで columnWidth 間隔）に置いてから投影する。したがって Up は中心の真上に立ち、Down は真下に吊られ、複数あれば東西に並ぶ。
 - level 0 のノードは §6-1 のまま（床の平行四辺形）。
 - `levelOf` は未解決ページにもフィールドの level を付ける。兄弟だけ 0 のまま。
+
+## 7. 開いている論点（本人に確認）
+
+- 模式図では「朝のルーティン手順（down）」が L2、「歯磨き後に腕立て／9月20日 朝ランの記録（example）」が L1 と段が分かれているが、今の高さは Up +1／Down −1／他 0 の 3 段で、`down` も `example` も同じ段（床の下）に置かれる。段を分けるなら (a) Down の中で `down` を −1、`example` を −2 にする第 3 の領域を足す、(b) フィールドごとに段を設定できるようにする、のどちらか。3D-2 では 3 段のまま進め、決まったら別チケット。

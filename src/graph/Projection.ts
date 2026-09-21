@@ -18,21 +18,20 @@ export type LevelHierarchy = {
 };
 
 /**
- * 関係のフィールドとは無関係に高さを 0 に固定する、対象ノードの属性（§3-1 の「兄弟は 0」「未解決は 0」）。
- * 兄弟の Neighbour は親の `getChildren()` 由来で「兄弟→親」のフィールドを持ち、未解決（ゴースト）は
- * `addUnresolvedPage` のあと定義済みのフィールドで結ばれるので、`typeDefinition` だけでは見分けられない。
+ * 関係のフィールドとは無関係に高さを 0 に固定する、対象ノードの属性（§3-1 の「兄弟は 0」）。
+ * 兄弟の Neighbour は親の `getChildren()` 由来で「兄弟→親」のフィールドを持つので、`typeDefinition` だけでは
+ * 見分けられない。未解決ページ（ゴースト）を 0 に落とす規則は LEV-124 でやめた（§6-5）: `up:: [[aaaa]]` のような
+ * 未解決の Up も、解決済みの Up と同じ段に立てる。
  */
 export type LevelSubject = {
   /** `Scene.addNodes` の `isSibling`。 */
   isSibling?: boolean;
-  /** `Page.isVirtual`（ファイルの無い未解決リンク）。 */
-  isVirtual?: boolean;
 };
 
 /**
  * 中心ノートとの関係から隣接ノードの高さを決める。
  *
- * - 兄弟・未解決ページ（`subject`）→ 0
+ * - 兄弟（`subject.isSibling`）→ 0
  * - 親（`Role.PARENT`）で、フィールドのどれかが Up／Down 領域に入る → +1
  * - 子（`Role.CHILD`）で、フィールドのどれかが Up／Down 領域に入る → -1
  * - それ以外（Parents／Children の親子、左右の友、推論リンク、file-tree・tag-tree）→ 0
@@ -48,7 +47,7 @@ export const levelOf = (
   hierarchy: LevelHierarchy,
   subject: LevelSubject = {},
 ): Level => {
-  if (subject.isSibling || subject.isVirtual) return 0;
+  if (subject.isSibling) return 0;
   if (role !== Role.PARENT && role !== Role.CHILD) return 0;
   if (!typeDefinition) return 0;
   const onAxis = typeDefinition
@@ -205,6 +204,19 @@ export type ProjectionParams = {
  * 中心は動かさない（原点は `retainCentralNode` の不動点）。
  */
 export const friendBandShift = (centerY: number, friendRowHeight: number): number => centerY + friendRowHeight / 2;
+
+/**
+ * Up／Down（level ≠ 0）を中心ノートの真上・真下に立てるための、東西のずらし量（§6-5、本人の追記 2）。
+ *
+ * 3D では level ≠ 0 のノードは 2D の帯（北・南）の位置を使わず、中心ノートと同じ north の行（`north = 0`、
+ * 床の十字の東西の線）に東西等間隔で並べてから投影する。これで Up は中心の真上、Down は真下に垂直に並び、
+ * 平行四辺形の床の帯に残るのは level 0（Parents／Children／Left／Right／Previous／Next）だけになる。
+ *
+ * 1 つなら `[0]`（中心の真上・真下）、n 個なら中心を挟んで `columnWidth` 間隔の中央揃え（`Layout.place()` が
+ * 列を中央に揃えるのと同じ規則）。Scene は同じ level のノードを 2D の x 順に並べてこの配列を当てる。
+ */
+export const verticalSpread = (count: number, columnWidth: number): number[] =>
+  Array.from({ length: Math.max(0, Math.trunc(count)) }, (_, i) => (i - (count - 1) / 2) * columnWidth);
 
 export type Projected = {
   x: number;

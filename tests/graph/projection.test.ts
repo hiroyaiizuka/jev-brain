@@ -15,6 +15,7 @@ import {
   FLOOR_LEVEL,
   floorDrop,
   project,
+  verticalSpread,
 } from 'src/graph/Projection';
 
 /**
@@ -86,14 +87,18 @@ describe('levelOf', () => {
     expect(levelOf('tag-tree', Role.CHILD, hierarchy)).toBe(0);
   });
 
-  it('keeps siblings and unresolved (virtual) pages on the ground regardless of the field', () => {
+  it('keeps siblings on the ground regardless of the field', () => {
     // 兄弟の Neighbour は親の getChildren() 由来: 兄弟が `up:: [[親]]` と書いていれば typeDefinition は 'up'。
     expect(levelOf('up', Role.CHILD, hierarchy, { isSibling: true })).toBe(0);
     expect(levelOf('up', Role.PARENT, hierarchy, { isSibling: true })).toBe(0);
-    // 未解決リンクは addUnresolvedPage のあと定義済みのフィールドで結ばれる。
-    expect(levelOf('up', Role.PARENT, hierarchy, { isVirtual: true })).toBe(0);
-    expect(levelOf('example', Role.CHILD, hierarchy, { isVirtual: true })).toBe(0);
-    expect(levelOf('up', Role.PARENT, hierarchy, { isSibling: false, isVirtual: false })).toBe(1);
+    expect(levelOf('up', Role.PARENT, hierarchy, { isSibling: false })).toBe(1);
+  });
+
+  it('gives an unresolved (virtual) page the level of its field, like any other node (§6-5, LEV-124)', () => {
+    // 未解決リンク（本人の画面の `up:: [[aaaa]]`）も Up の親。ページの種類は見ない: `levelOf` に渡すのは
+    // `isSibling` だけで、LEV-110 の「未解決は 0」は LEV-124 でやめた（床の帯ではなく中心の真上に立てる）。
+    expect(levelOf('up', Role.PARENT, hierarchy)).toBe(1);
+    expect(levelOf('example', Role.CHILD, hierarchy)).toBe(-1);
   });
 });
 
@@ -250,6 +255,64 @@ describe('friendBandShift', () => {
     // 3 行の友（−76, 0, +76 の行が −114, −38, +38 に置かれる）は帯ごと動いて真ん中の行が中心に乗る。
     const rows = [-114, -38, 38].map((y) => y + friendBandShift(-12, 76));
     expect(rows).toEqual([-88, -12, 64]);
+  });
+});
+
+describe('verticalSpread (§6-5: Up／Down は帯を離れて中心の真上・真下)', () => {
+  const columnWidth = 300;
+  // 本人の画面 docs/images/3d-feedback-two-ups-2026-09-21.png の中心（artifacts/3d1-e2e と同じ y −12、nodeHeight 76）。
+  const rootCenter: Point = { x: 0, y: -12 };
+  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * 76 };
+  const spreadCentres = (count: number): Point[] =>
+    verticalSpread(count, columnWidth).map((dx) => ({ x: rootCenter.x + dx, y: rootCenter.y }));
+
+  it('puts a single Up or Down straight above/below the centre (no east-west offset)', () => {
+    expect(verticalSpread(1, columnWidth)).toEqual([0]);
+  });
+
+  it('spreads several of one level evenly around the centre, columnWidth apart (the centring rule of Layout.place)', () => {
+    expect(verticalSpread(2, columnWidth)).toEqual([-150, 150]);
+    expect(verticalSpread(3, columnWidth)).toEqual([-300, 0, 300]);
+    expect(verticalSpread(4, columnWidth)).toEqual([-450, -150, 150, 450]);
+  });
+
+  it('places nothing for an empty level and always keeps the row centred on the centre note', () => {
+    expect(verticalSpread(0, columnWidth)).toEqual([]);
+    for (const count of [1, 2, 3, 7]) {
+      const offsets = verticalSpread(count, columnWidth);
+      expect(offsets.length, String(count)).toBe(count);
+      expect(offsets.reduce((sum, dx) => sum + dx, 0), String(count)).toBeCloseTo(0, 9);
+    }
+  });
+
+  it('lifts two Ups onto one horizontal line straight above the centre, with no north shear', () => {
+    // 追記 2 の不具合: 2 つ目の Up が 2D の北の帯（gy −291）のまま投影され、north のぶん右上（平行四辺形の上）に出ていた。
+    const centre = project(rootCenter, 0, params);
+    const ups = spreadCentres(2).map((c) => project(c, 1, params));
+    expect(ups[0].y).toBe(ups[1].y);
+    expect(centre.y - ups[0].y).toBeCloseTo(params.levelHeight, 9);
+    expect(ups.map((u) => u.x - centre.x)).toEqual([-150, 150]);
+    // north が中心と同じなので描画順（depth）も中心の行と同じで、東西のずれ込みは 0。
+    expect(ups.map((u) => u.depth)).toEqual([centre.depth, centre.depth]);
+  });
+
+  it('hangs a single Down straight below the centre, on the same screen x', () => {
+    const centre = project(rootCenter, 0, params);
+    const [down] = spreadCentres(1).map((c) => project(c, -1, params));
+    expect(down.x).toBe(centre.x);
+    expect(down.y - centre.y).toBeCloseTo(params.levelHeight, 9);
+    expect(down.depth).toBe(centre.depth);
+  });
+
+  it('drops the feet of Up and Down onto the east-west axis of the floor cross (the centre row)', () => {
+    // 柱の足元は `project(center, FLOOR_LEVEL, params)`。中心と同じ north なので床の十字の東西の線に乗る。
+    const axis = project(rootCenter, FLOOR_LEVEL, params);
+    for (const centre of [...spreadCentres(2), ...spreadCentres(3)]) {
+      const foot = project(centre, FLOOR_LEVEL, params);
+      expect(foot.y).toBe(axis.y);
+      // 東西のずれ込みは中心の行と同じ（帯の north が乗らない）ので、足元の間隔は 2D の columnWidth のまま。
+      expect(foot.x - centre.x).toBeCloseTo(axis.x - rootCenter.x, 9);
+    }
   });
 });
 
