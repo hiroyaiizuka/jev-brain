@@ -124,6 +124,7 @@ describe('project', () => {
     heightShearX: DEFAULT_VIEW_3D_SETTINGS.heightShearX,
     upHeight: DEFAULT_VIEW_3D_SETTINGS.upHeightFactor * nodeHeight,
     downHeight: DEFAULT_VIEW_3D_SETTINGS.downHeightFactor * nodeHeight,
+    rowLift: DEFAULT_VIEW_3D_SETTINGS.rowLiftFactor * nodeHeight,
   };
   const upHeight = params.upHeight;
   const downHeight = params.downHeight;
@@ -138,6 +139,8 @@ describe('project', () => {
       upHeightFactor: 3.1,
       downHeightFactor: 3.67,
       verticalGapFactor: 3.8,
+      verticalColumns: 5,
+      rowLiftFactor: 1.2,
       bandDistanceFactor: 3.9,
       floorNorthFactor: 7.1,
       floorSouthFactor: 5.75,
@@ -238,7 +241,7 @@ describe('project', () => {
   });
 
   it('is the identity at zero shear, zero rise and level 0, and scales linearly with the coefficients', () => {
-    const flat: ProjectionParams = { northShearX: 0, northRise: 0, heightShearX: 0, upHeight: 100, downHeight: 100 };
+    const flat: ProjectionParams = { northShearX: 0, northRise: 0, heightShearX: 0, upHeight: 100, downHeight: 100, rowLift: 60 };
     expect(project({ x: -120, y: -200 }, 0, flat)).toEqual({ x: -120, y: 0, depth: 200 });
     expect(project({ x: -120, y: -200 }, 1, flat)).toEqual({ x: -120, y: -100, depth: 200 });
     const doubled: ProjectionParams = { ...params, northShearX: 0.8, northRise: 0.6 };
@@ -289,6 +292,7 @@ describe('compareDrawOrder と高さの傾き（LEV-137）', () => {
     heightShearX: DEFAULT_VIEW_3D_SETTINGS.heightShearX,
     upHeight: DEFAULT_VIEW_3D_SETTINGS.upHeightFactor * nodeHeight,
     downHeight: DEFAULT_VIEW_3D_SETTINGS.downHeightFactor * nodeHeight,
+    rowLift: DEFAULT_VIEW_3D_SETTINGS.rowLiftFactor * nodeHeight,
   };
   const centre: Point = { x: 0, y: -12 };
 
@@ -315,7 +319,7 @@ describe('compareDrawOrder と高さの傾き（LEV-137）', () => {
 });
 
 describe('friendBandShift', () => {
-  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 3.1 * 76, downHeight: 3.6 * 76 };
+  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 3.1 * 76, downHeight: 3.6 * 76, rowLift: 92 };
 
   it('moves the friends of artifacts/3d1-e2e (y −38, rowHeight 76) onto the centre row (y −12, rowHeight 24), so all three project to one line', () => {
     const centerY = -12;
@@ -344,32 +348,34 @@ describe('verticalSpread (§6-5: Up／Down は帯を離れて中心の真上・�
   const gap = 300;
   // 本人の画面 docs/images/3d-feedback-two-ups-2026-09-21.png の中心（artifacts/3d1-e2e と同じ y −12、nodeHeight 76）。
   const rootCenter: Point = { x: 0, y: -12 };
-  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 3.1 * 76, downHeight: 3.6 * 76 };
+  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 3.1 * 76, downHeight: 3.6 * 76, rowLift: 92 };
+  /** 折り返さない並び（1 行）の東西のずらし量。 */
+  const offsetsOf = (count: number): number[] => verticalSpread(count, gap).map((slot) => slot.dx);
   const spreadCentres = (count: number): Point[] =>
-    verticalSpread(count, gap).map((dx) => ({ x: rootCenter.x + dx, y: rootCenter.y }));
+    offsetsOf(count).map((dx) => ({ x: rootCenter.x + dx, y: rootCenter.y }));
 
   it('puts a single Up or Down straight above/below the centre (no east-west offset)', () => {
-    expect(verticalSpread(1, gap)).toEqual([0]);
+    expect(offsetsOf(1)).toEqual([0]);
   });
 
   it('spreads several of one level evenly around the centre, one gap apart (the centring rule of Layout.place)', () => {
-    expect(verticalSpread(2, gap)).toEqual([-150, 150]);
-    expect(verticalSpread(3, gap)).toEqual([-300, 0, 300]);
-    expect(verticalSpread(4, gap)).toEqual([-450, -150, 150, 450]);
+    expect(offsetsOf(2)).toEqual([-150, 150]);
+    expect(offsetsOf(3)).toEqual([-300, 0, 300]);
+    expect(offsetsOf(4)).toEqual([-450, -150, 150, 450]);
   });
 
   it('places nothing for an empty level and always keeps the row centred on the centre note', () => {
-    expect(verticalSpread(0, gap)).toEqual([]);
+    expect(offsetsOf(0)).toEqual([]);
     for (const count of [1, 2, 3, 7]) {
-      const offsets = verticalSpread(count, gap);
+      const offsets = offsetsOf(count);
       expect(offsets.length, String(count)).toBe(count);
       expect(offsets.reduce((sum, dx) => sum + dx, 0), String(count)).toBeCloseTo(0, 9);
     }
   });
 
   it('truncates a non-integer count instead of centring on it (length and centre agree)', () => {
-    expect(verticalSpread(2.5, gap)).toEqual(verticalSpread(2, gap));
-    expect(verticalSpread(-3, gap)).toEqual([]);
+    expect(offsetsOf(2.5)).toEqual(offsetsOf(2));
+    expect(offsetsOf(-3)).toEqual([]);
   });
 
   it('lifts two Ups onto one horizontal line straight above the centre, with no north shear', () => {
@@ -411,17 +417,20 @@ describe('verticalRow (§6-5: 帯から中心の行へ移すのはどのノー�
   const up = (x: number, y: number): VerticalEntry => ({ level: 1, center: { x, y } });
   const down = (x: number, y: number): VerticalEntry => ({ level: -1, center: { x, y } });
   const ground = (x: number, y: number): VerticalEntry => ({ level: 0, center: { x, y } });
+  /** 折り返さない並びの中心だけを取り出す（行のテストは別に置く）。 */
+  const centresOf = (entries: VerticalEntry[], columns?: number): Point[] =>
+    verticalRow(entries, rootCenter, gap, columns).map((p) => p.center);
 
   it('leaves level 0 where the 2D band put it (the floor parallelogram keeps exactly these)', () => {
     const entries = [ground(118, -291), ground(-454, -38), ground(425, -38), ground(0, -12)];
-    expect(verticalRow(entries, rootCenter, gap)).toEqual(entries.map((e) => e.center));
+    expect(centresOf(entries)).toEqual(entries.map((e) => e.center));
   });
 
   it('moves the Ups of the real fixture onto the centre row, centred on the centre note', () => {
     // 実機の 2D（artifacts/3d2-vertical-e2e）: 北の帯は 2 列 2 行で、1 行目（y −368）が 抽象化のはしご・習慣ループ、
     // 2 行目（y −291）が 行動デザイン・読書メモ：習慣の本。up の 3 つだけが中心の行へ移り、読書メモは帯に残る。
     const entries = [up(-118, -368), up(118, -368), up(-118, -291), ground(118, -291)];
-    expect(verticalRow(entries, rootCenter, gap)).toEqual([
+    expect(centresOf(entries)).toEqual([
       { x: rootCenter.x - gap, y: rootCenter.y }, // 抽象化のはしご（1 行目の西）
       { x: rootCenter.x, y: rootCenter.y }, // 習慣ループ（1 行目の東）が中心の真上
       { x: rootCenter.x + gap, y: rootCenter.y }, // 行動デザイン（2 行目）
@@ -432,14 +441,14 @@ describe('verticalRow (§6-5: 帯から中心の行へ移すのはどのノー�
   it('reads the band north to south, then west to east, so a two-row band keeps a stable east-west order', () => {
     // 5 つの Up が 3 列 2 行（行 0: A B C、行 1: D _ E）に置かれた場合。行優先で A B C D E と並ぶ。
     const rows = [up(-236, -368), up(0, -368), up(236, -368), up(-236, -291), up(236, -291)];
-    const xs = verticalRow(rows, rootCenter, gap).map((c) => c.x);
+    const xs = centresOf(rows).map((c) => c.x);
     expect(xs).toEqual([-2 * gap, -gap, 0, gap, 2 * gap]);
-    expect(verticalRow(rows, rootCenter, gap).every((c) => c.y === rootCenter.y)).toBe(true);
+    expect(centresOf(rows).every((c) => c.y === rootCenter.y)).toBe(true);
   });
 
   it('spreads Up and Down independently, both with the same gap', () => {
     const entries = [up(-118, -291), up(118, -291), down(-280, 214), down(0, 214), down(280, 214)];
-    expect(verticalRow(entries, rootCenter, gap)).toEqual([
+    expect(centresOf(entries)).toEqual([
       { x: -gap / 2, y: rootCenter.y },
       { x: gap / 2, y: rootCenter.y },
       { x: -gap, y: rootCenter.y },
@@ -450,14 +459,87 @@ describe('verticalRow (§6-5: 帯から中心の行へ移すのはどのノー�
 
   it('puts the middle of an odd group exactly on the centre note (one foot, one shadow — Scene dedupes)', () => {
     const entries = [up(-118, -291), up(0, -291), up(118, -291)];
-    expect(verticalRow(entries, rootCenter, gap)[1]).toEqual({ ...rootCenter });
+    expect(centresOf(entries)[1]).toEqual({ ...rootCenter });
   });
 
   it('never touches the input centres (Scene keeps the 2D centres for the floor plan)', () => {
     const entries = [up(-118, -291), ground(118, -291)];
     const before = JSON.stringify(entries);
-    verticalRow(entries, rootCenter, gap);
+    centresOf(entries);
     expect(JSON.stringify(entries)).toBe(before);
+  });
+});
+
+describe('折り返し (§6-7、LEV-127: 上限 5 列であふれたら上・下へ積む)', () => {
+  const gap = 300;
+  const rootCenter: Point = { x: 0, y: -12 };
+  const nodeHeight = 77;
+  const params: ProjectionParams = {
+    northShearX: DEFAULT_VIEW_3D_SETTINGS.northShearX,
+    northRise: DEFAULT_VIEW_3D_SETTINGS.northRise,
+    heightShearX: DEFAULT_VIEW_3D_SETTINGS.heightShearX,
+    upHeight: DEFAULT_VIEW_3D_SETTINGS.upHeightFactor * nodeHeight,
+    downHeight: DEFAULT_VIEW_3D_SETTINGS.downHeightFactor * nodeHeight,
+    rowLift: DEFAULT_VIEW_3D_SETTINGS.rowLiftFactor * nodeHeight,
+  };
+  const ups = (n: number): VerticalEntry[] =>
+    Array.from({ length: n }, (_, i) => ({ level: 1, center: { x: i * 100 - 200, y: -291 } }));
+
+  it('ships the author\'s 5 columns and a row height well under the level height', () => {
+    expect(DEFAULT_VIEW_3D_SETTINGS.verticalColumns).toBe(5);
+    expect(DEFAULT_VIEW_3D_SETTINGS.rowLiftFactor).toBe(1.2);
+    // 行（92px）は段（239px）の半分以下。折り返した行が「もう 1 段上」に見えないための余裕。
+    expect(params.rowLift).toBeLessThan(params.upHeight / 2);
+  });
+
+  it('keeps one row up to the column count, then starts the next row', () => {
+    expect(verticalSpread(5, gap, 5).map((s) => s.row)).toEqual([0, 0, 0, 0, 0]);
+    expect(verticalSpread(7, gap, 5).map((s) => s.row)).toEqual([0, 0, 0, 0, 0, 1, 1]);
+    expect(verticalSpread(12, gap, 5).map((s) => s.row)).toEqual([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2]);
+  });
+
+  it('centres each row on the centre note, so a short last row is not left-aligned', () => {
+    const slots = verticalSpread(7, gap, 5);
+    expect(slots.slice(0, 5).map((s) => s.dx)).toEqual([-600, -300, 0, 300, 600]);
+    expect(slots.slice(5).map((s) => s.dx)).toEqual([-150, 150]); // あふれた 2 つは中央揃え
+  });
+
+  it('never widens past the column count, however many there are', () => {
+    for (const count of [6, 9, 12, 20]) {
+      const widest = Math.max(...verticalSpread(count, gap, 5).map((s) => Math.abs(s.dx)));
+      expect(widest, String(count)).toBe(600); // 5 列ぶんの半分
+    }
+  });
+
+  it('stacks the extra rows up for Up and down for Down, by rowLift each', () => {
+    const upRow0 = project(rootCenter, 1, params, 0);
+    const upRow1 = project(rootCenter, 1, params, 1);
+    const downRow0 = project(rootCenter, -1, params, 0);
+    const downRow1 = project(rootCenter, -1, params, 1);
+    expect(upRow0.y - upRow1.y).toBeCloseTo(params.rowLift, 9);
+    expect(downRow1.y - downRow0.y).toBeCloseTo(params.rowLift, 9);
+    // 高さの傾き（LEV-137）は行にも効く: 上の行は東、下の行は西へさらに倒れる。
+    expect(upRow1.x - upRow0.x).toBeCloseTo(params.rowLift * params.heightShearX, 9);
+    expect(downRow1.x - downRow0.x).toBeCloseTo(-params.rowLift * params.heightShearX, 9);
+  });
+
+  it('gives verticalRow the row of each node and keeps every foot on the centre row', () => {
+    const placements = verticalRow(ups(7), rootCenter, gap, 5);
+    expect(placements.map((p) => p.row)).toEqual([0, 0, 0, 0, 0, 1, 1]);
+    expect(placements.every((p) => p.center.y === rootCenter.y)).toBe(true);
+    // 足元は全部中心の行なので、折り返しても床は横に伸びない。
+    const feet = placements.map((p) => p.center.x);
+    expect(Math.max(...feet) - Math.min(...feet)).toBe(4 * gap);
+  });
+
+  it('leaves level 0 on row 0 (the bands never wrap this way)', () => {
+    const mixed: VerticalEntry[] = [
+      { level: 0, center: { x: 118, y: -291 } },
+      ...ups(6),
+    ];
+    const placements = verticalRow(mixed, rootCenter, gap, 5);
+    expect(placements[0]).toEqual({ center: { x: 118, y: -291 }, row: 0 });
+    expect(placements.slice(1).map((p) => p.row)).toEqual([0, 0, 0, 0, 0, 1]);
   });
 });
 
@@ -474,7 +556,7 @@ describe('floorOf (最下段。level 別の色の基準で、描く床は FLOOR_
 });
 
 describe('compareDrawOrder', () => {
-  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 132, downHeight: 132 };
+  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 132, downHeight: 132, rowLift: 60 };
 
   it('sorts far (depth large) to near, so the north band is drawn first and the south band last, whatever the levels', () => {
     const points = [centralNote, ...neighbours.map((n) => n.center)];
@@ -549,7 +631,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
     expect(plan.compass.north.x).toBe(origin.x);
     expect(plan.compass.south.x).toBe(origin.x);
     // 床（中心の段）に投影した東西軸は画面で水平。友の足元はその上、親は上（北）、子は下（南）。
-    const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 2.2 * nodeHeight, downHeight: 2.2 * nodeHeight };
+    const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 2.2 * nodeHeight, downHeight: 2.2 * nodeHeight, rowLift: nodeHeight };
     const axis = (x: number) => project({ x, y: plan.origin.y }, FLOOR_LEVEL, params);
     expect(axis(plan.bounds.minX).y).toBe(axis(plan.bounds.maxX).y);
     const screenY = (foot: Point) => project(foot, FLOOR_LEVEL, params).y;
@@ -589,7 +671,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
     const northRise = 0.3;
     // Scene が渡す形: 画面で W／E 38px、N 18px、S 24px。南北は northRise で割って地面の距離にする。
     const plan = floorPlan(feet, origin, { spacing: nodeHeight, compassGap: { x: 38, north: 18 / northRise, south: 24 / northRise } });
-    const params: ProjectionParams = { northShearX: 0.4, northRise, heightShearX: 0, upHeight: 2.2 * nodeHeight, downHeight: 2.2 * nodeHeight };
+    const params: ProjectionParams = { northShearX: 0.4, northRise, heightShearX: 0, upHeight: 2.2 * nodeHeight, downHeight: 2.2 * nodeHeight, rowLift: nodeHeight };
     const screenGap = (edge: Point, label: Point) =>
       Math.abs(project(edge, FLOOR_LEVEL, params).y - project(label, FLOOR_LEVEL, params).y);
     expect(screenGap({ x: 0, y: plan.bounds.minY }, plan.compass.north)).toBeCloseTo(18, 9);
@@ -640,7 +722,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
 describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () => {
   const origin: Point = { x: 0, y: -12 };
   const shear = 0.4;
-  const params: ProjectionParams = { northShearX: shear, northRise: 0.3, heightShearX: 0, upHeight: 238, downHeight: 277 };
+  const params: ProjectionParams = { northShearX: shear, northRise: 0.3, heightShearX: 0, upHeight: 238, downHeight: 277, rowLift: 92 };
   // 実機と同じ形: 足元は中心の行に並び、床は奥 546・手前 443 まで広がる。
   const feet = [{ x: -293, y: -12, width: 150 }, { x: 0, y: -12, width: 330 }, { x: 293, y: -12, width: 150 }];
   const reach = { north: 546, south: 443 };
@@ -764,7 +846,7 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
 });
 
 describe('groundGapNorthSouth (画面の距離を 2D の地面距離に戻す、LEV-130)', () => {
-  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 100, downHeight: 100 };
+  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 100, downHeight: 100, rowLift: 60 };
 
   it('undoes the northRise foreshortening, so a screen gap lands as that many pixels after projection', () => {
     const ground = groundGapNorthSouth(18, params);
@@ -881,7 +963,7 @@ describe('bandShift (床に残る Parents／Children の帯を中心から離す
   it('is measured on the 2D ground, so the screen distance is northRise times smaller', () => {
     // 本人の「parents 300」は壁打ちのページと同じ 2D の距離。画面では 300 × northRise（0.3）＝ 90px 上にくる。
     const shifted = -291 + bandShift(centerY, -291, distance, -1);
-    expect(project({ x: 0, y: shifted }, 0, { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 1, downHeight: 1 }).y)
-      .toBeCloseTo(project({ x: 0, y: centerY }, 0, { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 1, downHeight: 1 }).y - distance * 0.3, 9);
+    expect(project({ x: 0, y: shifted }, 0, { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 1, downHeight: 1, rowLift: 1 }).y)
+      .toBeCloseTo(project({ x: 0, y: centerY }, 0, { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 1, downHeight: 1, rowLift: 1 }).y - distance * 0.3, 9);
   });
 });

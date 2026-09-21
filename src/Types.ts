@@ -146,6 +146,10 @@ export type View3DSettings = {
   downHeightFactor: number;
   /** East-west gap between several Ups (or Downs) on the vertical axis = nodeHeight × this. */
   verticalGapFactor: number;
+  /** How many Ups (or Downs) stand side by side before the next row starts (LEV-127; the author's 5). */
+  verticalColumns: number;
+  /** Height of one wrapped row = nodeHeight × this. Kept well under the level height so the two read apart. */
+  rowLiftFactor: number;
   /** Distance from the centre to the nearest row of the level-0 Parents/Children bands = nodeHeight × this. */
   bandDistanceFactor: number;
   /** Smallest floor reach north of the centre = nodeHeight × this (the feet widen it further). */

@@ -478,6 +478,23 @@ export class Scene {
     });
   }
 
+  /**
+   * 上限の取り方（LEV-127）。2D は今までどおり先頭から `max` 件。3D では垂直軸に立つ Up／Down を先に取り、
+   * 残りの枠を床の帯のノートに配る: そのまま切ると `Page` の並び順で切れて Up／Down が帯のノートに押し出される
+   * （本人の「ダウンを追加してるのに 4 個しか出ない」。子 15 件のうち先頭 12 件が残り、`down` は 4 件だけだった）。
+   * 段の中では順序を保つので、垂直軸の並び（2D の読み順）も帯の並びも変わらない。
+   */
+  private limited(neighbours: Neighbour[], role: Role, max: number): Neighbour[] {
+    if(!this.view3D || neighbours.length <= max) return neighbours.slice(0, max);
+    const onAxis: Neighbour[] = [];
+    const onFloor: Neighbour[] = [];
+    for (const n of neighbours) {
+      const level = levelOf(n.typeDefinition, role, this.plugin.hierarchyLowerCase);
+      (level === FLOOR_LEVEL ? onFloor : onAxis).push(n);
+    }
+    return [...onAxis, ...onFloor].slice(0, max);
+  }
+
   private getNeighbors(centralPage: Page): {
     parents: Neighbour[],
     children: Neighbour[],
@@ -488,23 +505,23 @@ export class Scene {
     const settings = this.plugin.settings;
     // 3D は帯の中を潰さないぶん画面が高くなるので、領域ごとの上限を下げる（docs/3d-design.md §4-1）
     const maxItemCount = this.view3D ? settings.maxItemCount3D : settings.maxItemCount;
-    
+
     //List nodes for the graph
-    const parents = centralPage.getParents()
-      .filter(x => 
+    const parents = this.limited(centralPage.getParents()
+      .filter(x =>
         (x.page.path !== centralPage.path) &&
         !settings.excludeFilepaths.some(p => x.page.path.startsWith(p)) &&
         //tha node either has no primary tag or the tag is not filtered out
-        (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag)))
-      .slice(0,maxItemCount);
+        (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag))),
+      Role.PARENT, maxItemCount);
     const parentPaths = parents.map(x=>x.page.path);
 
-    const children =centralPage.getChildren()
-      .filter(x => 
+    const children = this.limited(centralPage.getChildren()
+      .filter(x =>
         (x.page.path !== centralPage.path) &&
         !settings.excludeFilepaths.some(p => x.page.path.startsWith(p)) &&
-        (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag)))
-      .slice(0,maxItemCount);
+        (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag))),
+      Role.CHILD, maxItemCount);
     
     const leftFriends = centralPage.getLeftFriends().concat(centralPage.getPreviousFriends())
       .filter(x => 
@@ -1094,6 +1111,7 @@ export class Scene {
       heightShearX: view3D.heightShearX,
       upHeight: view3D.upHeightFactor * this.nodeHeight,
       downHeight: view3D.downHeightFactor * this.nodeHeight,
+      rowLift: view3D.rowLiftFactor * this.nodeHeight,
     };
 
     // 配置: 2D と同じ中心
@@ -1134,10 +1152,15 @@ export class Scene {
       bands.parents.spec.columnWidth,
       bands.children.spec.columnWidth,
     );
-    const centres = verticalRow(laid, rootCenter, verticalGap);
+    // `verticalColumns`（既定 5、本人の指定）で折り返し、あふれた行は `rowLift` ずつ Up は上・Down は下へ積む（LEV-127）
+    const placements = verticalRow(laid, rootCenter, verticalGap, view3D.verticalColumns);
 
     // 投影（§6-1）
-    const placed: PlacedNode[] = laid.map(({node}, i) => ({ node, center: centres[i], projected: project(centres[i], node.level, params) }));
+    const placed: PlacedNode[] = laid.map(({node}, i) => ({
+      node,
+      center: placements[i].center,
+      projected: project(placements[i].center, node.level, params, placements[i].row),
+    }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
     // 奥（north 大）から手前へ逐次描く（§6-1）。`floor` は level 別の色の基準（最下段、§6-3）で、床の平面（`FLOOR_LEVEL`）とは別

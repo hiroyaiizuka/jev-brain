@@ -245,11 +245,22 @@ export type ProjectionParams = {
   upHeight: number;
   /** Down（level < 0）1 段ぶんの深さ（px）。 */
   downHeight: number;
+  /**
+   * 同じ段の中で折り返した 1 行ぶんの高さ（px、LEV-127）。段の高さ（`upHeight`／`downHeight`）より
+   * はっきり小さくして、「段（抽象度）」と「行（あふれ）」を見分けられるようにする。
+   */
+  rowLift: number;
 };
 
-/** 段の高さ（px、上が正）。level 0 は 0、Up は `upHeight`、Down は `downHeight` を使う（LEV-128）。 */
-export const liftOf = (level: Level, params: ProjectionParams): number =>
-  level > 0 ? level * params.upHeight : level * params.downHeight;
+/**
+ * 段の高さ（px、上が正）。level 0 は 0、Up は `upHeight`、Down は `downHeight`（LEV-128）。
+ * `row` は同じ段の中であふれて折り返した行（0 が中心に近い、LEV-127）。段の高さより小さい `rowLift` ずつ、
+ * Up はさらに上へ、Down はさらに下へ積む。
+ */
+export const liftOf = (level: Level, params: ProjectionParams, row = 0): number =>
+  level > 0 ? level * params.upHeight + row * params.rowLift
+    : level < 0 ? level * params.downHeight - row * params.rowLift
+      : 0;
 
 /**
  * 友の帯を中心ノートの y に揃えるための、2D の y に足す量（§6-1「フレンドと中心は同じ north」）。
@@ -267,18 +278,33 @@ export const friendBandShift = (centerY: number, friendRowHeight: number): numbe
  * Up／Down（level ≠ 0）を中心ノートの真上・真下に立てるための、東西のずらし量（§6-5、本人の追記 2）。
  * ここで決めるのは 2D の地面座標。画面では高さの傾き（`heightShearX`、LEV-137）のぶん Up は東、Down は西へ倒れる。
  *
- * 1 つなら `[0]`（2D では中心の真上・真下）、n 個なら中心を挟んで `gap` 間隔の中央揃え（`Layout.place()` が列を中央に
+ * 1 つなら中央（2D では中心の真上・真下）、n 個なら中心を挟んで `gap` 間隔の中央揃え（`Layout.place()` が列を中央に
  * 揃えるのと同じ規則）。`gap` は設定 `verticalGapFactor × nodeHeight`（LEV-128 で帯の `columnWidth` から変えた:
- * 垂直軸は帯を離れているので、帯の列幅ではなく 3D 専用の間隔で並べる）。段の中で折り返さないので、
- * `maxItemCount3D` いっぱいの Up は 1 行に伸びる（§7 の論点）。整数でない `count` は切り捨ててから中央揃えする。
+ * 垂直軸は帯を離れているので、帯の列幅ではなく 3D 専用の間隔で並べる）。
+ *
+ * `columns` を渡すとその数で折り返し、あふれた行は `row` 1, 2… になる（LEV-127、本人の指定で既定 5 列）。
+ * 行は `liftOf` が `rowLift` ずつ Up は上へ、Down は下へ積む。省略すると 1 行に伸びる（折り返さない）。
+ * 整数でない `count` は切り捨ててから中央揃えする。
  */
-export const verticalSpread = (count: number, gap: number): number[] => {
+export const verticalSpread = (count: number, gap: number, columns?: number): VerticalSlot[] => {
   const items = Math.max(0, Math.trunc(count));
-  return Array.from({ length: items }, (_, i) => (i - (items - 1) / 2) * gap);
+  const perRow = columns === undefined ? Math.max(items, 1) : Math.max(1, Math.trunc(columns));
+  const slots: VerticalSlot[] = [];
+  for (let start = 0, row = 0; start < items; start += perRow, row++) {
+    const n = Math.min(perRow, items - start);
+    for (let i = 0; i < n; i++) slots.push({ dx: (i - (n - 1) / 2) * gap, row });
+  }
+  return slots;
 };
 
 /** `verticalRow` の入力: `Layout.place()` が決めた 2D の中心（帯のシフト済み）と、そのノードの段。 */
 export type VerticalEntry = { level: Level; center: Point };
+
+/** `verticalSpread` の 1 つ分: 中心からの東西のずらし量と、折り返した行（0 が中心にいちばん近い）。 */
+export type VerticalSlot = { dx: number; row: number };
+
+/** `verticalRow` の結果: 置き直した 2D の中心と、その行（`project` の第 4 引数に渡す）。 */
+export type VerticalPlacement = { center: Point; row: number };
 
 /**
  * Up／Down を帯から外して中心ノートの真上・真下へ移した、各ノードの新しい 2D の中心（§6-5、本人の追記 2）。
@@ -290,21 +316,29 @@ export type VerticalEntry = { level: Level; center: Point };
  *   画面上の位置は `project` が決め、高さの傾き（LEV-137）のぶん Up は東、Down は西へずれる。
  *
  * 同じ level の並び順は 2D の読み順（行＝北から南、同じ行は西から東）。東西の間隔 `gap` は段によらず同じ。
+ * `columns` を渡すとその数で折り返し、あふれた行の `row` が 1, 2… になる（LEV-127）。足元（`center`）は
+ * どの行も中心の行のままで、行は高さ（`liftOf` の `rowLift`）だけで表す。床の広さは足元で決まるので、
+ * 折り返しても床は横に伸びない。
  */
-export const verticalRow = (entries: readonly VerticalEntry[], rootCenter: Point, gap: number): Point[] => {
-  const centres = entries.map((entry) => ({ ...entry.center }));
+export const verticalRow = (
+  entries: readonly VerticalEntry[],
+  rootCenter: Point,
+  gap: number,
+  columns?: number,
+): VerticalPlacement[] => {
+  const placements: VerticalPlacement[] = entries.map((entry) => ({ center: { ...entry.center }, row: 0 }));
   const levels = new Set(entries.map((entry) => entry.level).filter((level) => level !== 0));
   for (const level of levels) {
     const group = entries
       .map((entry, index) => ({ entry, index }))
       .filter(({ entry }) => entry.level === level)
       .sort((a, b) => a.entry.center.y - b.entry.center.y || a.entry.center.x - b.entry.center.x);
-    const offsets = verticalSpread(group.length, gap);
+    const slots = verticalSpread(group.length, gap, columns);
     group.forEach(({ index }, i) => {
-      centres[index] = { x: rootCenter.x + offsets[i], y: rootCenter.y };
+      placements[index] = { center: { x: rootCenter.x + slots[i].dx, y: rootCenter.y }, row: slots[i].row };
     });
   }
-  return centres;
+  return placements;
 };
 
 /**
@@ -336,7 +370,7 @@ export type Projected = {
  *
  * ```text
  * north = −gy
- * lift  = liftOf(level)                     高さ（px、上が正）
+ * lift  = liftOf(level, params, row)        高さ（px、上が正。row は折り返した行、LEV-127）
  * x     = gx + north · northShearX + lift · heightShearX
  * y     = −north · northRise − lift
  * depth = north
@@ -350,9 +384,9 @@ export type Projected = {
  *
  * 入力の検査はしない（params は設定の値から作る）。`0 - gy` は `-gy` が 0 を −0 にするのを避けるため。
  */
-export const project = (center: Point, level: Level, params: ProjectionParams): Projected => {
+export const project = (center: Point, level: Level, params: ProjectionParams, row = 0): Projected => {
   const north = 0 - center.y;
-  const lift = liftOf(level, params);
+  const lift = liftOf(level, params, row);
   return {
     x: center.x + north * params.northShearX + lift * params.heightShearX,
     y: 0 - north * params.northRise - lift,
