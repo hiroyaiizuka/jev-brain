@@ -1090,6 +1090,7 @@ export class Scene {
     const params: ProjectionParams = {
       northShearX: view3D.northShearX,
       northRise: view3D.northRise,
+      heightShearX: view3D.heightShearX,
       upHeight: view3D.upHeightFactor * this.nodeHeight,
       downHeight: view3D.downHeightFactor * this.nodeHeight,
     };

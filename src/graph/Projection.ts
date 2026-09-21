@@ -231,6 +231,13 @@ export type ProjectionParams = {
   northShearX: number;
   /** north 1 につき画面 y を上へ動かす量（既定 0.30）。 */
   northRise: number;
+  /**
+   * 高さ 1px につき画面 x を右へ動かす量（既定 0.64。本人が実機と壁打ちのページで決めた。LEV-137）。
+   * 床を右斜め上から見た形にしているので、その上に立つものも同じ向きに倒れて見えるのが筋。0 にすると
+   * 高さだけ正面から見た位置に残り、上の段が西の縁に寄って見える（本人のフィードバック 6）。
+   * 床の南北の線と完全に平行にするなら `northShearX / northRise`（既定で 1.33）だが、本人が選んだのはその手前。
+   */
+  heightShearX: number;
   /** Up（level > 0）1 段ぶんの高さ（px）。 */
   upHeight: number;
   /** Down（level < 0）1 段ぶんの深さ（px）。 */
@@ -324,12 +331,14 @@ export type Projected = {
  *
  * ```text
  * north = −gy
- * x     = gx + north · northShearX
- * y     = −north · northRise − liftOf(level)
+ * lift  = liftOf(level)                     高さ（px、上が正）
+ * x     = gx + north · northShearX + lift · heightShearX
+ * y     = −north · northRise − lift
  * depth = north
  * ```
  *
- * 東西は水平のまま（2D の横並びが崩れない）、抽象度は真上、南北は右上がりの斜め（北が右上・奥、南が左下・手前）。
+ * 東西は水平のまま（2D の横並びが崩れない）、南北は右上がりの斜め（北が右上・奥、南が左下・手前）、
+ * 高さは `heightShearX` のぶん東へ倒れる（LEV-137。0 なら真上）。
  * 中心ノート（gx = gy = 0、level 0）は原点に留まる: `retainCentralNode` で保持した埋め込みの中心の要素は
  * 前回の描画位置のままなので、2D（Layout が原点に置く）と 3D で中心が同じ場所にある必要がある。床は
  * `project(center, FLOOR_LEVEL, params)` の少し下（中心の箱の下端）を通る（§6-2）。
@@ -338,9 +347,10 @@ export type Projected = {
  */
 export const project = (center: Point, level: Level, params: ProjectionParams): Projected => {
   const north = 0 - center.y;
+  const lift = liftOf(level, params);
   return {
-    x: center.x + north * params.northShearX,
-    y: 0 - north * params.northRise - liftOf(level, params),
+    x: center.x + north * params.northShearX + lift * params.heightShearX,
+    y: 0 - north * params.northRise - lift,
     depth: north,
   };
 };

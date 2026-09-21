@@ -130,14 +130,14 @@ src/Settings.ts           yaw / levelHeight / depthScale / widthScale / maxItemC
 ```text
 // gx, gy: Layout が決めた 2D の中心（中心ノート原点、gy は北が負）
 north  = -gy
-levelHeight = levelHeightFactor · nodeHeight     既定 2.2
-x = gx + north · northShearX                    既定 0.40
-y = -(north · northRise) - level · levelHeight  既定 0.30。中心ノートの箱が原点。床は常に中心の段（level 0）の少し下（§6-2）
-depth = north                                   描画順は north の大きい順（奥 → 手前）
+高さ   = liftOf(level)                            Up は upHeightFactor、Down は downHeightFactor × nodeHeight（§6-6）
+x = gx + north · northShearX + 高さ · heightShearX  既定 0.40 と 0.64（高さの傾きは LEV-137）
+y = -(north · northRise) - 高さ                    既定 0.30。中心ノートの箱が原点。床は常に中心の段（level 0）の少し下（§6-2）
+depth = north                                    描画順は north の大きい順（奥 → 手前）
 ```
 
-- 東西は水平のまま（2D の横並びが崩れない）。抽象度は真上。南北は右上がりの斜め（北が右上・奥、南が左下・手前）。
-- `northShearX` / `northRise` / `levelHeightFactor` は設定（型・既定値・設定画面の「3D view」節）。視点の切り替え（ヨー角）は作らない。
+- 東西は水平のまま（2D の横並びが崩れない）。南北は右上がりの斜め（北が右上・奥、南が左下・手前）。抽象度は真上ではなく `heightShearX` のぶん東へ倒れる（LEV-137、追記 6）: 床を右斜め上から見た形にしている以上、その上に立つものも同じ向きに倒れないと座標系が混ざり、上の段だけ正面から見た位置に残ってしまう。床の南北の線と完全に平行にするなら `northShearX / northRise`（1.33）だが、本人が画面を見て選んだのは 0.64。床（level 0）は高さ 0 なので影響を受けない。
+- `northShearX` / `northRise` / `heightShearX` と段の高さ（§6-6）は設定（型・既定値・設定画面の「3D view」節）。視点の切り替え（ヨー角）は作らない。
 - フレンドと中心は同じ `north`・同じ level なので画面上で水平一直線に並ぶ。親の影は右上、子の影は左下に落ちる。
 - 友の帯は投影の前に `friendBandShift`（LEV-119）で中心ノートの y に揃える。上流の `Layout.place()` は行の中心を `top + row·rowHeight` に置くので、どの帯も行の平均が origoY より rowHeight/2 北にあり、中心の帯（行高 = 中心の箱の高さ）と友の帯（行高 = nodeHeight）でその量が違う（実測: 中心 y −12、友 −38）。2D はそのまま、3D では友の帯だけ `centerY + rowHeight/2` 動かす。親・子・兄弟の帯は 2D の距離のまま。
 - 原点は中心ノートの箱に置く（LEV-119）。`reRender()` は `embedCentralNode` のとき埋め込みの中心の要素を前回の位置のまま保持する（`retainCentralNode`）ので、2D（Layout が原点に置く）と 3D で中心が同じ場所にある必要がある。「足元を原点」にすると中心が上にずれ、保持した埋め込みだけ取り残される。

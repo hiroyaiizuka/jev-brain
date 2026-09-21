@@ -2293,6 +2293,18 @@ private normalizeSettings() {
       DEFAULT_VIEW_3D_SETTINGS.northRise
     )
 
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_HEIGHT_SHEAR_X_NAME"),
+      t("VIEW3D_HEIGHT_SHEAR_X_DESC"),
+      {min:0,max:1.5,step:0.01},
+      ()=>this.plugin.settings.view3D.heightShearX,
+      (val)=>this.plugin.settings.view3D.heightShearX = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.heightShearX
+    )
+
     // 段の高さ・垂直軸の間隔・床の広がり（docs/3d-design.md §6-6）。どれも nodeHeight に対する倍率で、
     // 既定値は本人が 2026-09-21 に決めた配置（LEV-128）
     this.numberslider(

@@ -37,6 +37,7 @@ export const DEFAULT_AXIS_LINK_STYLE:LinkStyle = {
 export const DEFAULT_VIEW_3D_SETTINGS: Readonly<View3DSettings> = {
   northShearX: 0.4,
   northRise: 0.3,
+  heightShearX: 0.64,
   upHeightFactor: 3.1,
   downHeightFactor: 3.6,
   verticalGapFactor: 3.8,
