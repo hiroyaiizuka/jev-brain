@@ -11,12 +11,12 @@ import {
 import { Page } from "./graph/Page";
 import { t } from "./lang/helpers";
 import ExcaliBrain from "./excalibrain-main";
-import { Hierarchy, NodeStyle, LinkStyle, RelationType, NodeStyleData, LinkStyleData, LinkDirection, Role } from "./Types";
+import { Hierarchy, NodeStyle, LinkStyle, RelationType, NodeStyleData, LinkStyleData, LinkDirection, Role, View3DSettings } from "./Types";
 import { WarningPrompt } from "./utils/Prompts";
 import { Node as GraphNode } from "./graph/Node";
 import { svgToBase64 } from "./utils/utils";
 import { Link } from "./graph/Link";
-import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, PREDEFINED_LINK_STYLES } from "./constants/constants";
+import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, DEFAULT_VIEW_3D_SETTINGS, PREDEFINED_LINK_STYLES } from "./constants/constants";
 import { ExcalidrawAutomate, getEA } from "./utils/ExcalidrawAutomateCompatibility";
 import { axisOf, compareFieldsIgnoringCase, toHierarchyKey, type HierarchyAxis } from "./utils/hierarchy";
 
@@ -48,6 +48,11 @@ export interface ExcaliBrainSettings {
   maxItemCount: number;
   /** Per-area node cap while the 3D view is on (docs/3d-design.md §4-1). The 2D view keeps `maxItemCount`. */
   maxItemCount3D: number;
+  /**
+   * Cabinet projection of the 3D view (docs/3d-design.md §6-1): `northShearX`, `northRise`, `levelHeightFactor`.
+   * The 3D toggle itself (`Scene.view3D`) is not saved. `loadSettings()` merges the defaults into a saved object.
+   */
+  view3D: View3DSettings;
   renderSiblings: boolean;
   applyPowerFilter: boolean;
   baseNodeStyle: NodeStyle;
@@ -120,6 +125,7 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   showFullTagName: false,
   maxItemCount: 30,
   maxItemCount3D: 12,
+  view3D: { ...DEFAULT_VIEW_3D_SETTINGS },
   renderSiblings: false,
   applyPowerFilter: false,
   baseNodeStyle: DEFAULT_NODE_STYLE,
@@ -2246,6 +2252,51 @@ private normalizeSettings() {
         false,
         this.plugin.settings.centerEmbedHeight
       )
+
+    // ------------------------------
+    // 3D view (docs/3d-design.md §6-1). The toggle lives in the tools panel and is not saved.
+    // setHeading() rather than the h1 the older sections use: the lint baseline must not grow (AGENTS.md).
+    // ------------------------------
+    new Setting(containerEl)
+      .setName(t("VIEW3D_HEAD"))
+      .setHeading();
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_NORTH_SHEAR_X_NAME"),
+      t("VIEW3D_NORTH_SHEAR_X_DESC"),
+      {min:0,max:1,step:0.05},
+      ()=>this.plugin.settings.view3D.northShearX,
+      (val)=>this.plugin.settings.view3D.northShearX = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.northShearX
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_NORTH_RISE_NAME"),
+      t("VIEW3D_NORTH_RISE_DESC"),
+      // 0.2 keeps the lowest possible parent row (Layout bottom = -2·nodeHeight) clear of the friends at the defaults
+      {min:0.2,max:1,step:0.05},
+      ()=>this.plugin.settings.view3D.northRise,
+      (val)=>this.plugin.settings.view3D.northRise = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.northRise
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_LEVEL_HEIGHT_FACTOR_NAME"),
+      t("VIEW3D_LEVEL_HEIGHT_FACTOR_DESC"),
+      {min:1,max:4,step:0.1},
+      ()=>this.plugin.settings.view3D.levelHeightFactor,
+      (val)=>this.plugin.settings.view3D.levelHeightFactor = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.levelHeightFactor
+    )
 
     // ------------------------------
     // Style

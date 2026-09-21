@@ -1,7 +1,7 @@
 import { Role } from "src/Types";
 
 /**
- * 3D 表示の計算だけを置く純関数群（docs/3d-design.md §3-1・§3-2・§4-1）。
+ * 3D 表示の計算だけを置く純関数群（docs/3d-design.md §3-1・§6-1）。
  * Obsidian・Excalidraw に依存しない。中心の決定は Layout、描画は Scene / Node が担う。
  */
 
@@ -59,8 +59,11 @@ export const levelOf = (
   return role === Role.PARENT ? 1 : -1;
 };
 
-/** 地面の高さ（§3-2）: 表示中に −1 のノードがあれば −1、無ければ 0。中心ノードは常に 0 なので地面が +1 になることはない。 */
-export const groundLevelOf = (levels: readonly Level[]): Level => (levels.includes(-1) ? -1 : 0);
+/**
+ * 床の高さ（§6-1）: 画面内の最小 level。中心ノードは常に 0 なので 0 から始め、Down の子（−1）があれば −1。
+ * 空でも 0。床にいるノード（level === floor）には柱も影も描かない（接地影は §6-2、LEV-120）。
+ */
+export const floorOf = (levels: readonly Level[]): Level => levels.reduce<Level>((floor, level) => (level < floor ? level : floor), 0);
 
 export type Point = { x: number; y: number };
 
@@ -86,90 +89,68 @@ export const boundsOf = (boxes: readonly Box[], margin = 0): Bounds | null => {
   return { minX: minX - margin, maxX: maxX + margin, minY: minY - margin, maxY: maxY + margin };
 };
 
+/**
+ * 斜投影（キャビネット図法）の係数。`northShearX`／`northRise` は設定 `view3D`（`View3DSettings`、既定値は
+ * `constants.ts` の `DEFAULT_VIEW_3D_SETTINGS`）そのもの、`levelHeight` は `levelHeightFactor × nodeHeight` を
+ * 呼び出し側（Scene）が毎回計算して渡す（`nodeHeight` は `compactingFactor` とフォントから決まるので px 固定にしない）。
+ */
 export type ProjectionParams = {
-  /** ヨー角（度）。3D-1 は 20° 固定。 */
-  yawDegrees: number;
-  /** 回転後の x に掛ける倍率（既定 0.8）。 */
-  widthScale: number;
-  /** 1 段ぶんの高さ（px）。`nodeHeight` × 倍率（既定 1.5）を呼び出し側で計算して渡す。 */
+  /** north 1 につき画面 x を右へ動かす量（既定 0.40）。 */
+  northShearX: number;
+  /** north 1 につき画面 y を上へ動かす量（既定 0.30）。 */
+  northRise: number;
+  /** 1 段ぶんの高さ（px）。 */
   levelHeight: number;
 };
+
+/**
+ * 友の帯を中心ノートの y に揃えるための、2D の y に足す量（§6-1「フレンドと中心は同じ north」）。
+ *
+ * 上流の `Layout.place()` は行の中心を `top + row·rowHeight`（`top = origoY − rows·rowHeight/2`）に置くので、
+ * どの帯も行の平均が origoY より rowHeight/2 だけ北にある。中心の帯（rowHeight = 中心の箱の高さ）と友の帯
+ * （rowHeight = nodeHeight）でこの量が違い、2D では中心と友の y が (nodeHeight − 中心の行高)/2 ずれる
+ * （`Scene` の `lCenter` の origoY のコメント「friends are just slightly off center」。実測 −12 と −38）。
+ * 2D はそのままにし、3D では友の帯の平均の行が中心ノートの y（`centerY`）に来るよう帯ごと動かしてから投影する。
+ * 中心は動かさない（原点は `retainCentralNode` の不動点）。
+ */
+export const friendBandShift = (centerY: number, friendRowHeight: number): number => centerY + friendRowHeight / 2;
 
 export type Projected = {
   x: number;
   y: number;
-  /** 奥行き。小さいほど奥（北）。描画は depth の昇順。高さ（level）には依存しない。 */
+  /** 奥行き = north（−gy）。大きいほど奥（北）。描画は north の降順（`compareDrawOrder`）。高さ（level）には依存しない。 */
   depth: number;
 };
 
 /**
- * §3-2 の式。`center` は Layout が決めた 2D の中心（中心ノート原点、`compressBands` のずれ適用後）。
+ * §6-1 の斜投影（キャビネット図法）。`center` は Layout が決めた 2D の中心（中心ノート原点、gy は北が負）。
  *
  * ```text
- * rx = gx·cos(yaw) − gy·sin(yaw)
- * ry = gx·sin(yaw) + gy·cos(yaw)
- * x  = rx · widthScale
- * y  = ry − level · levelHeight
- * depth = ry
+ * north = −gy
+ * x     = gx + north · northShearX
+ * y     = −north · northRise − level · levelHeight
+ * depth = north
  * ```
  *
- * 入力の検査はしない（params は設定の既定値から作る）。
+ * 東西は水平のまま（2D の横並びが崩れない）、抽象度は真上、南北は右上がりの斜め（北が右上・奥、南が左下・手前）。
+ * 中心ノート（gx = gy = 0、level 0）は原点に留まる: `retainCentralNode` で保持した埋め込みの中心の要素は
+ * 前回の描画位置のままなので、2D（Layout が原点に置く）と 3D で中心が同じ場所にある必要がある。床は
+ * `project(center, floor, params)`（`floorOf` の高さ）で、床が −1 なら原点の `levelHeight` 下を通る。
+ * 画面全体をどこに置くかは平行移動の違いでしかなく、§6-1 の「中心ノートの足元が原点」と見た目は同じ。
+ *
+ * 入力の検査はしない（params は設定の値から作る）。`0 - gy` は `-gy` が 0 を −0 にするのを避けるため。
  */
 export const project = (center: Point, level: Level, params: ProjectionParams): Projected => {
-  const yaw = (params.yawDegrees * Math.PI) / 180;
-  const cos = Math.cos(yaw);
-  const sin = Math.sin(yaw);
-  const rx = center.x * cos - center.y * sin;
-  const ry = center.x * sin + center.y * cos;
+  const north = 0 - center.y;
   return {
-    x: rx * params.widthScale,
-    y: ry - level * params.levelHeight,
-    depth: ry,
+    x: center.x + north * params.northShearX,
+    y: 0 - north * params.northRise - level * params.levelHeight,
+    depth: north,
   };
 };
 
-/** 帯が占める y の範囲（上端・下端）。Layout なら `top` と `top + rows·rowHeight`。 */
-export type BandExtent = { top: number; bottom: number };
-
 /**
- * 北（親）・中心（中心ノートと左右の友）・南（子）の 3 帯。無い帯は null。
- * 兄弟は北の帯に入れない（親より中心に近い下端を持ちうるので隙間の測定を狂わせる）。
- * 兄弟には北のずれをそのまま適用する。
+ * 描画順（§6-1）: `depth`（north）の大きい順（奥 → 手前）。同じ north なら画面の x の小さい順（西から）で決定的にする。
+ * `Array.prototype.sort` の比較関数として `project` の結果を渡す。
  */
-export type BandExtents = {
-  north: BandExtent | null;
-  center: BandExtent | null;
-  south: BandExtent | null;
-};
-
-/** 各帯の y に足す量。北は正（南へ寄る）、南は負（北へ寄る）。中心の帯は動かない。 */
-export type BandShifts = { north: number; south: number };
-
-/** `{ y, height }`（中心と箱の高さ）の並びから帯の範囲を求める。空なら null。 */
-export const extentOf = (items: readonly { y: number; height: number }[]): BandExtent | null => {
-  if (items.length === 0) return null;
-  let top = Infinity;
-  let bottom = -Infinity;
-  for (const item of items) {
-    top = Math.min(top, item.y - item.height / 2);
-    bottom = Math.max(bottom, item.y + item.height / 2);
-  }
-  return { top, bottom };
-};
-
-/**
- * §4-1: 帯と帯の「隙間」だけを `depthScale` 倍に潰す量を返す。帯の中は同じ量だけ動くので行間は変わらない。
- *
- * 隙間は北の帯の下端と中心の帯の上端、中心の帯の下端と南の帯の上端で測る。
- * 隙間が 0 以下（既に接している・重なっている）なら動かさない。中心の帯が無ければ何もしない。
- * `depthScale` は 0（帯が接する）〜1（2D のまま）に丸め、NaN は 1 とみなす。
- */
-export const compressBands = (extents: BandExtents, depthScale: number): BandShifts => {
-  const scale = Number.isNaN(depthScale) ? 1 : Math.min(1, Math.max(0, depthScale));
-  /** 隙間を減らす量（0 以上）。 */
-  const squeeze = (gap: number): number => (gap > 0 ? gap * (1 - scale) : 0);
-  const { north, center, south } = extents;
-  const northShift = center && north ? squeeze(center.top - north.bottom) : 0;
-  const southShift = center && south ? squeeze(south.top - center.bottom) : 0;
-  return { north: northShift, south: 0 - southShift }; // `-x` だと 0 が -0 になるので 0 - x
-};
+export const compareDrawOrder = (a: Projected, b: Projected): number => b.depth - a.depth || a.x - b.x;
