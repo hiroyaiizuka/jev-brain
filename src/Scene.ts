@@ -1074,7 +1074,8 @@ export class Scene {
 
   /**
    * 3D の描画（docs/3d-design.md §6-1・§6-2・§6-5・§6-6）。配置 → 帯を動かす（友は中心の y に、Parents／Children は
-   * 中心から `bandDistance`）→ Up／Down（level ≠ 0）を中心の真上・真下の垂直軸へ移す → 投影 → north 降順にノード →
+   * 中心から `bandDistance`）→ Up／Down（level ≠ 0）を垂直軸へ移す（2D では中心の真上・真下。画面では高さの傾き
+   * `heightShearX` のぶん東／西へ倒れる、LEV-137）→ 投影 → north 降順にノード →
    * 床（外周・グリッド・十字・方角）。柱と影は LEV-128 で描くのをやめた（本人のフィードバック 3: 上下は箱の高さで読む）。
    * 2D と同じ `place()` の中心を投影で置き換えるだけで、Node の描画は無改造。埋め込みの中心（`retainCentralNode` で
    * 要素を保持する）は Layout が原点に置き、原点は中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は
@@ -1090,6 +1091,7 @@ export class Scene {
     const params: ProjectionParams = {
       northShearX: view3D.northShearX,
       northRise: view3D.northRise,
+      heightShearX: view3D.heightShearX,
       upHeight: view3D.upHeightFactor * this.nodeHeight,
       downHeight: view3D.downHeightFactor * this.nodeHeight,
     };
@@ -1123,7 +1125,8 @@ export class Scene {
     }));
 
     // Up／Down は帯を離れて垂直に（§6-5、本人の追記 2）: level ≠ 0 のノードは中心ノートと同じ north の行（床の十字の
-    // 東西の線）へ `verticalGapFactor` の間隔で移る。1 つなら中心の真上・真下。床の平行四辺形に残るのは level 0 だけ
+    // 東西の線）へ `verticalGapFactor` の間隔で移る。2D では 1 つなら中心の真上・真下（画面では高さの傾きぶん
+    // 東／西へ倒れる、LEV-137）。床の平行四辺形に残るのは level 0 だけ
     // 間隔は設定値。ただしラベルの長い Vault では箱の幅が設定値を超えるので、その帯の列幅（`columnWidth` は
     // maxLabelLength とフォントから決まる箱の幅＋余白）より狭くはしない
     const verticalGap = Math.max(
@@ -1151,7 +1154,8 @@ export class Scene {
       return box ? [{...p, box}] : [];
     });
 
-    // 床の平面（§6-2、本人の追記 2026-09-21）: 中心の段を、床の段の箱の下端まで下げる（`floorDrop`）
+    // 床の平面（§6-2、本人の追記 2026-09-21）: 中心の段を、床の段の箱の下端まで画面で下げる（`floorDrop`）。
+    // 段ではなく画面上のオフセットなので、高さの傾き（LEV-137）は掛けない（床は真下に沈むだけ）
     const drop = floorDrop(boxed.map(p => ({level: p.node.level, height: p.box.height})), this.nodeHeight, params.downHeight);
     const plane: FloorPlane = (point) => {
       const p = project(point, FLOOR_LEVEL, params);

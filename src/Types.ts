@@ -138,6 +138,8 @@ export type View3DSettings = {
   northShearX: number;
   /** Screen y rise per unit of north. */
   northRise: number;
+  /** Screen x shift per pixel of height, so what stands on the floor leans east the way the floor does (LEV-137; the author's 0.64). */
+  heightShearX: number;
   /** Height of the Up level above the centre = nodeHeight × this (LEV-128: the author's 241px is 3.1). */
   upHeightFactor: number;
   /** Depth of the Down level below the centre = nodeHeight × this (LEV-128: the author's 274px is 3.6). */
