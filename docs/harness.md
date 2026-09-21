@@ -91,6 +91,8 @@ cp dist/jevbrain/main.js dist/jevbrain/manifest.json dist/jevbrain/styles.css te
 npm run harness:preflight
 ```
 
+plugin ID を変える前（LEV-147 より前）に作った `test-vault/` には `plugins/jevbrain/` が無いので、この `cp` は失敗する。その Vault は消してから `npm run harness:prepare` をやり直す。`harness:prepare` は古い `plugins/excalibrain/` を消さない（`community-plugins.json` からは外れるので次回起動では読み込まれないが、Obsidian を開いたままだと古い版が動き続ける）。
+
 その後、専用 Obsidian 環境で JevBrain だけを再読込して対象画面を開き直す。`preflight` の成功だけでは実行中コードの更新は確認できないので、新しい表示・操作も確認する。
 
 検証用 Obsidian は Mappy と同じもの（`projects/Mappy/artifacts/obsidian-profile` のプロファイル、CDP ポート 9231）で、この Vault を開いておく。エージェントは `artifacts/e2e/cdp.mjs`（Mappy の `lev-71-map-search-e2e/cdp.mjs` を Vault パスだけ変えて複製。gitignore 内）で renderer に JS を流し、`node artifacts/e2e/cdp.mjs eval <probe.js> <out.json>` と `shot <out.png>` で結果と画面を取る。プローブでは `app.workspace.getLeaf(false)` を使わない（brain のリーフを返して scene を閉じる）。E01〜E10 の一式は `artifacts/e2e/*.js`。
@@ -125,7 +127,7 @@ npm run harness:preflight
 3. コミットとタグを push する。`release.yml` が check を通し、`dist/jevbrain/` の 3 ファイルを Release に添付する。0.x は pre-release。
 4. BRAT にリポジトリを登録して配布物が取れることを確認し、`artifacts/` に記録する。
 
-plugin ID は `jevbrain`、名前は JevBrain なので上流版（`excalibrain`）と同時にインストールできる（LEV-147）。BRAT での配布は Jev の実装後まで保留。
+plugin ID は `jevbrain`、名前は JevBrain で、上流版（`excalibrain`）とは別プラグインとして入る（LEV-147）。実機での同時インストールは未確認で、既定の図面ファイルがどちらも `excalibrain.md` なので並べて使うには片方の設定を変える。BRAT での配布は Jev の実装後まで保留。
 
 ## 上流との同期
 

@@ -69,6 +69,8 @@ describe('release metadata validation', () => {
     }
   });
 
+  // 以下 3 つの it.each のサンプルは validator の却下規則そのものを見るためのもので、
+  // このプロジェクトの plugin ID とは無関係。ID を変えても追従しない（`excalibrain` のままでよい）。
   it.each(['../other', 'a/b', 'a\\b', '/tmp/excalibrain', '..', '', 'excalibrain2'])('rejects unsafe or invalid plugin ID %j', (id) => {
     changeJson('manifest.json', (manifest) => { manifest.id = id; });
     const errors = validateRelease(root, { artifacts: true });

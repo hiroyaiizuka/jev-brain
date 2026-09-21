@@ -62,7 +62,7 @@
 - plugin ID と名前を決める（上流と同じ `excalibrain` のままなら上流版と同時インストール不可）。
 - `npm version x.y.z` → tag → Release → BRAT で導入できる。`artifacts/` に導入の記録。
 
-現在の実装（LEV-147）: plugin ID を `jevbrain`、名前を JevBrain、作者を Hiroya Iizuka にした（`manifest.json`、`package.json`＋lock、`constants.PLUGIN_NAME`、`scripts/preflight.mjs`、`release.yml`／`check.yml` の artifact 名と `dist/jevbrain/`、tooling テストのサンプル）。上流版（`excalibrain`）と ID が違うので同時にインストールできる。command ID `excalibrain-*`・CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の表示文字列は互換のため据え置き（表示名の置き換えは別チケット）。ID が変わって `obsidianmd/commands/no-plugin-id-in-command-id` が指摘しなくなったので、lint のベースラインから外した（`harness.md` の表も）。BRAT 配布は Jev の実装後まで保留で、Release はまだ作っていない。
+現在の実装（LEV-147）: plugin ID を `jevbrain`、名前を JevBrain、作者を Hiroya Iizuka にした（`manifest.json`、`package.json`＋lock、`disablePlugin()` に渡す自分の ID（`constants.PLUGIN_NAME` をやめて `this.manifest.id`）、`scripts/preflight.mjs`、`release.yml`／`check.yml` の artifact 名と `dist/jevbrain/`、tooling テストのサンプル）。上流版（`excalibrain`）と ID が違うので別プラグインとして入る（実機での同時インストールは未確認。既定の図面ファイルがどちらも `excalibrain.md` なので、並べて使うには片方の設定を変える）。command ID `excalibrain-*`・CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の表示文字列は互換のため据え置き（表示名の置き換えは別チケット）。ID が変わって `obsidianmd/commands/no-plugin-id-in-command-id` が指摘しなくなったので、lint のベースラインから外した（`harness.md` の表も）。BRAT 配布は Jev の実装後まで保留で、Release はまだ作っていない。
 
 ### 3D-2 見た目の作り直し（本人のフィードバック 2026-09-21）
 

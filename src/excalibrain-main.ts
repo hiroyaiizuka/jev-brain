@@ -3,7 +3,7 @@ import { Page } from './graph/Page';
 import { DEFAULT_SETTINGS, ExcaliBrainSettings, ExcaliBrainSettingTab } from './Settings';
 import { errorlog, keepOnTop } from './utils/utils';
 import { t } from './lang/helpers';
-import { DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, MINEXCALIDRAWVERSION, PLUGIN_NAME, PREDEFINED_LINK_STYLES } from './constants/constants';
+import { DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, MINEXCALIDRAWVERSION, PREDEFINED_LINK_STYLES } from './constants/constants';
 import { Pages } from './graph/Pages';
 import { Scene } from './Scene';
 import { LinkStyles, NodeStyles, LinkStyle, RelationType, LinkDirection } from './Types';
@@ -111,7 +111,7 @@ export default class ExcaliBrain extends Plugin {
         ).show((_result: boolean) => {
           new Notice("Disabling ExcaliBrain Plugin", 8000);
           errorlog({fn:"ExcaliBrain.onload", where:"main.ts/onload()", message:"Dataview not found"});
-          void this.app.plugins.disablePlugin(PLUGIN_NAME);
+          void this.app.plugins.disablePlugin(this.manifest.id);
         });
         return;
       }
@@ -123,7 +123,7 @@ export default class ExcaliBrain extends Plugin {
         ).show((_result: boolean) => {
           new Notice("Disabling ExcaliBrain Plugin", 8000);
           errorlog({fn:"ExcaliBrain.onload", where:"main.ts/onload()", message:"Dataview version error"});
-          void this.app.plugins.disablePlugin(PLUGIN_NAME);
+          void this.app.plugins.disablePlugin(this.manifest.id);
         });
         return;
       }*/
@@ -137,7 +137,7 @@ export default class ExcaliBrain extends Plugin {
         ).show((_result: boolean) => {
           new Notice("Disabling ExcaliBrain Plugin", 8000);
           errorlog({fn:"ExcaliBrain.onload", where:"main.ts/onload()", message:"Excalidraw not found"});
-          void this.app.plugins.disablePlugin(PLUGIN_NAME);
+          void this.app.plugins.disablePlugin(this.manifest.id);
         });
         return;
       }
@@ -150,7 +150,7 @@ export default class ExcaliBrain extends Plugin {
         ).show((_result: boolean) => {
           new Notice("Disabling ExcaliBrain Plugin", 8000);
           errorlog({fn:"ExcaliBrain.onload", where:"main.ts/onload()", message:"ExcaliBrain requires a new version of Excalidraw"});
-          void this.app.plugins.disablePlugin(PLUGIN_NAME);
+          void this.app.plugins.disablePlugin(this.manifest.id);
         });
         return;
       }

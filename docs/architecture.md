@@ -40,7 +40,7 @@ Obsidian metadataCache / Dataview index
 
 | ID | 判断 | 理由 |
 | --- | --- | --- |
-| D1 | plugin ID は `jevbrain`、名前は JevBrain、作者は Hiroya Iizuka（LEV-147。本人の決定、2026-09-21。それまでは上流と同じ `excalibrain`／ExcaliBrain） | 上流版と並べて入れられるようにする。ID が違うと別プラグイン扱いで、上流版の設定と図面は引き継がれない（フォーク直後で配布前なので移行対象の利用者はいない）。既存のホットキーと `obsidian://` URI のため command ID `excalibrain-*` は据え置き、CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の表示文字列も変えない（表示名の置き換えは別チケット）。`constants.PLUGIN_NAME` は `disablePlugin()` に渡す自分の ID なので manifest と揃える。BRAT 配布は Jev の実装後 |
+| D1 | plugin ID は `jevbrain`、名前は JevBrain、作者は Hiroya Iizuka（LEV-147。本人の決定、2026-09-21。それまでは上流と同じ `excalibrain`／ExcaliBrain） | 上流版と並べて入れられるようにする。ID が違うと別プラグイン扱いで、上流版の設定と図面は引き継がれない（フォーク直後で配布前なので移行対象の利用者はいない）。ただし既定の図面ファイルがどちらも `excalibrain.md` なので、本当に並べて使うには片方の設定を変える必要がある。同時インストールの実機確認は未実施。command ID `excalibrain-*`・CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の表示文字列は据え置き。上流との diff を小さく保つためで、ホットキー互換のためではない: Obsidian は command を `<manifest.id>:<command id>` で登録するので、ID を変えた時点で保存済みのホットキーと `obsidian://` URI はどちらにせよ効かなくなる（未配布なので実害はない）。表示名の置き換えは別チケット。`constants.PLUGIN_NAME` は `disablePlugin()` に渡す自分の ID なので manifest と揃える。BRAT 配布は Jev の実装後 |
 | D2 | ビルドの出力は Mappy と同じ配置（ルート `main.js` → `dist/<plugin ID>/`、現在は `dist/jevbrain/`） | 2 プロジェクトで同じスクリプト・同じ手順にする。上流の `dist/main.js` と `manifest-beta.json` は使わない |
 | D3 | `tsconfig` は上流の緩さ（`strict` なし、`strictPropertyInitialization: false`）を維持し、`moduleResolution: Bundler`・`isolatedModules`・`noFallthroughCasesInSwitch` を足した。`esModuleInterop` は外した | strict 化は 262 件の作業で、ハーネス整備と分ける（product-plan H1）。`esModuleInterop` は obsidian の `moment` の型を壊す |
 | D4 | lint のベースラインはルール×ファイルで止める（グローバルに off にしない） | 新しいファイルと直したファイルには recommended が全部かかる。内訳は `docs/harness.md` |
@@ -51,4 +51,4 @@ Obsidian metadataCache / Dataview index
 
 ## 5. フォークで変えていないもの
 
-`src/` と `styles.css` の挙動は上流 0.2.18（＋作者による code scanner fixes）のまま。例外は D7（Ontology 読み込みの排他の順序と Up／Down 領域の追加）、D8（関係の定義の重複判定を完全一致に）、D1（`constants.PLUGIN_NAME` を新しい plugin ID に合わせた）。D5 の変更は型のみで、実機での差分確認は未実施（`docs/harness.md` E01〜E11）。
+`src/` と `styles.css` の挙動は上流 0.2.18（＋作者による code scanner fixes）のまま。例外は D7（Ontology 読み込みの排他の順序と Up／Down 領域の追加）、D8（関係の定義の重複判定を完全一致に）、D1（`constants.PLUGIN_NAME` を廃止し、`disablePlugin()` に `this.manifest.id` を渡す）。D5 の変更は型のみで、実機での差分確認は未実施（`docs/harness.md` E01〜E11）。

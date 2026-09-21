@@ -50,7 +50,7 @@ ExcaliBrain は `metadataCache` の変更を拾って次の描画で反映する
 | Jev の API（エンドポイント、state の形、Choice の返り値、認証） | 未確認。SDK かドキュメントを本人からもらう |
 | API キーの置き場所 | プラグイン設定（`data.json`）はプレーンテキスト。Obsidian の慣例どおり設定画面で入力し、README に「送信する内容」を明記する。コミュニティ登録するならネットワーク利用の開示が要る |
 | state に入れる範囲 | 本文全文かリンク周辺だけか。長文はトークンと私的情報の両面で削る。最初は「frontmatter＋リンクの前後 500 文字＋X の frontmatter と冒頭」 |
-| ExcaliBrain 設定の読み方 | 起動済みなら `app.plugins.plugins.excalibrain.settings.hierarchy`。未起動なら `.obsidian/plugins/excalibrain/data.json` を読む |
+| jev-brain 設定の読み方 | 起動済みなら `app.plugins.plugins.jevbrain.settings.hierarchy`。未起動なら `.obsidian/plugins/jevbrain/data.json` を読む（plugin ID は LEV-147 で `excalibrain` から変えた。上流版が同じ Vault に入っていることがあるので `excalibrain` を見に行かない） |
 | 推論リンク（フィールド無しの `[[X]]`）以外への適用 | すでに `field:: [[X]]` になっているリンクは「付け替え」として同じ流れで扱う（既存フィールドを候補の先頭に出す） |
 | 複数リンクの一括処理 | 3D と同じく、まず 1 リンクずつ。まとめて処理はあとで |
 | リポジトリ | 別リポジトリ（Mappy・jev-brain と同じハーネス構成をコピーする）。本人の判断 |
