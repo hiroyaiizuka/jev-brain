@@ -135,7 +135,11 @@ export class Page {
       this.addHidden(referencedPage);
     });
 
-    const parentFields = this.plugin.hierarchyLowerCase.parents;
+    // Up (abstract) fields are parents and Down (concrete) fields are children for the relation
+    // logic; only the link style and the 3D level differ, and Link/Projection read those from
+    // item.field, which stays the field's own name (docs/ontology-axis-design.md §1, §2).
+    // buildHierarchyLowerCase keeps the regions disjoint, so concatenating adds no duplicate field.
+    const parentFields = [...this.plugin.hierarchyLowerCase.abstract, ...this.plugin.hierarchyLowerCase.parents];
     getDVFieldLinksForPage(this.plugin,dvPage,parentFields).forEach(item=>{
       let referencedPage = this.pages.get(item.link);
       if(!referencedPage) {
@@ -147,7 +151,7 @@ export class Page {
       referencedPage.addChild(this,RelationType.DEFINED,LinkDirection.TO, item.field);
     });
 
-    const childFields = this.plugin.hierarchyLowerCase.children;
+    const childFields = [...this.plugin.hierarchyLowerCase.concrete, ...this.plugin.hierarchyLowerCase.children];
     getDVFieldLinksForPage(this.plugin,dvPage,childFields).forEach(item=>{
       let referencedPage = this.pages.get(item.link);
       if(!referencedPage) {

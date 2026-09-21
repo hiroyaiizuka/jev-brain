@@ -19,6 +19,16 @@ export const DEFAULT_LINK_STYLE:LinkStyle = {
   textColor: "#ffffffff"
 }
 
+/**
+ * Link style of the Up (abstract) / Down (concrete) regions
+ * (docs/ontology-axis-design.md §1). Layered over base/inferred and under the
+ * per-field style, so it only sets what should differ from the base style.
+ */
+export const DEFAULT_AXIS_LINK_STYLE:LinkStyle = {
+  strokeColor: "#22ec23cc",
+  strokeWidth: 4.5,
+}
+
 export const DEFAULT_NODE_STYLE:NodeStyle = {
   prefix: "",
   backgroundColor: "#00000066",
