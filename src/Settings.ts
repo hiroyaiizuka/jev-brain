@@ -18,6 +18,7 @@ import { svgToBase64 } from "./utils/utils";
 import { Link } from "./graph/Link";
 import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, PREDEFINED_LINK_STYLES } from "./constants/constants";
 import { ExcalidrawAutomate, getEA } from "./utils/ExcalidrawAutomateCompatibility";
+import { axisOf } from "./utils/hierarchy";
 
 export interface ExcaliBrainSettings {
   compactView: boolean;
@@ -201,6 +202,16 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
 const HIDE_DISABLED_STYLE = "excalibrain-hide-disabled";
 const HIDE_DISABLED_CLASS = "excalibrain-settings-disabled";
 
+/**
+ * Keys of the Up / Down region styles (settings.upLinkStyle / downLinkStyle) in the link style
+ * dropdown. Not plain "up" / "down": those are field names in the default ontology and would
+ * collide with a per-field style. Kept apart from PREDEFINED_LINK_STYLES because the entries are
+ * registered by this tab (registerAxisLinkStyles), not by loadSettings.
+ */
+const UP_LINK_STYLE_KEY = "up-axis";
+const DOWN_LINK_STYLE_KEY = "down-axis";
+const AXIS_LINK_STYLE_KEYS = [UP_LINK_STYLE_KEY, DOWN_LINK_STYLE_KEY];
+
 const getHex = (color:string) => color.substring(0,7);
 const getAlphaFloat = (color:string) => parseInt(color.substring(7,9),16)/255;
 const getAlphaHex = (a: number) => ((a * 255) | 1 << 8).toString(16).slice(1)
@@ -289,6 +300,8 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
   get hierarchyStyleList(): string[] {
     return PREDEFINED_LINK_STYLES
       .concat(Array.from(this.plugin.settings.hierarchy.hidden))
+      .concat(Array.from(this.plugin.settings.hierarchy.abstract))
+      .concat(Array.from(this.plugin.settings.hierarchy.concrete))
       .concat(Array.from(this.plugin.settings.hierarchy.parents))
       .concat(Array.from(this.plugin.settings.hierarchy.children))
       .concat(Array.from(this.plugin.settings.hierarchy.leftFriends))
@@ -296,6 +309,57 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
       .concat(Array.from(this.plugin.settings.hierarchy.previous))
       .concat(Array.from(this.plugin.settings.hierarchy.next));
   };
+
+  /**
+   * The Up / Down region styles as entries of the link style dropdown, next to base / inferred /
+   * folder / tag. plugin.linkStyles is read only by this tab and loadSettings() rebuilds it on
+   * every display(), so the two entries are added here after that call rather than in
+   * excalibrain-main.ts. Their inherited style is base: Link layers base → inferred → region → field.
+   */
+  private registerAxisLinkStyles() {
+    const { settings, linkStyles } = this.plugin;
+    linkStyles[UP_LINK_STYLE_KEY] = {
+      style: settings.upLinkStyle,
+      allowOverride: true,
+      userStyle: false,
+      display: t("LINKSTYLE_UP"),
+      getInheritedStyle: () => this.plugin.settings.baseLinkStyle,
+    };
+    linkStyles[DOWN_LINK_STYLE_KEY] = {
+      style: settings.downLinkStyle,
+      allowOverride: true,
+      userStyle: false,
+      display: t("LINKSTYLE_DOWN"),
+      getInheritedStyle: () => this.plugin.settings.baseLinkStyle,
+    };
+  }
+
+  /**
+   * What the canvas draws under a link style entry: base for the predefined and region entries,
+   * base plus the region style for a per-field entry whose field is in Up / Down. Used for the
+   * pickers' inherited values and the demo image so they match Link's base → inferred → region →
+   * field layering.
+   */
+  private inheritedLinkStyle(ls: LinkStyleData): LinkStyle {
+    const inherited = ls.getInheritedStyle();
+    if(!ls.userStyle) return inherited;
+    const axis = axisOf(ls.display, this.plugin.hierarchyLowerCase);
+    return axis === "abstract"
+      ? { ...inherited, ...this.plugin.settings.upLinkStyle }
+      : axis === "concrete"
+        ? { ...inherited, ...this.plugin.settings.downLinkStyle }
+        : inherited;
+  }
+
+  /**
+   * The demo link points north (to a parent) for the Up region's own entry and for fields in Up
+   * or Parents; the Down entry and its fields point south like Children, as everything else does.
+   */
+  private demoLinkIsParent(): boolean {
+    const { hierarchy, upLinkStyle } = this.plugin.settings;
+    const { display, style } = this.demoLinkStyle;
+    return style === upLinkStyle || hierarchy.abstract.contains(display) || hierarchy.parents.contains(display);
+  }
 
   async updateNodeDemoImg() {
     this.ea.reset();
@@ -336,7 +400,7 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
     } else if(hierarchy.rightFriends.contains(this.demoLinkStyle.display)) {
       page.addRightFriend(page2,RelationType.DEFINED,LinkDirection.FROM);
       page2.addRightFriend(page,RelationType.DEFINED,LinkDirection.TO);        
-    } else if(hierarchy.parents.contains(this.demoLinkStyle.display)) {
+    } else if(this.demoLinkIsParent()) {
       page.addParent(page2,RelationType.DEFINED,LinkDirection.FROM);
       page2.addChild(page,RelationType.DEFINED,LinkDirection.TO);  
     } else {
@@ -371,7 +435,7 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
     } else if(hierarchy.rightFriends.contains(this.demoLinkStyle.display)) {
       demoNode2.setCenter({x:300,y:0});
       role = Role.RIGHT;
-    } else if(hierarchy.parents.contains(this.demoLinkStyle.display)) {
+    } else if(this.demoLinkIsParent()) {
       demoNode2.setCenter({x:0,y:-150});
       role = Role.PARENT
     } else {
@@ -402,7 +466,7 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
     await demoNode2.render();
 
     demoLink.style = {
-      ...this.demoLinkStyle.getInheritedStyle(),
+      ...this.inheritedLinkStyle(this.demoLinkStyle),
       ...this.demoLinkStyle.style
     }
     demoLink.render(false);
@@ -1398,6 +1462,8 @@ private normalizeSettings() {
     });
     const assigned = new Set<string>();
     this.plugin.settings.hierarchy.hidden.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
+    this.plugin.settings.hierarchy.abstract.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
+    this.plugin.settings.hierarchy.concrete.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
     this.plugin.settings.hierarchy.parents.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
     this.plugin.settings.hierarchy.children.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
     this.plugin.settings.hierarchy.leftFriends.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
@@ -1428,6 +1494,7 @@ private normalizeSettings() {
 
   private async displayAsync(): Promise<void> {
     await this.plugin.loadSettings(); //in case sync loaded changed settings in the background
+    this.registerAxisLinkStyles();
 
     this.ea = getEA();
 
@@ -1527,6 +1594,50 @@ private normalizeSettings() {
     hierarchyDesc.appendChild(fragWithHTML(t("HIERARCHY_DESC")));
 
     let onHierarchyChange: () => void = () => {};
+
+    const hierarchyUpSetting = new Setting(containerEl)
+      .setName(t("UP_NAME"))
+      .setDesc(fragWithHTML(t("UP_DESC")))
+      .addTextArea((text)=> {
+        text.inputEl.addClass("excalibrain-settings-textarea-90");
+        text
+          .setValue(this.plugin.settings.hierarchy.abstract.join(", "))
+          .onChange(value => {
+            this.plugin.settings.hierarchy.abstract = value
+              .split(",")
+              .map(s=>s.trim())
+              .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
+            this.plugin.hierarchyLowerCase.abstract = [];
+            this.plugin.settings.hierarchy.abstract.forEach(f=>this.plugin.hierarchyLowerCase.abstract.push(f.toLowerCase().replaceAll(" ","-")))
+            onHierarchyChange();
+            this.dirty = true;
+          })
+      })
+    hierarchyUpSetting.nameEl.addClass("excalibrain-setting-nameEl");
+    hierarchyUpSetting.descEl.addClass("excalibrain-setting-descEl");
+    hierarchyUpSetting.controlEl.addClass("excalibrain-setting-controlEl");
+
+    const hierarchyDownSetting = new Setting(containerEl)
+      .setName(t("DOWN_NAME"))
+      .setDesc(fragWithHTML(t("DOWN_DESC")))
+      .addTextArea((text)=> {
+        text.inputEl.addClass("excalibrain-settings-textarea-90");
+        text
+          .setValue(this.plugin.settings.hierarchy.concrete.join(", "))
+          .onChange(value => {
+            this.plugin.settings.hierarchy.concrete = value
+              .split(",")
+              .map(s=>s.trim())
+              .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
+            this.plugin.hierarchyLowerCase.concrete = [];
+            this.plugin.settings.hierarchy.concrete.forEach(f=>this.plugin.hierarchyLowerCase.concrete.push(f.toLowerCase().replaceAll(" ","-")))
+            onHierarchyChange();
+            this.dirty = true;
+          })
+      })
+    hierarchyDownSetting.nameEl.addClass("excalibrain-setting-nameEl");
+    hierarchyDownSetting.descEl.addClass("excalibrain-setting-descEl");
+    hierarchyDownSetting.controlEl.addClass("excalibrain-setting-controlEl");
 
     const hierarchyParentSetting = new Setting(containerEl)
       .setName(t("PARENTS_NAME"))
@@ -2315,7 +2426,7 @@ private normalizeSettings() {
         linkStyleDiv,
         ls.style,
         ls.allowOverride,
-        ls.getInheritedStyle()
+        this.inheritedLinkStyle(ls)
       )
       this.demoLinkStyle = ls;
       void this.updateLinkDemoImg();
@@ -2369,7 +2480,7 @@ private normalizeSettings() {
         linkStyleDiv,
         ls.style,
         ls.allowOverride,
-        ls.getInheritedStyle()
+        this.inheritedLinkStyle(ls)
       )
       this.demoLinkStyle = ls;
       void this.updateLinkDemoImg();
@@ -2380,7 +2491,7 @@ private normalizeSettings() {
       const linkStyles = this.plugin.linkStyles;
 
       Object.keys(linkStyles).forEach(key => {
-        if(PREDEFINED_LINK_STYLES.contains(key)) {
+        if(PREDEFINED_LINK_STYLES.contains(key) || AXIS_LINK_STYLE_KEYS.contains(key)) {
           return;
         }
         if(!this.hierarchyStyleList.contains(key)) {
@@ -2391,7 +2502,8 @@ private normalizeSettings() {
       this.hierarchyStyleList.forEach(dataviewfield => {
         if(
           !(Object.keys(hierarchyLinkStyles).contains(dataviewfield) ||
-          PREDEFINED_LINK_STYLES.contains(dataviewfield))
+          PREDEFINED_LINK_STYLES.contains(dataviewfield) ||
+          AXIS_LINK_STYLE_KEYS.contains(dataviewfield))
         ) {
           hierarchyLinkStyles[dataviewfield] = {};
           linkStyles[dataviewfield] = {
@@ -2408,33 +2520,33 @@ private normalizeSettings() {
         linkStylesDropdown.selectEl.remove(i);
       }
       const h = this.plugin.settings.hierarchy;
-      const sortHelper = (a:string):string =>
-        PREDEFINED_LINK_STYLES.includes(a)
-        ? ("0"+a.toLowerCase())
-        : h.parents.includes(a)
-          ? ("1"+a.toLowerCase())
-          : h.children.includes(a)
-            ? ("2"+a.toLowerCase())
-            : ("3"+a.toLowerCase());
+      // Dropdown order: predefined, the two region entries (Up first), then the fields by region
+      // in the order of the Ontology section (Up, Parents, Down, Children, the rest), each group A-Z.
+      const sortGroup = (key:string):string => {
+        if(PREDEFINED_LINK_STYLES.includes(key)) return "0";
+        if(AXIS_LINK_STYLE_KEYS.includes(key)) return "1" + AXIS_LINK_STYLE_KEYS.indexOf(key).toString();
+        if(h.abstract.includes(key)) return "2";
+        if(h.parents.includes(key)) return "3";
+        if(h.concrete.includes(key)) return "4";
+        if(h.children.includes(key)) return "5";
+        return "6";
+      };
+      const sortHelper = (a:string):string => sortGroup(a) + a.toLowerCase();
+      const optionLabel = (display:string):string => {
+        if(h.abstract.includes(display)) return "Up > " + display;
+        if(h.concrete.includes(display)) return "Down > " + display;
+        if(h.parents.includes(display)) return "Parent > " + display;
+        if(h.children.includes(display)) return "Child > " + display;
+        if(h.leftFriends.includes(display)) return "Left Friend > " + display;
+        if(h.rightFriends.includes(display)) return "Right Friend > " + display;
+        if(h.previous.includes(display)) return "Previous > " + display;
+        if(h.next.includes(display)) return "Next > " + display;
+        return display;
+      };
       Object.entries(linkStyles)
         .sort((a,b)=>sortHelper(a[0])<sortHelper(b[0])?-1:1)
         .forEach(item=>{
-          linkStylesDropdown.addOption(
-            item[0],
-            this.plugin.settings.hierarchy.parents.includes(item[1].display)
-                ? ("Parent > " + item[1].display)
-                : this.plugin.settings.hierarchy.children.includes(item[1].display)
-                  ? ("Child > " + item[1].display)
-                  : this.plugin.settings.hierarchy.leftFriends.includes(item[1].display)
-                    ? ("Left Friend > " + item[1].display)
-                    : this.plugin.settings.hierarchy.rightFriends.includes(item[1].display)
-                      ? ("Right Friend > " + item[1].display)
-                      : this.plugin.settings.hierarchy.previous.includes(item[1].display)
-                        ? ("Previous > " + item[1].display)
-                        : this.plugin.settings.hierarchy.next.includes(item[1].display)
-                          ? ("Next > " + item[1].display)
-                          : item[1].display
-          )
+          linkStylesDropdown.addOption(item[0], optionLabel(item[1].display))
       })
       if(linkStyles[selectedItem]) {
         linkStylesDropdown.setValue(selectedItem);

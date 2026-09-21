@@ -4,6 +4,10 @@ import { t } from "src/lang/helpers";
 
 export enum Ontology {
   Hidden = "hidden",
+  /** Up (abstract) region: settings.hierarchy.abstract (docs/ontology-axis-design.md §1). */
+  Up = "up",
+  /** Down (concrete) region: settings.hierarchy.concrete. */
+  Down = "down",
   Parent = "parent",
   Child = "child",
   LeftFriend = "leftFriend",
@@ -28,6 +32,12 @@ export class AddToOntologyModal extends Modal {
 
     if(settings.hierarchy.hidden.includes(field)) {
       return Ontology.Hidden;
+    }
+    if(settings.hierarchy.abstract.includes(field)) {
+      return Ontology.Up;
+    }
+    if(settings.hierarchy.concrete.includes(field)) {
+      return Ontology.Down;
     }
     if(settings.hierarchy.parents.includes(field)) {
       return Ontology.Parent;
@@ -62,6 +72,16 @@ export class AddToOntologyModal extends Modal {
         settings.hierarchy.hidden = settings.hierarchy.hidden.filter(f=>f!==this.fieldName);
         plugin.hierarchyLowerCase.hidden = [];
         settings.hierarchy.hidden.forEach(f=>plugin.hierarchyLowerCase.hidden.push(f.toLowerCase().replaceAll(" ","-")));  
+        break;
+      case Ontology.Up:
+        settings.hierarchy.abstract = settings.hierarchy.abstract.filter(f=>f!==this.fieldName);
+        plugin.hierarchyLowerCase.abstract = [];
+        settings.hierarchy.abstract.forEach(f=>plugin.hierarchyLowerCase.abstract.push(f.toLowerCase().replaceAll(" ","-")));
+        break;
+      case Ontology.Down:
+        settings.hierarchy.concrete = settings.hierarchy.concrete.filter(f=>f!==this.fieldName);
+        plugin.hierarchyLowerCase.concrete = [];
+        settings.hierarchy.concrete.forEach(f=>plugin.hierarchyLowerCase.concrete.push(f.toLowerCase().replaceAll(" ","-")));
         break;
       case Ontology.Parent:
         settings.hierarchy.parents = settings.hierarchy.parents.filter(f=>f!==this.fieldName);
@@ -102,6 +122,18 @@ export class AddToOntologyModal extends Modal {
         settings.hierarchy.hidden = settings.hierarchy.hidden.sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
         plugin.hierarchyLowerCase.hidden = [];
         settings.hierarchy.hidden.forEach(f=>plugin.hierarchyLowerCase.hidden.push(f.toLowerCase().replaceAll(" ","-")));
+        break;
+      case Ontology.Up:
+        settings.hierarchy.abstract.push(this.fieldName);
+        settings.hierarchy.abstract = settings.hierarchy.abstract.sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
+        plugin.hierarchyLowerCase.abstract = [];
+        settings.hierarchy.abstract.forEach(f=>plugin.hierarchyLowerCase.abstract.push(f.toLowerCase().replaceAll(" ","-")));
+        break;
+      case Ontology.Down:
+        settings.hierarchy.concrete.push(this.fieldName);
+        settings.hierarchy.concrete = settings.hierarchy.concrete.sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
+        plugin.hierarchyLowerCase.concrete = [];
+        settings.hierarchy.concrete.forEach(f=>plugin.hierarchyLowerCase.concrete.push(f.toLowerCase().replaceAll(" ","-")));
         break;
       case Ontology.Parent:
         settings.hierarchy.parents.push(this.fieldName);
@@ -174,6 +206,16 @@ export class AddToOntologyModal extends Modal {
         b.setButtonText(t("HIDDEN_NAME"))
         if(this.ontology === Ontology.Hidden) b.setCta();
         b.onClick(() => { void this.setOntology(Ontology.Hidden); })
+      })
+      .addButton((b) => {
+        b.setButtonText(t("UP_NAME"))
+        if(this.ontology === Ontology.Up) b.setCta();
+        b.onClick(() => { void this.setOntology(Ontology.Up); })
+      })
+      .addButton((b) => {
+        b.setButtonText(t("DOWN_NAME"))
+        if(this.ontology === Ontology.Down) b.setCta();
+        b.onClick(() => { void this.setOntology(Ontology.Down); })
       })
       .addButton((b) => {
         b.setButtonText(t("PARENTS_NAME"))
