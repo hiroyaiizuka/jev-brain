@@ -99,6 +99,9 @@ export default class ExcaliBrain extends Plugin {
     this.navigationHistory = new NavigationHistory(this.settings.navigationHistory);
 		this.addSettingTab(new ExcaliBrainSettingTab(this.app, this));
     this.registerEditorSuggest(new FieldSuggester(this));
+    // Here rather than with registerCommands() inside onLayoutReady(): Jev works on Markdown notes and
+    // needs neither Excalidraw nor an open brain (docs/jev-link-typer-design.md §4-1), like the ontology
+    // suggester on the line above. Dataview is still required, and a vault without it disables the plugin.
     this.jevRegistered = isJevActive(this.settings);
     if(this.jevRegistered) {
       this.registerJev();

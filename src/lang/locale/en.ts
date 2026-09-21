@@ -279,7 +279,7 @@ export default {
   JEV_CONTEXT_CHARS_NAME: "Context size",
   JEV_CONTEXT_CHARS_DESC: "How many characters on either side of the link are sent as context. More context costs more per judgement.",
   JEV_RELATIONS_HEADING_NAME: "Relations heading",
-  JEV_RELATIONS_HEADING_DESC: "Heading of the section a confirmed field:: [[link]] line is appended to. The section is added at the end of the note when it is missing. Emptying this restores the default.",
+  JEV_RELATIONS_HEADING_DESC: "Heading of the section a confirmed field:: [[link]] line is appended to. The section is added at the end of the note when it is missing. Write the text only: the # markers are added for you, and emptying this restores the default.",
   JEV_WRITE_MODE_NAME: "Where the field is written",
   JEV_WRITE_MODE_DESC: "A confirmed field goes into the Relations section, which leaves the body untouched and is easy to read in a diff, or into the link in the body itself.",
   JEV_WRITE_MODE_RELATIONS: "Relations section",
@@ -292,5 +292,5 @@ export default {
   JEV_ENDPOINT_DESC: "The URL every Jev request goes to. This is the only address this plugin talks to.",
   JEV_MODEL_NAME: "Model",
   JEV_MODEL_DESC: "The Jev model to ask.",
-  JEV_RELOAD_NOTICE: "Reload Obsidian for the Jev setting to take effect: the commands, the suggester and the view are registered while the plugin loads.",
+  JEV_RELOAD_NOTICE: "Reload Obsidian for this to take effect: whether Jev is registered at all is decided while the plugin loads.",
 }

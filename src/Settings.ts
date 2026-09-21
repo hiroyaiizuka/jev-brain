@@ -229,11 +229,20 @@ export const withJevDefaults = (saved?: Partial<JevSettings>): JevSettings => ({
 });
 
 /**
+ * The heading Jev appends under, as the settings tab stores it. Jev writes the `##` itself
+ * (docs/jev-link-typer-design.md §3), so a "## Relations" typed into the box would come out as
+ * "## ## Relations", and an emptied box would leave Jev without a section to append to.
+ */
+export const normalizeRelationsHeading = (raw: string): string =>
+  raw.replace(/^#+\s*/u, "").trim() || DEFAULT_JEV_SETTINGS.relationsHeading;
+
+/**
  * Whether the Jev commands, view and suggester are registered at all (docs/jev-link-typer-design.md §9).
  * Without a key nothing of Jev exists, and the switch turns it off without deleting the key.
  */
 export const isJevActive = (settings: ExcaliBrainSettings): boolean =>
-  settings.jev.enabled && settings.jev.apiKey.trim() !== "";
+  // data.json is a hand-editable file: a null key there must not throw out of onload() and take the plugin with it.
+  settings.jev.enabled && (settings.jev.apiKey ?? "").trim() !== "";
 
 const HIDE_DISABLED_STYLE = "excalibrain-hide-disabled";
 const HIDE_DISABLED_CLASS = "excalibrain-settings-disabled";
@@ -331,6 +340,8 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
   private demoLinkAxis: HierarchyAxis | null = null;
   private demoNodeStyle: NodeStyleData;
   private updateTimer: boolean = false;
+  /** Whether Jev was active when this tab opened, so hide() only speaks up about a switch flipped here. */
+  private jevActiveOnDisplay: boolean = false;
 
   constructor(app: App, plugin: ExcaliBrain) {
     super(app, plugin);
@@ -546,9 +557,12 @@ private normalizeSettings() {
     if (this.plugin.settings.ontologySuggesterMidSentenceTrigger === "") {
       this.plugin.settings.ontologySuggesterMidSentenceTrigger = "(";
     }
-    // An empty heading would leave Jev without a section to append to (docs/jev-link-typer-design.md §3).
-    if (this.plugin.settings.jev.relationsHeading === "") {
-      this.plugin.settings.jev.relationsHeading = DEFAULT_JEV_SETTINGS.relationsHeading;
+    this.plugin.settings.jev.relationsHeading = normalizeRelationsHeading(this.plugin.settings.jev.relationsHeading);
+    if (this.plugin.settings.jev.endpoint === "") {
+      this.plugin.settings.jev.endpoint = DEFAULT_JEV_SETTINGS.endpoint;
+    }
+    if (this.plugin.settings.jev.model === "") {
+      this.plugin.settings.jev.model = DEFAULT_JEV_SETTINGS.model;
     }
 
     this.plugin.settings.tagStyleList = Object.keys(this.plugin.settings.tagNodeStyles);
@@ -634,13 +648,18 @@ private normalizeSettings() {
 
   hide(): void {
     this.detachSettingsFocusoutHandler();
-    if (this.dirty) {
-      void this.executeSaveAndApply();
-    }
-    // Jev is registered while the plugin loads, so turning it on or off here only lands on the next load.
-    if (isJevActive(this.plugin.settings) !== this.plugin.jevRegistered) {
-      new Notice(t("JEV_RELOAD_NOTICE"), 8000);
-    }
+    void (async (): Promise<void> => {
+      if (this.dirty) {
+        await this.executeSaveAndApply();
+      }
+      // Jev is registered while the plugin loads, so turning it on or off here only lands on the next load.
+      // Asked after the save, so reloading right away cannot drop the setting the reload is meant to apply,
+      // and only for a switch flipped in this visit that the running plugin has not followed.
+      const active = isJevActive(this.plugin.settings);
+      if (active !== this.jevActiveOnDisplay && active !== this.plugin.jevRegistered) {
+        new Notice(t("JEV_RELOAD_NOTICE"), 8000);
+      }
+    })();
   }
 
   colorpicker(
@@ -1547,6 +1566,7 @@ private normalizeSettings() {
   private async displayAsync(): Promise<void> {
     await this.plugin.loadSettings(); //in case sync loaded changed settings in the background
     this.ensureAxisLinkStyles();
+    this.jevActiveOnDisplay = isJevActive(this.plugin.settings);
 
     this.ea = getEA();
 
@@ -2490,6 +2510,9 @@ private normalizeSettings() {
             this.plugin.settings.jev.apiKey = value.trim();
             this.dirty = true;
           })
+          // The field is masked, so show what was actually kept: a pasted key with padding around it is
+          // stored trimmed, and the box would otherwise keep displaying the longer, untrimmed text.
+          .inputEl.onblur = () => {text.setValue(this.plugin.settings.jev.apiKey)}
       })
 
     this.toggle(

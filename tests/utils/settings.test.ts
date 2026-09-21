@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_JEV_SETTINGS } from 'src/constants/constants';
-import { DEFAULT_SETTINGS, isJevActive, withJevDefaults, type ExcaliBrainSettings } from 'src/Settings';
+import { DEFAULT_SETTINGS, isJevActive, normalizeRelationsHeading, withJevDefaults, type ExcaliBrainSettings } from 'src/Settings';
 import type { JevSettings } from 'src/Types';
 
 const settingsWithJev = (jev: Partial<JevSettings>): ExcaliBrainSettings =>
@@ -49,10 +49,35 @@ describe('withJevDefaults (what loadSettings does with a saved data.json)', () =
   });
 });
 
+describe('normalizeRelationsHeading (Jev writes the ## itself)', () => {
+  it('keeps a plain heading, spaces and all', () => {
+    expect(normalizeRelationsHeading('Relations')).toBe('Relations');
+    expect(normalizeRelationsHeading('  Jev の関係  ')).toBe('Jev の関係');
+  });
+
+  it('drops the markers of a heading typed as Markdown', () => {
+    expect(normalizeRelationsHeading('## Relations')).toBe('Relations');
+    expect(normalizeRelationsHeading('#Relations')).toBe('Relations');
+    expect(normalizeRelationsHeading('### My links')).toBe('My links');
+  });
+
+  it('falls back to the default for an emptied box', () => {
+    expect(normalizeRelationsHeading('')).toBe(DEFAULT_JEV_SETTINGS.relationsHeading);
+    expect(normalizeRelationsHeading('  ')).toBe(DEFAULT_JEV_SETTINGS.relationsHeading);
+    expect(normalizeRelationsHeading('##')).toBe(DEFAULT_JEV_SETTINGS.relationsHeading);
+  });
+});
+
 describe('isJevActive (nothing of Jev is registered without a key)', () => {
   it('is false while the key is empty, however enabled Jev is', () => {
     expect(isJevActive(settingsWithJev({ enabled: true }))).toBe(false);
     expect(isJevActive(settingsWithJev({ enabled: true, apiKey: '   ' }))).toBe(false);
+  });
+
+  it('is false, rather than throwing, for a data.json with a null key', () => {
+    const corrupted = settingsWithJev({ enabled: true, apiKey: null });
+
+    expect(isJevActive(corrupted)).toBe(false);
   });
 
   it('is false with a key while the switch is off', () => {
