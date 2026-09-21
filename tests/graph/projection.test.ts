@@ -219,7 +219,8 @@ describe('project', () => {
   });
 
   it('keeps the lowest possible parent row clear of the friends at the defaults and at the northRise slider minimum (0.2)', () => {
-    // Scene の lParents は bottom = −2·nodeHeight なので、行数が多いとき最下行の中心は bottom − rowHeight = −3·nodeHeight。
+    // 2D の Layout の下限（lParents の bottom = −2·nodeHeight、最下行の中心は −3·nodeHeight）。3D ではこの上に
+    // `bandShift` が「中心から最低 bandDistance」を課すので、帯はこれより中心に近づかない（LEV-128）。
     // 箱の高さは nodeHeight/2（nodeHeight = 2·(文字の高さ + 2·padding)）。友は中心と同じ y（friendBandShift 後）。
     const box = nodeHeight / 2;
     for (const northRise of [DEFAULT_VIEW_3D_SETTINGS.northRise, 0.2]) {
@@ -632,9 +633,13 @@ describe('floorDrop (床の平面を中心の段から下げる量、3d-design �
   });
 
   it('never drops the plane below the top of a box hanging under the floor, at the slider minimum', () => {
-    // downHeightFactor 1.0・compactingFactor 1.0: nodeHeight ≈ 52.5、箱 45。
-    const drop = floorDrop([{ level: 0, height: 45 }, { level: -1, height: 45 }], 52.5, 52.5);
-    expect(drop).toBe(22.5);
+    // downHeightFactor 1.0・compactingFactor 1.0: nodeHeight ≈ 52.5、箱 45。箱の半分（22.5）で収まる。
+    expect(floorDrop([{ level: 0, height: 45 }, { level: -1, height: 45 }], 52.5, 52.5)).toBe(22.5);
+    // 吊る箱が高いと天井（downHeight − 箱の半分）のほうが低くなり、そちらで止まる。
+    const clamped = floorDrop([{ level: 0, height: 45 }, { level: -1, height: 75 }], 52.5, 52.5);
+    expect(clamped).toBe(52.5 - 37.5);
+    expect(clamped).toBeLessThan(45 / 2);
+    // 天井が負なら下げない。
     expect(floorDrop([{ level: 0, height: 45 }, { level: -1, height: 200 }], 52.5, 52.5)).toBe(0);
   });
 });
@@ -656,8 +661,19 @@ describe('bandShift (床に残る Parents／Children の帯を中心から離す
     expect(-368 + shift).toBe(centerY - distance - 77);
   });
 
-  it('pulls a band that is already too far in the other direction as well (it is a shift, not a minimum)', () => {
-    expect(-600 + bandShift(centerY, -600, distance, -1)).toBe(centerY - distance);
+  it('leaves a band that already reaches further alone (the embedded centre pushes its bands out)', () => {
+    // 埋め込みの中心では Layout が `heightInCenter` ぶん帯を押し出す。そこへ一定距離を当てはめると帯が箱の中に入る。
+    expect(bandShift(centerY, -600, distance, -1)).toBe(0);
+    expect(bandShift(centerY, 900, distance, 1)).toBe(0);
+    // 届いていない帯だけを、ちょうど届くところまで動かす。
     expect(-100 + bandShift(centerY, -100, distance, -1)).toBe(centerY - distance);
+    expect(100 + bandShift(centerY, 100, distance, 1)).toBe(centerY + distance);
+  });
+
+  it('is measured on the 2D ground, so the screen distance is northRise times smaller', () => {
+    // 本人の「parents 300」は壁打ちのページと同じ 2D の距離。画面では 300 × northRise（0.3）＝ 90px 上にくる。
+    const shifted = -291 + bandShift(centerY, -291, distance, -1);
+    expect(project({ x: 0, y: shifted }, 0, { northShearX: 0.4, northRise: 0.3, upHeight: 1, downHeight: 1 }).y)
+      .toBeCloseTo(project({ x: 0, y: centerY }, 0, { northShearX: 0.4, northRise: 0.3, upHeight: 1, downHeight: 1 }).y - distance * 0.3, 9);
   });
 });

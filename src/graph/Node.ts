@@ -278,7 +278,7 @@ export class Node {
     //Scene.render: retainCentralNode
     if(this.isEmbedded && this.embeddedElementIds.length>0) {
       //the elements survive from the previous render; point `id` at the frame (or image) as renderEmbedded() left it,
-      //so readers of `id` (the 3D pillar and shadow in Scene) find the box
+      //so readers of `id` (the 3D floor in Scene, which needs the box's width) find the box
       this.id = this.embeddedElementIds[this.embeddedElementIds.length-1];
     }
 

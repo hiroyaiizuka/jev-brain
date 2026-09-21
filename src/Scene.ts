@@ -17,9 +17,8 @@ import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
 /**
- * 床・柱・影の固定値（docs/3d-design.md §6-2）。投影の係数は設定 `view3D`。
+ * 床の固定値（docs/3d-design.md §6-2。柱と影は §6-6 でやめた）。投影の係数と床の広がりは設定 `view3D`。
  * 色はすべて設定のテキスト色（`baseNodeStyle.textColor`）から不透明度だけ落として作るので、背景に対して必ず見える。
- * 長さは nodeHeight（影・グリッド間隔・余白・床の沈みの上限）と gateRadius（目盛り）に対する比で、px 固定にしない。
  */
 const VIEW_3D = {
   /** 床の外周と面 */
@@ -39,7 +38,7 @@ const VIEW_3D = {
 const withAlpha = (color: string, alpha: number): string =>
   `${color.substring(0, 7)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
 
-/** `Layout.place()` が決めた 2D の中心（友の帯は `friendBandShift` 適用後。影の足元でもある）と、その投影。 */
+/** `Layout.place()` が決めた 2D の中心（帯のシフトと垂直軸への移動のあと。床の上の足元でもある）と、その投影。 */
 type PlacedNode = { node: Node; center: Point; projected: Projected };
 
 /** 床の平面（§6-2）: 2D の点を、中心の段（`FLOOR_LEVEL`）の投影を画面で `floorDrop` だけ下げた位置に置く。 */
@@ -1037,7 +1036,7 @@ export class Scene {
     const linkElements = ea.getElements().filter(el=>!nodeIds.has(el.id) && !sceneryIds.has(el.id));
 
 
-    //hack to send link elements behind node elements (and, in 3D, the floor, shadows and pillars behind the links, in that order)
+    //hack to send link elements behind node elements (and, in 3D, the floor behind the links)
     const newImagesDict = sceneryElements.concat(linkElements, nodeElements) 
       .reduce<Record<string, ExcalidrawElement>>((dict, obj) => {
         dict[obj.id] = obj;
@@ -1093,8 +1092,9 @@ export class Scene {
     // 友の帯を中心ノートの y に揃える（§6-1「フレンドと中心は同じ north」）。中心は動かさない
     const rootCenter = this.rootNode.getCenter();
 
-    // 床に残る Parents／Children の帯を中心から等距離に置く（§6-6、LEV-128）。垂直軸に立つ Up／Down と重ならないように、
-    // 帯のうち中心にいちばん近い行を `bandDistance` の位置へ帯ごと動かす。level 0 のノードが無い帯は動かさない
+    // 床に残る Parents／Children の帯を中心から最低 `bandDistance`（2D の地面距離）離す（§6-6、LEV-128）。垂直軸に立つ
+    // Up／Down と重ならないように、中心にいちばん近い行が届いていなければ帯ごと動かす。既に遠い帯（埋め込みの中心では
+    // Layout が箱の高さぶん押し出している）と、level 0 のノードが無い帯は動かさない
     const bandDistance = view3D.bandDistanceFactor * this.nodeHeight;
     const bandShiftOf = (layout: Layout, side: -1 | 1): number => {
       const ys = layout.nodes.filter(node => node.level === FLOOR_LEVEL).map(node => node.getCenter().y);
@@ -1116,7 +1116,14 @@ export class Scene {
 
     // Up／Down は帯を離れて垂直に（§6-5、本人の追記 2）: level ≠ 0 のノードは中心ノートと同じ north の行（床の十字の
     // 東西の線）へ `verticalGapFactor` の間隔で移る。1 つなら中心の真上・真下。床の平行四辺形に残るのは level 0 だけ
-    const centres = verticalRow(laid, rootCenter, view3D.verticalGapFactor * this.nodeHeight);
+    // 間隔は設定値。ただしラベルの長い Vault では箱の幅が設定値を超えるので、その帯の列幅（`columnWidth` は
+    // maxLabelLength とフォントから決まる箱の幅＋余白）より狭くはしない
+    const verticalGap = Math.max(
+      view3D.verticalGapFactor * this.nodeHeight,
+      bands.parents.spec.columnWidth,
+      bands.children.spec.columnWidth,
+    );
+    const centres = verticalRow(laid, rootCenter, verticalGap);
 
     // 投影（§6-1）
     const placed: PlacedNode[] = laid.map(({node}, i) => ({ node, center: centres[i], projected: project(centres[i], node.level, params) }));
@@ -1160,7 +1167,7 @@ export class Scene {
     return floorIds.map(id => ea.getElement(id));
   }
 
-  /** `draw` が変えた `ea.style` を元に戻す。床・影・柱のスタイルを、続くノードやリンクの描画に残さないため。 */
+  /** `draw` が変えた `ea.style` を元に戻す。床のスタイルを、続くノードやリンクの描画に残さないため。 */
   private keepingStyle<T>(draw: () => T): T {
     const saved = {...this.ea.style};
     try {
@@ -1170,8 +1177,8 @@ export class Scene {
     }
   }
 
-  /** 3D の床・柱・影に共通の線のスタイル（角を立て、手描き風を切る）。色と太さは呼び出し側が重ねる。 */
-  private applySceneryStyle(style: {strokeColor: string; strokeWidth: number; strokeStyle?: "solid" | "dashed"; backgroundColor?: string}): void {
+  /** 3D の床の線のスタイル（角を立て、手描き風を切る）。色と太さは呼び出し側が重ねる。 */
+  private applySceneryStyle(style: {strokeColor: string; strokeWidth: number; backgroundColor?: string}): void {
     applyEAStyle(this.ea, {
       fillStyle: "solid",
       strokeSharpness: "sharp",

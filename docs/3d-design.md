@@ -169,14 +169,14 @@ depth = north                                   描画順は north の大きい�
 | 3D-2-4 実機 | フィードバックの「合格の目安」4 点を CDP と本人の目視で |
 | 3D-2-5 Up／Down の垂直軸（§6-5、LEV-124） | `src/graph/Projection.ts`（`verticalSpread` を足し、`levelOf` の未解決の除外をやめる）、`src/Scene.ts`（`render3D()` の配置: level ≠ 0 を中心の行へ）、`tests/graph/projection.test.ts`、`tests/fixtures/`（2 つ目の Up と未解決の Up） |
 
-### 6-5. Up／Down は垂直軸、床の帯は level 0 だけ（追記 2、LEV-124）
+### 6-5. Up／Down は垂直軸、床の帯は level 0 だけ（追記 2、LEV-124。間隔と影は §6-6 で変わった）
 
 - 3D の配置で level ≠ 0 のノードは 2D の帯の位置を使わず、中心ノートと同じ north の行（`rootCenter.y`。床の十字の東西の線であって world の north 0 ではない）・`x = 中心 + 東西の等間隔`（`Projection.verticalSpread`: 1 つなら 0、n 個なら中心を挟んで columnWidth 間隔）に置いてから投影する。したがって Up は中心の真上に立ち、Down は真下に吊られ、複数あれば東西に並ぶ。
-- 段の中の並び順は 2D の読み順（行＝北から南、同じ行は西から東）。間隔はその帯の `columnWidth`（Up は Parents、Down は Children から来るので段ごとに 1 つに決まる）。
-- 帯から抜くのは配置だけで、判定と置き直しは純関数 `Projection.verticalRow(entries, rootCenter)`（level 0 はそのまま返す）。Scene は結果の中心を投影するだけ。
+- 段の中の並び順は 2D の読み順（行＝北から南、同じ行は西から東）。間隔は LEV-128 で設定 `verticalGapFactor × nodeHeight` になった（§6-6。ラベルの長い Vault で箱が重ならないよう、帯の `columnWidth` を下限にする）。
+- 帯から抜くのは配置だけで、判定と置き直しは純関数 `Projection.verticalRow(entries, rootCenter, gap)`（level 0 はそのまま返す）。Scene は結果の中心を投影するだけ。
 - level 0 のノードは §6-1 のまま（床の平行四辺形）。
 - `levelOf` は未解決ページにもフィールドの level を付ける。兄弟だけ 0 のまま。
-- 段が奇数個のときは真ん中のノードの足元が中心ノートの足元と重なる。影は同じ点に 1 つだけ描く（Scene）。
+- 段が奇数個のときは真ん中のノードの足元が中心ノートの足元と重なる（影を描いていた頃は同じ点に 1 つだけ描いていた。影は §6-6 でやめた）。
 
 ### 6-6. 柱と影をやめ、上下と帯を離し、床を手前に伸ばす（追記 3、LEV-128）
 
@@ -188,10 +188,14 @@ depth = north                                   描画順は north の大きい�
 - **level 0 の Parents／Children の帯を中心から等距離に置く**（`bandDistanceFactor` 3.9）。帯のうち中心にいちばん近い行が中心から `bandDistance` に来るよう、帯ごと動かす（`Projection.bandShift`。友の `friendBandShift` と同じ当たり所）。これで Up と Parents、Down と Children が画面上で重ならない。
 - **床は最低の広がりを持つ**（`floorNorthFactor` 7.1・`floorSouthFactor` 5.75、余白は `floorMarginFactor` 1.5）。`Projection.floorPlan` は足元の最小外接＋余白に加えて、中心から奥・手前へこの距離までは必ず広げる。Up／Down が帯を離れてからは南に足元が無く、外接だけでは手前に奥行きが出ないため。
 - 友の帯は変更なし（2D の位置のまま `friendBandShift` だけ）。
+- **単位**: `upHeightFactor`／`downHeightFactor` は画面の px（段の高さは投影で縮まない）、`bandDistanceFactor` と床の 3 つは 2D の地面距離で、画面の南北では `northRise` 倍（既定 0.3）に縮む。本人が壁打ちのページで動かしたのと同じ座標系なので、ページの見た目がそのまま実機になる（帯 300 は画面で 90px、床の手前 443 は画面で 133px）。
+- `bandShift` は「最低距離」で、既にそれより遠い帯は動かさない。埋め込みの中心では上流の `Layout` が箱の高さ（`heightInCenter`）ぶん帯を押し出しており、一定距離を当てはめると帯が箱の中に入るため。
 
 ## 7. 開いている論点（本人に確認）
 
-- Up／Down が多いとき（`maxItemCount3D` は 12）、`verticalSpread` は折り返さないので 1 行に 12·columnWidth まで伸び、床と方角ラベルもそれに合わせて広がる。2D の帯のように行に折り返すなら、同じ段の中で南北にも並べる（床の十字の東西の線から外れる）か、段の中で行を重ねるかを決める必要がある。LEV-124 のレビューで挙がった。
+- Up／Down が多いとき（`maxItemCount3D` は 12）、`verticalSpread` は折り返さないので 1 行に 12·間隔（§6-6 の `verticalGapFactor`）まで伸び、床と方角ラベルもそれに合わせて広がる。2D の帯のように行に折り返すなら、同じ段の中で南北にも並べる（床の十字の東西の線から外れる）か、段の中で行を重ねるかを決める必要がある。LEV-124 のレビューで挙がった。
 - 埋め込みの中心（`embedCentralNode`、箱の高さ 700）では、1 段上の Up が中心の箱の内側に入る（levelHeight は nodeHeight の 2.2 倍）。帯にいたときは north のぶん右上にずれて逃げていた。描画順も中心と同じ north なので Up が埋め込みの上に来る。LEV-123（床の平面が箱を横切る）と同じ場所の話。
 - Up／Down を抜いたあと、北・南の帯に残る level 0 のノードは 2D のグリッドの位置のままなので、帯の列が空いたり中心の真北から東西にずれたりする（実機では 読書メモ：習慣の本 が東寄りに残る）。本人の追記 2 は「平行四辺形に表示するのは Child・Left・Right・Parent」とだけ言っていて、残りを詰め直すかは決まっていない。
+- 床に最低の広がりを課したので、ノードが少なくても床が大きく、`zoomToFit` の倍率が下がる（実測 50% → 42%）。方角ラベルの位置も余白に比例して外へ出る。床と方角を zoom の対象から外すかは決めていない。LEV-128 のレビューで挙がった。
+- 3D の帯の位置を `Scene.render3D` が `place()` のあとに足し込んでいる（友の `friendBandShift`、Parents／Children の `bandShift`）。`LayoutSpecification` に 3D 用の `origoY`／`top`／`bottom` を渡して `place()` に一度で決めさせれば、上流のガードがそのまま効いて特別扱いが 1 か所に減る。LEV-128 のレビューで挙がった整理案。
 - 模式図では「朝のルーティン手順（down）」が L2、「歯磨き後に腕立て／9月20日 朝ランの記録（example）」が L1 と段が分かれているが、今の高さは Up +1／Down −1／他 0 の 3 段で、`down` も `example` も同じ段（床の下）に置かれる。段を分けるなら (a) Down の中で `down` を −1、`example` を −2 にする第 3 の領域を足す、(b) フィールドごとに段を設定できるようにする、のどちらか。3D-2 では 3 段のまま進め、決まったら別チケット。

@@ -67,7 +67,7 @@ export const floorOf = (levels: readonly Level[]): Level => levels.reduce<Level>
 
 /**
  * 床の段（§6-2、本人の追記 2026-09-21）: 常に中心ノートの段。床の平面は `project(·, FLOOR_LEVEL, params)` の
- * `floorDrop` 下にあり、Up の親はその上に柱で立ち、Down の子は床の下に柱で吊る。
+ * `floorDrop` 下にあり、Up の親はその上に浮き、Down の子は床の下に吊られる（柱と影は §6-6 でやめた）。
  */
 export const FLOOR_LEVEL: Level = 0;
 
@@ -93,7 +93,7 @@ export type FloorPlan = {
   compass: { north: Point; south: Point; west: Point; east: Point };
 };
 
-/** `floorPlan` の足元: 2D の中心と、その箱の幅（東西は画面で水平なので床は箱の横幅も覆う。省略は 0）。 */
+/** `floorPlan` の足元: ノードの 2D の中心と、その箱の幅（東西は画面で水平なので床は箱の横幅も覆う。省略は 0）。 */
 export type Foot = Point & { width?: number };
 
 /**
@@ -117,10 +117,10 @@ const gridPositions = (min: number, max: number, origin: number, spacing: number
 };
 
 /**
- * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の足元（2D の中心。影はどのノードも足元にある）と
+ * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の足元（2D の中心。足元は影を描いていた頃と同じ点）と
  * 箱の幅（幅の広い箱が床の東西の縁や W／E を隠さないよう、東西は箱の横幅も覆う。南北は足元だけ）、`origin` は中心ノートの
  * 足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので十字は必ず床の内側にある。
- * 余白 `margin` は既定で `spacing`（Scene はどちらも nodeHeight）。`compassGap` は方角ラベルを外周から離す量で、
+ * 余白 `margin` は既定で `spacing`（Scene は spacing に nodeHeight、margin に `floorMarginFactor × nodeHeight` を渡す）。`compassGap` は方角ラベルを外周から離す量で、
  * 南北は投影で `northRise` 倍に縮むので Scene は y を `northRise` で割って渡す（画面でどの方角も同じ間隔）。
  * 足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
  */
@@ -254,14 +254,21 @@ export const verticalRow = (entries: readonly VerticalEntry[], rootCenter: Point
 };
 
 /**
- * level 0 の帯（Parents／Children）を中心ノートから等距離に置くための、帯の 2D の y に足す量（LEV-128、本人の指定）。
+ * level 0 の帯（Parents／Children）を中心ノートから最低 `distance`（2D の地面距離。画面では northRise 倍に縮む）
+ * 離すための、帯の 2D の y に足す量（LEV-128、本人の指定）。
  *
- * 3D では Up／Down が帯を離れて垂直軸に立つので、帯に残る level 0 が中心に近すぎると Up／Children と重なって読めない。
- * 帯のうち中心にいちばん近い行（Parents なら最も南の行、Children なら最も北の行）が、中心から `distance` の位置に
- * 来るよう帯ごと動かす。`side` は −1 が北（Parents）、+1 が南（Children）。2D は動かさない（`friendBandShift` と同じ）。
+ * 3D では Up／Down が帯を離れて垂直軸に立つので、帯に残る level 0 が中心に近すぎると Up／Down と重なって読めない。
+ * 帯のうち中心にいちばん近い行（Parents なら最も南の行、Children なら最も北の行）が中心から `distance` に届かなければ、
+ * 届くところまで帯ごと動かす。`side` は −1 が北（Parents）、+1 が南（Children）。2D は動かさない（`friendBandShift` と同じ）。
+ *
+ * 既に `distance` より遠い帯は動かさない（0 を返す）。上流の `Layout` は中心の箱の高さ（埋め込みの中心なら
+ * `centerEmbedHeight`）に合わせて帯を押し出しているので（`parentsOrigoY` は `heightInCenter` に依る）、そこへ
+ * 一定距離を当てはめると帯が中心の箱の中に入る。
  */
-export const bandShift = (centerY: number, innermostY: number, distance: number, side: -1 | 1): number =>
-  centerY + side * distance - innermostY;
+export const bandShift = (centerY: number, innermostY: number, distance: number, side: -1 | 1): number => {
+  const reach = side * (innermostY - centerY);
+  return reach >= distance ? 0 : side * (distance - reach);
+};
 
 export type Projected = {
   x: number;

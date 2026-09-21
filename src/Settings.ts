@@ -49,7 +49,7 @@ export interface ExcaliBrainSettings {
   /** Per-area node cap while the 3D view is on (docs/3d-design.md §4-1). The 2D view keeps `maxItemCount`. */
   maxItemCount3D: number;
   /**
-   * Cabinet projection of the 3D view (docs/3d-design.md §6-1): `northShearX`, `northRise`, `levelHeightFactor`.
+   * The 3D view (docs/3d-design.md §6-1, §6-6): the cabinet projection, the level heights, the band distance and the floor.
    * The 3D toggle itself (`Scene.view3D`) is not saved. `loadSettings()` merges the defaults into a saved object.
    */
   view3D: View3DSettings;
@@ -2347,7 +2347,7 @@ private normalizeSettings() {
       containerEl,
       t("VIEW3D_FLOOR_NORTH_FACTOR_NAME"),
       t("VIEW3D_FLOOR_NORTH_FACTOR_DESC"),
-      {min:1,max:12,step:0.25},
+      {min:1,max:12,step:0.05},
       ()=>this.plugin.settings.view3D.floorNorthFactor,
       (val)=>this.plugin.settings.view3D.floorNorthFactor = val,
       ()=>{},
@@ -2359,7 +2359,7 @@ private normalizeSettings() {
       containerEl,
       t("VIEW3D_FLOOR_SOUTH_FACTOR_NAME"),
       t("VIEW3D_FLOOR_SOUTH_FACTOR_DESC"),
-      {min:1,max:12,step:0.25},
+      {min:1,max:12,step:0.05},
       ()=>this.plugin.settings.view3D.floorSouthFactor,
       (val)=>this.plugin.settings.view3D.floorSouthFactor = val,
       ()=>{},
@@ -2371,7 +2371,7 @@ private normalizeSettings() {
       containerEl,
       t("VIEW3D_FLOOR_MARGIN_FACTOR_NAME"),
       t("VIEW3D_FLOOR_MARGIN_FACTOR_DESC"),
-      {min:0.5,max:4,step:0.25},
+      {min:0.5,max:4,step:0.05},
       ()=>this.plugin.settings.view3D.floorMarginFactor,
       (val)=>this.plugin.settings.view3D.floorMarginFactor = val,
       ()=>{},
