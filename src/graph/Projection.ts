@@ -60,10 +60,17 @@ export const levelOf = (
 };
 
 /**
- * 床の高さ（§6-1）: 画面内の最小 level。中心ノードは常に 0 なので 0 から始め、Down の子（−1）があれば −1。
- * 空でも 0。床にいるノード（level === floor）には柱を描かず、箱のすぐ下に接地影を置く（§6-2）。
+ * 画面内の最下段: 中心ノードは常に 0 なので 0 から始め、Down の子（−1）があれば −1。空でも 0。
+ * L ラベルと level 別の色（§6-3、LEV-121）が L1 として数える基準。描く床（§6-2）はこれではなく常に中心の段 0
+ * （`FLOOR_LEVEL`）で、最下段が −1 のときそのノードは床の下に吊る。
  */
 export const floorOf = (levels: readonly Level[]): Level => levels.reduce<Level>((floor, level) => (level < floor ? level : floor), 0);
+
+/**
+ * 床の段（§6-2、本人の追記 2026-09-21）: 常に中心ノートの段。床の平面は `project(·, FLOOR_LEVEL, params)` の少し下
+ * （中心の箱の下端に影が接する量。Scene が箱の高さから決める）にあり、Up の親はその上に柱で立ち、Down の子は床の下に柱で吊る。
+ */
+export const FLOOR_LEVEL: Level = 0;
 
 export type Point = { x: number; y: number };
 
@@ -71,7 +78,7 @@ export type Point = { x: number; y: number };
 export type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
 
 /**
- * 床の平面図（§6-2）。すべて 2D の地面座標で、Scene が各点を `project(·, floor, params)` で床の高さに投影する
+ * 床の平面図（§6-2）。すべて 2D の地面座標で、Scene が各点を `project(·, FLOOR_LEVEL, params)` で床の高さに投影する
  * （東西は水平のまま、南北は northShearX／northRise の向きに傾く平行四辺形になる）。
  */
 export type FloorPlan = {
@@ -102,10 +109,10 @@ const gridPositions = (min: number, max: number, origin: number, spacing: number
 };
 
 /**
- * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の地面の位置（浮いたノードは 2D の中心、床のノードは
- * 接地影を `unproject` した点）、`origin` は中心ノートの足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。
- * `origin` も範囲に含めるので十字は必ず床の内側にある。余白 `margin` は既定で `spacing`（Scene はどちらも nodeHeight）。
- * 足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
+ * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の足元（2D の中心。影はどのノードも足元にある）、
+ * `origin` は中心ノートの足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので
+ * 十字は必ず床の内側にある。余白 `margin` は既定で `spacing`（Scene はどちらも nodeHeight）。足元が 1 つも無ければ
+ * （`origin` だけでも）その点の周りに余白だけの床を返す。
  */
 export const floorPlan = (feet: readonly Point[], origin: Point, spacing: number, margin = spacing): FloorPlan => {
   const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
@@ -135,13 +142,13 @@ export const floorPlan = (feet: readonly Point[], origin: Point, spacing: number
 };
 
 /**
- * 柱の目盛りを置く段（§6-2「1 段ごとに短い横線」）: 床より上、箱の段より下の各段。箱の段の高さは箱に隠れるので含めない。
- * 床にいる箱（`level <= floor`）や 1 段だけ浮いた箱には目盛りが無く、柱そのものが 1 段を表す。Scene は各段を
- * `project(center, tick, params)` で柱の上の位置にする。
+ * 柱の目盛りを置く段（§6-2「1 段ごとに短い横線」）: 床と箱の段の間の各段（床の上に立つ柱も床の下に吊る柱も同じ）。
+ * 箱の段の高さは箱に隠れるので含めない。床にいる箱や床から 1 段の箱には目盛りが無く、柱そのものが 1 段を表す
+ * （3 段のままでは常に空。§7 で段が増えたときに効く）。Scene は各段を `project(center, tick, params)` で柱の上の位置にする。
  */
 export const pillarTickLevels = (level: Level, floor: Level): Level[] => {
   const ticks: Level[] = [];
-  for (let tick = floor + 1; tick < level; tick++) ticks.push(tick as Level);
+  for (let tick = Math.min(level, floor) + 1; tick < Math.max(level, floor); tick++) ticks.push(tick as Level);
   return ticks;
 };
 
@@ -191,8 +198,7 @@ export type Projected = {
  * 東西は水平のまま（2D の横並びが崩れない）、抽象度は真上、南北は右上がりの斜め（北が右上・奥、南が左下・手前）。
  * 中心ノート（gx = gy = 0、level 0）は原点に留まる: `retainCentralNode` で保持した埋め込みの中心の要素は
  * 前回の描画位置のままなので、2D（Layout が原点に置く）と 3D で中心が同じ場所にある必要がある。床は
- * `project(center, floor, params)`（`floorOf` の高さ）で、床が −1 なら原点の `levelHeight` 下を通る。
- * 画面全体をどこに置くかは平行移動の違いでしかなく、§6-1 の「中心ノートの足元が原点」と見た目は同じ。
+ * `project(center, FLOOR_LEVEL, params)` の少し下（中心の箱の下端）を通る（§6-2）。
  *
  * 入力の検査はしない（params は設定の値から作る）。`0 - gy` は `-gy` が 0 を −0 にするのを避けるため。
  */
@@ -203,16 +209,6 @@ export const project = (center: Point, level: Level, params: ProjectionParams): 
     y: 0 - north * params.northRise - level * params.levelHeight,
     depth: north,
   };
-};
-
-/**
- * `project` の逆: 画面の点が高さ `level` にあるとして、その 2D の地面の位置を返す。床にいるノードの接地影（箱の下端の直下、
- * 画面座標で決まる）を床の範囲（`floorPlan`、地面座標）に含めるために使う。`northRise` が 0 だと決まらない
- * （設定の下限は 0.2）。`0 -` は −0 を避けるため。
- */
-export const unproject = (screen: Point, level: Level, params: ProjectionParams): Point => {
-  const north = 0 - (screen.y + level * params.levelHeight) / params.northRise;
-  return { x: screen.x - north * params.northShearX, y: 0 - north };
 };
 
 /**

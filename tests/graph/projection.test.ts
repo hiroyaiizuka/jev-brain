@@ -12,8 +12,8 @@ import {
   friendBandShift,
   levelOf,
   pillarTickLevels,
+  FLOOR_LEVEL,
   project,
-  unproject,
 } from 'src/graph/Projection';
 
 /**
@@ -252,7 +252,7 @@ describe('friendBandShift', () => {
   });
 });
 
-describe('floorOf', () => {
+describe('floorOf (最下段。L ラベルの基準で、描く床は FLOOR_LEVEL)', () => {
   it('is the lowest level on screen, starting from the centre (0) so it is never above 0 and is 0 when empty', () => {
     expect(floorOf([])).toBe(0);
     expect(floorOf([0, 0])).toBe(0);
@@ -309,7 +309,7 @@ describe('compareDrawOrder', () => {
 });
 
 describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
-  // artifacts/3d1-e2e の 2D の中心（友は friendBandShift 後で中心と同じ y −12）。nodeHeight 76 が余白とグリッド間隔。
+  // artifacts/3d1-e2e の 2D の中心（友は friendBandShift 後で中心と同じ y −12）= 全ノードの影の足元。nodeHeight 76 が余白とグリッド間隔。
   const nodeHeight = 76;
   const origin: Point = { x: 0, y: -12 };
   const feet: Point[] = [
@@ -339,11 +339,11 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
     expect(plan.compass.east.y).toBe(origin.y);
     expect(plan.compass.north.x).toBe(origin.x);
     expect(plan.compass.south.x).toBe(origin.x);
-    // 床の高さ −1 に投影した東西軸は画面で水平。友の足元はその上、親は上（北）、子は下（南）。
+    // 床（中心の段）に投影した東西軸は画面で水平。友の足元はその上、親は上（北）、子は下（南）。
     const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * nodeHeight };
-    const axis = (x: number) => project({ x, y: plan.origin.y }, -1, params);
+    const axis = (x: number) => project({ x, y: plan.origin.y }, FLOOR_LEVEL, params);
     expect(axis(plan.bounds.minX).y).toBe(axis(plan.bounds.maxX).y);
-    const screenY = (foot: Point) => project(foot, -1, params).y;
+    const screenY = (foot: Point) => project(foot, FLOOR_LEVEL, params).y;
     expect(feet.slice(0, 5).map(screenY)).toEqual([axis(0).y, axis(0).y - 291 * 0.3 + 12 * 0.3, axis(0).y - 291 * 0.3 + 12 * 0.3, axis(0).y, axis(0).y]);
     for (const child of feet.slice(5)) expect(screenY(child)).toBeGreaterThan(axis(0).y);
   });
@@ -406,57 +406,24 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
 });
 
 describe('pillarTickLevels (柱の目盛り、3d-design §6-2)', () => {
-  it('marks every level strictly between the floor and the box: one tick for an Up parent over a −1 floor, none for one level', () => {
+  it('marks every level strictly between the floor and the box, whichever is higher', () => {
     expect(pillarTickLevels(1, -1)).toEqual([0]);
+    expect(pillarTickLevels(-1, 1)).toEqual([0]);
     expect(pillarTickLevels(1, 0)).toEqual([]);
+    expect(pillarTickLevels(-1, 0)).toEqual([]);
     expect(pillarTickLevels(0, -1)).toEqual([]);
   });
 
-  it('gives nodes on the floor (or below it) no ticks', () => {
+  it('gives a box on the floor no ticks', () => {
     expect(pillarTickLevels(-1, -1)).toEqual([]);
     expect(pillarTickLevels(0, 0)).toEqual([]);
     expect(pillarTickLevels(1, 1)).toEqual([]);
-    expect(pillarTickLevels(-1, 0)).toEqual([]);
   });
 
-  it('counts one segment per level for the brief fixture over a −1 floor (行動デザイン 2 segments, 読書メモ 1, 歯磨き 0)', () => {
-    const floor = floorOf(neighbours.map((n) => n.expectedLevel));
-    const segments = (title: string) => {
-      const level = byTitle(title).expectedLevel;
-      return level === floor ? 0 : pillarTickLevels(level, floor).length + 1;
-    };
-    expect(segments('行動デザイン')).toBe(2);
-    expect(segments('読書メモ：習慣の本')).toBe(1);
-    expect(segments('歯磨き後に腕立て')).toBe(0);
-  });
-});
-
-describe('unproject', () => {
-  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * 76 };
-
-  it('inverts project at every level for the brief fixture and the origin', () => {
-    for (const center of [centralNote, ...neighbours.map((n) => n.center)]) {
-      for (const level of [-1, 0, 1] as const) {
-        const back = unproject(project(center, level, params), level, params);
-        expect(back.x).toBeCloseTo(center.x, 9);
-        expect(back.y).toBeCloseTo(center.y, 9);
-      }
-    }
-    expect(unproject({ x: 0, y: 0 }, 0, params)).toEqual({ x: 0, y: 0 });
-    expect(Object.is(unproject({ x: 0, y: 0 }, 0, params).y, -0)).toBe(false);
-  });
-
-  it('maps the ground shadow of a floor node (box bottom + half a shadow, straight below the foot on screen) to a point south and east of the foot', () => {
-    // 床 −1 のノード（足元 = 2D の中心）。箱の高さ 44、影の高さ 19: 接地影の中心は画面で足元の 22 + 9.5 下。
-    const foot: Point = { x: 280, y: 214 };
-    const screenFoot = project(foot, -1, params);
-    const shadow = unproject({ x: screenFoot.x, y: screenFoot.y + 22 + 9.5 }, -1, params);
-    // 画面で真下 → 地面では南（y 大）へ 31.5 / 0.3 = 105、東西は shear の分だけ東（x 大）へ 105 × 0.4 = 42。
-    expect(shadow.y).toBeCloseTo(214 + 105, 9);
-    expect(shadow.x).toBeCloseTo(280 + 42, 9);
-    // 床の範囲に入れると、南の縁は接地影の nodeHeight 南になる。
-    const plan = floorPlan([shadow], { x: 0, y: -12 }, 76);
-    expect(plan.bounds.maxY).toBeCloseTo(214 + 105 + 76, 9);
-    expect(project({ x: shadow.x, y: plan.bounds.maxY }, -1, params).y).toBeGreaterThan(screenFoot.y + 22 + 9.5 + 9.5);
+  it('is always empty with the three levels around the floor at the centre (FLOOR_LEVEL 0): the pillar itself is the one step', () => {
+    expect(FLOOR_LEVEL).toBe(0);
+    for (const level of [-1, 0, 1] as const) expect(pillarTickLevels(level, FLOOR_LEVEL)).toEqual([]);
+    // 段が増えたとき（§7）に効く: 床から 2 段なら 1 本。
+    expect(pillarTickLevels(1, -1).length + 1).toBe(2);
   });
 });
