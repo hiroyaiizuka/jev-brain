@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -162,6 +162,14 @@ describe('prepare-test-vault CLI', () => {
       expect(readFileSync(join(paths.installed, filename))).toEqual(readFileSync(join(paths.distribution, filename)));
     }
     expect(readFileSync(join(paths.fixtureTarget, 'Foundation.md'), 'utf8')).toContain('[[Isaac Asimov]]');
+  });
+
+  it('keeps the subfolders of tests/fixtures, so the big fixture lands in Fixtures/big', () => {
+    const result = runScript('prepare-test-vault.mjs');
+    expect(result.status, result.stderr).toBe(0);
+    expect(readdirSync(join(paths.fixtureTarget, 'big')).sort())
+      .toEqual(readdirSync(join(fixturesSource, 'big')).sort());
+    expect(readFileSync(join(paths.fixtureTarget, 'big', '大きな脳.md'), 'utf8')).toContain('leads to:: [[要約]]');
   });
 
   it('keeps Dataview and Excalidraw enabled when re-run', () => {

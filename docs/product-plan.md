@@ -83,6 +83,7 @@
 - 親 20・子 30 の fixture で要素数と描画時間を `artifacts/` に記録し、重なりの残りを判断する。
 
 現在の実装（LEV-144）: 初期ズーム（`zoomToFit`）を 3D の床と方角を除いたノード・リンクに合わせる。`Scene.render()` が `render3D()` の戻り値の id を集め、`zoomTargets`（`src/graph/zoom.ts`）がそれを外した配列を `zoomToFit` に渡す（`tests/graph/zoom.test.ts`）。床は最低の広がりを持つ（`floorNorthFactor`／`floorSouthFactor`）ので、8 ノートでは床がビューポートを決めて倍率が 35% まで落ちていた。床と方角は画面からはみ出してよい。タブが隠れている間に描いた場合の遅延ズーム（`zoomToFitOnNextBrainLeafActivate`）も同じ経路にした。2D は床の id が無く、上流がその呼び出しで渡していた対象をそのまま渡すので、対象も倍率も従来どおり。**実機は未実施**: 倍率が 2D と ±10% に収まるか（受入条件）は CDP の `getAppState().zoom.value` を 2D／3D で比べて確かめる必要があり、床と方角が画面からどれだけ外れるかは本人の目視待ち（`docs/3d-design.md` §7）。
+現在の実装（LEV-143）: `tests/fixtures/big/` に中心「大きな脳」と level 0 の親 20（`origin::`）・level 0 の子 30（`leads to::`）・Up 7（`up::`）・Down 7（`down::`／`example::`）・左右の友 5 ずつ（`similar::`／`next::`）の 75 ノート（タイトルの長さは揃えず、最長は `maxLabelLength` ちょうどの 30 文字）を置き、`scripts/prepare-test-vault.mjs` が `tests/fixtures/` をサブフォルダごと `test-vault/Fixtures/` に写すようにして（`tests/tooling/preflight.test.mjs` に 1 件）、要素数（`EA.getViewElements().length` と `nodesMap`）・描画時間（`reRender(false)` を挟む `performance.now()`）・箱の重なり（同じ段で x の差が箱幅の和の半分未満）の測り方と記録先 `artifacts/3d-3-measure/record.md` を `harness.md`「3D の実測手順」と実機ケース E17 に書いた（測定そのものは未実施）。
 
 ### H1 引き継ぎコードの整地（3D-1 の後）
 
