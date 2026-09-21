@@ -62,15 +62,10 @@ function makeEA() {
   return { ea: ea as unknown as ExcalidrawAutomate, gates };
 }
 
-/** The gates of a link from `a` to `b` where `b` has `role` relative to `a`. */
-function gatesOf(a: Node, b: Node, role: Role, view3D?: boolean): [string, string] {
+/** The gates of a link from `a` to `b` where `b` has `role` relative to `a`. `view3D` defaults as in `Link.render()`. */
+function gatesOf(a: Node, b: Node, role: Role, view3D = false): [string, string] {
   const { ea, gates } = makeEA();
-  const link = new Link(a, b, role, RelationType.DEFINED, 'origin', ea, settingsStub, plugin);
-  if (view3D === undefined) {
-    link.render(false);
-  } else {
-    link.render(false, view3D);
-  }
+  new Link(a, b, role, RelationType.DEFINED, 'origin', ea, settingsStub, plugin).render(false, view3D);
   expect(gates).toHaveLength(1);
   return gates[0];
 }
@@ -94,14 +89,14 @@ describe('2D: the gates follow the role, whatever the centres say', () => {
     expect(gatesOf(centre(), beside(), Role.RIGHT, false)).toEqual(['c-next', 'e-next']);
   });
 
-  it('render(hide) without the flag is the 2D path and does not read the centre (the upstream call site)', () => {
+  it('view3D false (what Scene passes in 2D) never reads the centre', () => {
     const noCentre = (prefix: string) => {
       const node = makeNode(prefix);
       delete (node as unknown as { getCenter?: unknown }).getCenter;
       return node;
     };
-    expect(gatesOf(noCentre('c'), noCentre('s'), Role.PARENT)).toEqual(['c-parent', 's-child']);
-    expect(gatesOf(noCentre('c'), noCentre('s'), Role.CHILD)).toEqual(['c-child', 's-parent']);
+    expect(gatesOf(noCentre('c'), noCentre('s'), Role.PARENT, false)).toEqual(['c-parent', 's-child']);
+    expect(gatesOf(noCentre('c'), noCentre('s'), Role.CHILD, false)).toEqual(['c-child', 's-parent']);
   });
 });
 
@@ -132,6 +127,13 @@ describe('3D: the projected centres pick the parent/child gates', () => {
     expect(gatesOf(centre(), beside(), Role.CHILD, true)).toEqual(['c-child', 'e-parent']);
   });
 
+  it('a NaN centre (a projection fed a NaN nodeHeight) falls back to the role instead of one fixed pair', () => {
+    const broken = () => makeNode('x', { x: 0, y: Number.NaN });
+    expect(gatesOf(centre(), broken(), Role.PARENT, true)).toEqual(['c-parent', 'x-child']);
+    expect(gatesOf(centre(), broken(), Role.CHILD, true)).toEqual(['c-child', 'x-parent']);
+    expect(gatesOf(broken(), centre(), Role.CHILD, true)).toEqual(['x-child', 'c-parent']);
+  });
+
   it('left/right links keep the friend gates whatever the centres', () => {
     expect(gatesOf(centre(), above(), Role.LEFT, true)).toEqual(['c-friend', 'n-friend']);
     expect(gatesOf(centre(), below(), Role.LEFT, true)).toEqual(['c-friend', 's-friend']);
@@ -160,15 +162,23 @@ describe('3D: the projected centres pick the parent/child gates', () => {
 });
 
 describe('Links.render() hands view3D to every link', () => {
-  it('defaults to 2D and passes true through', () => {
+  it('defaults to 2D and passes true through to each link, one connect per link per render', () => {
     const { ea, gates } = makeEA();
     const links = new Links(plugin);
+    // Two links from the centre whose gates swap in 3D: a parent projected below it, a child projected above it.
     links.addLink(centre(), below(), Role.PARENT, RelationType.DEFINED, 'origin', LinkDirection.TO, ea, settingsStub);
+    links.addLink(centre(), above(), Role.CHILD, RelationType.DEFINED, 'example', LinkDirection.TO, ea, settingsStub);
 
     links.render([]);
-    expect(gates).toEqual([['c-parent', 's-child']]);
+    expect(gates.splice(0)).toEqual([
+      ['c-parent', 's-child'],
+      ['c-child', 'n-parent'],
+    ]);
 
     links.render([], true);
-    expect(gates[1]).toEqual(['c-child', 's-parent']);
+    expect(gates.splice(0)).toEqual([
+      ['c-child', 's-parent'],
+      ['c-parent', 'n-child'],
+    ]);
   });
 });

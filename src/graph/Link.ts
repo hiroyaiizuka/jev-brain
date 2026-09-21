@@ -67,8 +67,9 @@ export class Link {
   }
 
   /**
-   * `view3D`: pick the parent/child gates from the projected centres instead of the role
-   * (see `gateIds()`). The 2D path never passes it, so it keeps the upstream gates.
+   * `view3D`: pick the parent/child gates from the projected centres instead of the role (see
+   * `gateIds()`). Scene passes its `view3D`; while it is false (2D) the centres are not read and
+   * the gates are the upstream ones.
    */
   render(hide: boolean, view3D: boolean = false) {
     const ea = this.ea;
@@ -115,8 +116,9 @@ export class Link {
     switch(this.nodeBRole) {
       case Role.CHILD:
       case Role.PARENT: {
+        // dy > 0: b is below a. 2D (dy stays 0), the same y and a NaN centre all leave it to the role.
         const dy = view3D ? b.getCenter().y - a.getCenter().y : 0;
-        const bBelowA = dy === 0 ? this.nodeBRole === Role.CHILD : dy > 0;
+        const bBelowA = dy > 0 ? true : dy < 0 ? false : this.nodeBRole === Role.CHILD;
         return bBelowA
           ? [a.childGateId, b.parentGateId]
           : [a.parentGateId, b.childGateId];
