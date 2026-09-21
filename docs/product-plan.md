@@ -111,6 +111,8 @@
 - `src/jev/relations.ts`・`log.ts` が `## Relations` 節（無ければ末尾に作る）に `field:: [[X]]` を 1 行追記し（同じ行があれば何もしない、本文は触らない）、`jev-log.json` に記録して行単位・一括単位で取り消せる。手で変わった行は取り消さず Notice。vault スタブで単体テスト。
 - コマンド「Jev: カーソルのリンクに型を付ける（第一候補で確定）」が実機で 1 リンク動き、`## Relations` に行が入って JevBrain の次の描画に反映される（E18、`artifacts/jev-1-e2e/`）。
 
+現在の実装（LEV-169）: `src/jev/relations.ts` の `appendRelation` が `## <設定の見出し>` 節（無ければ末尾に空行付きで作る）の末尾に `field:: [[X]]` を 1 行足し（同じ行が節にあれば何もしない、本文の文章は触らない。`mode: "inline"` は本文の最初の素の `[[X]]` を `(field:: [[X]])` にし、既に `field:: ` や `(field:: ` が付いた `[[X]]` は飛ばす）、`replaceRelation` が既存の行またはインラインのフィールドを置き換える。書き込みは `vault.process` 1 回で、戻り値は書いた場所（行番号・もとの塊・書いた塊）。`src/jev/log.ts` の `appendLogEntry` がそれをプラグインのデータフォルダ（`manifest.dir` を引数で受け取る）の `jev-log.json` に `{ id, batchId, file, line, before, after, at, source }` で足し（一括の並列書き込みで記録が消えないよう読み書きは 1 本に直列化）、`undo(id)`／`undoBatch(batchId)` は書いた塊がそのまま残っているものだけ戻す（一括は後ろから戻すので行番号がずれない。見出しごと足した記録でも、その節に別の行が入っていれば見出しは残す）。手で変わった行と消えたノートは戻さず、件数をまとめて 1 回 Notice に出し、記録も残す。`tests/jev/relations.test.ts` が vault スタブ（`tests/mocks/obsidian.ts` の `VaultStub`: `process` と adapter の `exists`／`read`／`write`）で節あり・節なし・空ノート・重複・inline・付け替え・undo 成功／行が変わった／ノートが無い・undoBatch を固定する。実機は未実施（E18 は LEV-170）。
+
 ### JEV-2 エディタのサジェスター（JEV-1 の後）
 
 - `]]` を閉じた直後に `EditorSuggest` が候補（フィールド・確率・方向、自信なしなら設定順で確率なし）を出し、Enter で `## Relations` に追記、Esc で閉じる。同じノートの同じリンクはセッション中 1 回だけ聞く。設定でオフにできる。
