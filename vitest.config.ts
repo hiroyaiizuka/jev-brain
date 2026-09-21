@@ -13,7 +13,13 @@ export default defineConfig({
     include: ["tests/**/*.test.{ts,mjs}"],
     coverage: {
       provider: "v8",
-      include: ["src/**/*.ts", "scripts/validate-release.mjs", "scripts/version-bump.mjs", "scripts/preflight.mjs"],
+      include: [
+        "src/**/*.ts",
+        "scripts/validate-release.mjs",
+        "scripts/version-bump.mjs",
+        "scripts/preflight.mjs",
+        "scripts/jev-accuracy.mjs",
+      ],
       exclude: ["src/excalibrain-main.ts", "src/lang/locale/**"],
       reporter: ["text", "html"],
     },

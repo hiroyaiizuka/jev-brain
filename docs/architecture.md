@@ -54,4 +54,4 @@ Obsidian metadataCache / Dataview index
 
 ## 5. フォークで変えていないもの
 
-`src/` と `styles.css` の挙動は上流 0.2.18（＋作者による code scanner fixes）のまま。例外は D7（Ontology 読み込みの排他の順序と Up／Down 領域の追加）、D8（関係の定義の重複判定を完全一致に）、D1（`constants.PLUGIN_NAME` を廃止し、`disablePlugin()` に `this.manifest.id` を渡す）。D5 の変更は型のみで、実機での差分確認は未実施（`docs/harness.md` E01〜E11）。Jev 連携（D9）は着手済みで、`src/jev/` の最初のファイルは `collect.ts`（LEV-168。未型付けリンクの収集。D9 の境界がここから実際の制約になる）。まだどこからも呼んでいない。
+`src/` と `styles.css` の挙動は上流 0.2.18（＋作者による code scanner fixes）のまま。例外は D7（Ontology 読み込みの排他の順序と Up／Down 領域の追加）、D8（関係の定義の重複判定を完全一致に）、D1（`constants.PLUGIN_NAME` を廃止し、`disablePlugin()` に `this.manifest.id` を渡す）。D5 の変更は型のみで、実機での差分確認は未実施（`docs/harness.md` E01〜E11）。Jev 連携（D9）は着手済みで、設定（`ExcaliBrainSettings.jev`）と登録の分岐（`registerJev()`。キーが無ければ呼ばない）、`src/jev/client.ts`（通信。LEV-166）と `src/jev/collect.ts`（未型付けリンクの収集。LEV-168）が入っている。D9 の境界はここから実際の制約になる。`collect.ts` はまだどこからも呼んでいない。
