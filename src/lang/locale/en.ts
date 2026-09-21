@@ -211,7 +211,7 @@ export default {
   NAVIGATE_BACK: "Navigate back",
   NAVIGATE_FORWARD: "Navigate forward",
   REFRESH_VIEW: "Refresh",
-  //3D view (Scene.renderGround): compass labels on the ground
+  //3D view (Scene.renderFloor): compass labels at the ends of the floor's cross
   COMPASS_NORTH: "N",
   COMPASS_SOUTH: "S",
   COMPASS_WEST: "W",

@@ -6,11 +6,14 @@ import {
   LevelHierarchy,
   Point,
   ProjectionParams,
-  boundsOf,
   compareDrawOrder,
   floorOf,
+  floorPlan,
   friendBandShift,
   levelOf,
+  pillarTickLevels,
+  FLOOR_LEVEL,
+  floorDrop,
   project,
 } from 'src/graph/Projection';
 
@@ -250,7 +253,7 @@ describe('friendBandShift', () => {
   });
 });
 
-describe('floorOf', () => {
+describe('floorOf (最下段。L ラベルの基準で、描く床は FLOOR_LEVEL)', () => {
   it('is the lowest level on screen, starting from the centre (0) so it is never above 0 and is 0 when empty', () => {
     expect(floorOf([])).toBe(0);
     expect(floorOf([0, 0])).toBe(0);
@@ -306,11 +309,183 @@ describe('compareDrawOrder', () => {
   });
 });
 
-describe('boundsOf (Scene の地面が使う純関数)', () => {
-  it('takes the outer edges of the boxes, adds the margin on all four sides, and is null when empty', () => {
-    expect(boundsOf([])).toBeNull();
-    expect(boundsOf([{ x: 0, y: 0, width: 200, height: 40 }])).toEqual({ minX: -100, maxX: 100, minY: -20, maxY: 20 });
-    expect(boundsOf([{ x: -120, y: -200, width: 200, height: 40 }, { x: 300, y: 0, width: 100, height: 40 }, { x: 0, y: 220, width: 200, height: 40 }], 75))
-      .toEqual({ minX: -295, maxX: 425, minY: -295, maxY: 315 });
+describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
+  // artifacts/3d1-e2e の 2D の中心（友は friendBandShift 後で中心と同じ y −12）= 全ノードの影の足元。nodeHeight 76 が余白とグリッド間隔。
+  const nodeHeight = 76;
+  const origin: Point = { x: 0, y: -12 };
+  const feet: Point[] = [
+    origin,
+    { x: -118, y: -291 }, { x: 118, y: -291 }, // 親
+    { x: -454, y: -12 }, { x: 425, y: -12 }, // 友（東西軸の上）
+    { x: 0, y: 214 }, { x: 280, y: 214 }, { x: -280, y: 214 }, // 子
+  ];
+
+  it('is the smallest rectangle around the feet plus one nodeHeight on every side (the shadows all fit, nothing more)', () => {
+    const plan = floorPlan(feet, origin, nodeHeight);
+    expect(plan.bounds).toEqual({ minX: -454 - 76, maxX: 425 + 76, minY: -291 - 76, maxY: 214 + 76 });
+    for (const foot of feet) {
+      expect(foot.x).toBeGreaterThanOrEqual(plan.bounds.minX + nodeHeight);
+      expect(foot.x).toBeLessThanOrEqual(plan.bounds.maxX - nodeHeight);
+      expect(foot.y).toBeGreaterThanOrEqual(plan.bounds.minY + nodeHeight);
+      expect(foot.y).toBeLessThanOrEqual(plan.bounds.maxY - nodeHeight);
+    }
+  });
+
+  it("puts the cross through the central note's foot, so on screen the friends' shadows sit on its east-west axis, parents' above-right, children's below-left", () => {
+    const plan = floorPlan(feet, origin, nodeHeight);
+    expect(plan.origin).toEqual(origin);
+    expect(plan.origin).not.toBe(origin);
+    // 東西軸 = origin.y の線（W から E まで）、南北軸 = origin.x の線（N から S まで）。
+    expect(plan.compass.west.y).toBe(origin.y);
+    expect(plan.compass.east.y).toBe(origin.y);
+    expect(plan.compass.north.x).toBe(origin.x);
+    expect(plan.compass.south.x).toBe(origin.x);
+    // 床（中心の段）に投影した東西軸は画面で水平。友の足元はその上、親は上（北）、子は下（南）。
+    const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * nodeHeight };
+    const axis = (x: number) => project({ x, y: plan.origin.y }, FLOOR_LEVEL, params);
+    expect(axis(plan.bounds.minX).y).toBe(axis(plan.bounds.maxX).y);
+    const screenY = (foot: Point) => project(foot, FLOOR_LEVEL, params).y;
+    expect(feet.slice(0, 5).map(screenY)).toEqual([axis(0).y, axis(0).y - 291 * 0.3 + 12 * 0.3, axis(0).y - 291 * 0.3 + 12 * 0.3, axis(0).y, axis(0).y]);
+    for (const child of feet.slice(5)) expect(screenY(child)).toBeGreaterThan(axis(0).y);
+  });
+
+  it('spaces the grid one nodeHeight apart from the cross, inside the floor, leaving out the two lines the cross already draws', () => {
+    const plan = floorPlan(feet, origin, nodeHeight);
+    expect(plan.columnXs).toEqual([-456, -380, -304, -228, -152, -76, 76, 152, 228, 304, 380, 456]);
+    expect(plan.rowYs).toEqual([-316, -240, -164, -88, 64, 140, 216]);
+    expect(plan.columnXs).not.toContain(origin.x);
+    expect(plan.rowYs).not.toContain(origin.y);
+    for (const x of plan.columnXs) {
+      expect(x).toBeGreaterThan(plan.bounds.minX);
+      expect(x).toBeLessThan(plan.bounds.maxX);
+      expect(Number.isInteger((x - origin.x) / nodeHeight)).toBe(true);
+    }
+    for (const y of plan.rowYs) {
+      expect(y).toBeGreaterThan(plan.bounds.minY);
+      expect(y).toBeLessThan(plan.bounds.maxY);
+      expect(Number.isInteger((y - origin.y) / nodeHeight)).toBe(true);
+    }
+  });
+
+  it('puts N/S/W/E at the ends of the cross, half a margin outside the edge by default', () => {
+    const plan = floorPlan(feet, origin, nodeHeight);
+    expect(plan.compass).toEqual({
+      north: { x: 0, y: -367 - 38 },
+      south: { x: 0, y: 290 + 38 },
+      west: { x: -530 - 38, y: -12 },
+      east: { x: 501 + 38, y: -12 },
+    });
+  });
+
+  it('takes a separate compass gap so Scene can undo the northRise foreshortening of N/S (same gap on screen as W/E)', () => {
+    const northRise = 0.3;
+    const plan = floorPlan(feet, origin, nodeHeight, nodeHeight, { x: 38, y: 38 / northRise });
+    const params: ProjectionParams = { northShearX: 0.4, northRise, levelHeight: 2.2 * nodeHeight };
+    const edgeN = project({ x: 0, y: plan.bounds.minY }, FLOOR_LEVEL, params);
+    const labelN = project(plan.compass.north, FLOOR_LEVEL, params);
+    expect(edgeN.y - labelN.y).toBeCloseTo(38, 9);
+    const edgeW = project({ x: plan.bounds.minX, y: -12 }, FLOOR_LEVEL, params);
+    const labelW = project(plan.compass.west, FLOOR_LEVEL, params);
+    expect(edgeW.x - labelW.x).toBeCloseTo(38, 9);
+  });
+
+  it('covers the width of the boxes east-west (a wide friend never hides the edge or W/E) but only the feet north-south', () => {
+    const wide = floorPlan([{ x: -454, y: -12, width: 300 }, { x: 0, y: 214, width: 300 }], origin, nodeHeight);
+    expect(wide.bounds.minX).toBe(-454 - 150 - 76);
+    expect(wide.bounds.maxX).toBe(0 + 150 + 76);
+    expect(wide.bounds.minY).toBe(-12 - 76);
+    expect(wide.bounds.maxY).toBe(214 + 76);
+    expect(wide.compass.west.x).toBeLessThan(-454 - 150);
+  });
+
+  it('leaves out grid lines that would lie on the outline, and draws none when the floor is only the margin around the origin', () => {
+    // 足元が余白の端にちょうど乗る: x = 76 の線は内側、−76 と 152 は外周と重なるので描かない
+    const edge = floorPlan([{ x: 76, y: 0 }], { x: 0, y: 0 }, 76);
+    expect(edge.bounds).toEqual({ minX: -76, maxX: 152, minY: -76, maxY: 76 });
+    expect(edge.columnXs).toEqual([76]);
+    expect(edge.rowYs).toEqual([]);
+    const alone = floorPlan([], { x: 10, y: -20 }, 50);
+    expect(alone.bounds).toEqual({ minX: -40, maxX: 60, minY: -70, maxY: 30 });
+    expect(alone.columnXs).toEqual([]);
+    expect(alone.rowYs).toEqual([]);
+    expect(alone.compass.north).toEqual({ x: 10, y: -95 });
+  });
+
+  it('keeps the cross inside the floor even when the origin is not among the feet, and takes a separate margin', () => {
+    const plan = floorPlan([{ x: 300, y: 300 }], { x: 0, y: 0 }, 100, 10);
+    expect(plan.bounds).toEqual({ minX: -10, maxX: 310, minY: -10, maxY: 310 });
+    expect(plan.columnXs).toEqual([100, 200, 300]);
+    expect(plan.compass.east).toEqual({ x: 315, y: 0 });
+  });
+
+  it('draws no grid for a non-positive spacing', () => {
+    for (const spacing of [0, -76, Number.NaN]) {
+      const plan = floorPlan(feet, origin, spacing, 76);
+      expect(plan.columnXs).toEqual([]);
+      expect(plan.rowYs).toEqual([]);
+    }
+  });
+});
+
+describe('pillarTickLevels (柱の目盛り、3d-design §6-2)', () => {
+  it('marks every level strictly between the floor and the box, whichever is higher', () => {
+    expect(pillarTickLevels(1, -1)).toEqual([0]);
+    expect(pillarTickLevels(-1, 1)).toEqual([0]);
+    expect(pillarTickLevels(1, 0)).toEqual([]);
+    expect(pillarTickLevels(-1, 0)).toEqual([]);
+    expect(pillarTickLevels(0, -1)).toEqual([]);
+  });
+
+  it('gives a box on the floor no ticks', () => {
+    expect(pillarTickLevels(-1, -1)).toEqual([]);
+    expect(pillarTickLevels(0, 0)).toEqual([]);
+    expect(pillarTickLevels(1, 1)).toEqual([]);
+  });
+
+  it('is always empty with the three levels around the floor at the centre (FLOOR_LEVEL 0): the pillar itself is the one step', () => {
+    expect(FLOOR_LEVEL).toBe(0);
+    for (const level of [-1, 0, 1] as const) expect(pillarTickLevels(level, FLOOR_LEVEL)).toEqual([]);
+    // 段が増えたとき（§7）に効く: 床から 2 段なら 1 本。
+    expect(pillarTickLevels(1, -1).length + 1).toBe(2);
+  });
+});
+
+describe('floorDrop (床の平面を中心の段から下げる量、3d-design §6-2)', () => {
+  // artifacts/3d1-e2e: nodeHeight 76、levelHeight 2.2 × 76 = 167.2、影の高さ 19。中心の箱 54（fontSize 30）、他 44。
+  const nodeHeight = 76;
+  const levelHeight = 2.2 * nodeHeight;
+  const shadow = 19;
+  const brief = [
+    { level: 0, height: 54 }, // 中心
+    { level: 0, height: 44 }, { level: 0, height: 44 }, // 友
+    { level: 1, height: 44 }, { level: 0, height: 44 }, // 行動デザイン、読書メモ
+    { level: -1, height: 44 }, { level: -1, height: 44 }, { level: -1, height: 44 }, // Down の子
+  ] as const;
+
+  it('lets the shadow touch the bottom of the tallest box on the floor (the centre), so the friends sit just above the plane', () => {
+    const drop = floorDrop(brief, nodeHeight, levelHeight, shadow);
+    expect(drop).toBe(54 / 2 + shadow / 2);
+    // 友の下端（22）は平面（36.5）より上、Down の子の上端（167.2 − 22）はずっと下。
+    expect(44 / 2).toBeLessThan(drop);
+    expect(levelHeight - 44 / 2).toBeGreaterThan(drop + shadow / 2);
+  });
+
+  it('follows the tallest floor box whichever it is (a central font smaller than the friends does not sink them)', () => {
+    expect(floorDrop([{ level: 0, height: 40 }, { level: 0, height: 44 }], nodeHeight, levelHeight, shadow)).toBe(22 + 9.5);
+  });
+
+  it('ignores boxes taller than nodeHeight (the embedded centre) and falls back to nodeHeight when nothing is on the floor', () => {
+    expect(floorDrop([{ level: 0, height: 700 }, { level: 0, height: 44 }], nodeHeight, levelHeight, shadow)).toBe(22 + 9.5);
+    expect(floorDrop([{ level: 0, height: 700 }], nodeHeight, levelHeight, shadow)).toBe(38 + 9.5);
+    expect(floorDrop([], nodeHeight, levelHeight, shadow)).toBe(38 + 9.5);
+    expect(floorDrop([{ level: 1, height: 44 }], nodeHeight, levelHeight, shadow)).toBe(38 + 9.5);
+  });
+
+  it('never drops the plane (plus the shadow) below the top of a box hanging under the floor, at the slider minimum', () => {
+    // levelHeightFactor 1.0・compactingFactor 1.0: nodeHeight ≈ 52.5、箱 45、影 13。
+    const drop = floorDrop([{ level: 0, height: 45 }, { level: -1, height: 45 }], 52.5, 52.5, 13.125);
+    expect(drop).toBeCloseTo(52.5 - 22.5 - 13.125 / 2, 9);
+    expect(drop).toBeLessThan(45 / 2 + 13.125 / 2);
+    expect(floorDrop([{ level: 0, height: 45 }, { level: -1, height: 200 }], 52.5, 52.5, 13.125)).toBe(0);
   });
 });
