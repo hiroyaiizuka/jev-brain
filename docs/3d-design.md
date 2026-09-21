@@ -108,7 +108,7 @@ src/Settings.ts           yaw / levelHeight / depthScale / widthScale / maxItemC
 ## 4. 残る論点
 
 1. **帯の間だけ潰す**の具体: 北の帯（親）・中心の帯（左右友と中心）・南の帯（子）の各帯の内部は 2D の行間のまま、帯と帯の隙間（`parentsOrigoY` と `childrenOrigoY` が作る余白）だけ `depthScale` を掛ける。`compressBands` は各帯の範囲（Layout の `top` と `top + rows·rowHeight`）を受け取って北・南のずれ量を返し、Scene が帯の全ノードに同じ量を足す。兄弟は北の帯の範囲に入れず（親より中心に近い下端を持ちうる）、親と同じ量だけ動かす。帯の中の行間を潰さないので同じ段（同じ level）の箱は重ならない。その代わり画面は 2D より高くなる。3D 用 `maxItemCount3D`（既定 12）で行数を抑える。実機で見て決める。
-   - 未解決（LEV-110 のレビューで判明、3D-3 で扱う）: (a) 同じ帯の隣り合う行に level の違うノードがあると、段差 `levelHeight`（1.5·nodeHeight）が行ピッチ（nodeHeight·cos yaw）より大きいので箱が重なる。`Layout.place()` で行を level 順（持ち上げるノードを帯の外縁側）に並べるのが候補。(b) 帯の圧縮は回転前の y で行うため、ヨー角で x·sin(yaw) が depth に混ざり、x の遠い level 0 の親・子が中心の箱と重なりうる。親 12・子 12 の受入はこの 2 点を含めて実機で確かめる。
+   - 未解決（LEV-110 のレビューで判明）。**(a) と (b) はどちらもこの yaw／`compressBands` の設計のもので、§6 で設計ごと廃止したので閉じている**: (a) は level ≠ 0 が帯を離れた（§6-5）ので帯の行に段が混ざらなくなり、行ピッチの潰れは別の原因として §6-9 で直した。(b) はヨー回転そのものが無くなった。以下は当時の記述。(a) 同じ帯の隣り合う行に level の違うノードがあると、段差 `levelHeight`（1.5·nodeHeight）が行ピッチ（nodeHeight·cos yaw）より大きいので箱が重なる。`Layout.place()` で行を level 順（持ち上げるノードを帯の外縁側）に並べるのが候補。(b) 帯の圧縮は回転前の y で行うため、ヨー角で x·sin(yaw) が depth に混ざり、x の遠い level 0 の親・子が中心の箱と重なりうる。親 12・子 12 の受入はこの 2 点を含めて実機で確かめる。
 2. リンクの見た目は 2D と同じ（色・太さは領域とフィールド別スタイルのまま）。高さの差はリンクの長さに出る。
 3. 逆転の強調（親なのに −1、子なのに +1）は領域で高さが決まるため起きない。外す。
 
@@ -119,7 +119,7 @@ src/Settings.ts           yaw / levelHeight / depthScale / widthScale / maxItemC
 | ONT-1 | Up／Down 領域（`docs/ontology-axis-design.md`）。3D-1 の前提 | 同文書 §4 |
 | 3D-1 | `Projection.ts`（levelOf / project / compressBands）と単体テスト、Layout の分割、Node.level、Scene の分岐、固定ヨー 20°、トグル（デスクトップのみ・非永続）、柱・影・地面、ゲート選び直し、`maxItemCount3D` | ブリーフ §7 の 8 ノート Vault（`up` を Up、`origin` を Parents、`example` を Down に設定）で「行動デザイン」が +1、「読書メモ」が北の地面、「歯磨き」が −1。オフで元の配置。クリックで中心が移る。2D の回帰なし（既存ケース E01〜E03）。親 12・子 12 の fixture で箱が重ならない |
 | 3D-2 | ヨー角の UI（15° 刻み）、設定画面（levelHeight / depthScale / widthScale / showPillars / showGround） | ヨーを変えても 1 回の再描画で済む |
-| 3D-3 | 実測（要素数・描画時間）と重なりの追加対策 | 親 20・子 30 の fixture の記録が `artifacts/` にある |
+| 3D-3 | 実測（要素数・描画時間）と重なりの追加対策 | 大きな fixture（`tests/fixtures/big/大きな脳`。親 27・子 37・友 10）の記録が `artifacts/` にある |
 
 ## 6. フィードバック（2026-09-21）を受けた投影と見た目の作り直し（3D-2）
 
@@ -199,7 +199,7 @@ depth = north                                    描画順は north の大きい
 本人の指定: 「上限5個で折り返すようにしたい。5個以上になったら、ダウンはより下の方に、アップはより上の方に追加されていく」「他のノードたち（チャイルドやペアレント）も増えたときに計算されて積み重なるようになってるよね？アップとダウンも同じような計算で積み重なる形でいいと思う」。
 
 - `Projection.verticalSpread(count, gap, columns)` が `columns`（設定 `verticalColumns`、既定 5）で折り返し、`{dx, row}` を返す。行は 0 が中心にいちばん近い。各行は中央揃えなので、あふれた行が左に寄らない。
-- 行の高さは `rowLift`（設定 `rowLiftFactor × nodeHeight`、既定 1.2 ＝ 92px。スライダーは 0.9〜2.5: 箱の高さ（nodeHeight の約 0.86 倍）より小さいと行が重なり、`upHeightFactor`（3.1）を超えると 1 段ぶんより高くなる）。`liftOf(level, params, row)` が Up は上へ、Down は下へ積む。**段（抽象度、239／283px）より意図的に小さくする**: 帯は「奥・手前」に行を重ねるだけだが、垂直軸は高さ方向に重ねるので、行と段が同じ軸に乗る。行が段と同じ高さだと「もう 1 段抽象度が上がった」ように見えてしまう。
+- 行の高さは `rowLift`（設定 `rowLiftFactor × nodeHeight`、既定 1.2 ＝ 92px。スライダーは 0.9〜2.5: 箱の高さ（`nodeHeight ÷ (1.166 × compactingFactor)`。既定の 1.5 では nodeHeight の約 0.57 倍 ＝ 44px。compactingFactor 1 なら 0.86 倍）より小さいと行が重なり、`upHeightFactor`（3.1）を超えると 1 段ぶんより高くなる）。`liftOf(level, params, row)` が Up は上へ、Down は下へ積む。**段（抽象度、239／283px）より意図的に小さくする**: 帯は「奥・手前」に行を重ねるだけだが、垂直軸は高さ方向に重ねるので、行と段が同じ軸に乗る。行が段と同じ高さだと「もう 1 段抽象度が上がった」ように見えてしまう。
 - 足元（`verticalRow` が返す `center`）はどの行も中心の行のまま。床の広さは足元で決まるので、折り返しても床は横にも縦にも伸びない。
 - 高さの傾き（§6-1）は行にも効く。2 行目は 1 行目よりさらに東（Down は西）へ倒れる。
 - 上限の取り方（`Projection.limitByAxis` と `Scene.limited`）: 3D では垂直軸と床の帯で**別々に**切る。軸は折り返せるので `verticalColumns × VIEW_3D.maxVerticalRows`（5 × 3 ＝ 15）まで、帯は `maxItemCount3D` のまま。1 つの上限を共有して先頭から切ると `Page` の並び順で垂直軸のノードが押し出され（本人の「ダウンを追加してるのに 4 個しか出ない」。子 15 件のうち先頭 12 件が残り `down` は 4 件だけだった）、逆に軸を優先するだけだと軸が上限を使い切って帯が丸ごと消える。2D は今までどおり先頭から。
@@ -209,7 +209,7 @@ depth = north                                    描画順は north の大きい
 
 Up／Down を垂直軸へ抜く（§6-5）と、帯は 2D の格子の穴が開いたままになる。上流の `Layout.place()` は帯の全件数で列を割り当てるので、残ったノードが列の端に取り残される（実機の 8 ノートでは、4 つの親のうち帯に残る `origin` の 1 つが 2 列の東側 ＝ 中心から columnWidth の半分だけ東に立っていた。`leads to` の子 2 つも東へ寄る）。本人の追記 2「平行四辺形に表示するのは Child・Left・Right・Parent」の範囲内で、残ったノードだけを組み直す。
 
-- 純関数 `Projection.regridBand(centers, origin, grid)`（`grid` は帯の `columns`／`columnWidth`／`rowHeight` と、中心にいちばん近い行がどちらの端かを表す `side`）。入力と同じ並びで新しい 2D の中心を返す。`Scene.render3D()` は `place()` の直後、帯を動かす（`bandShift`）前に Parents／Children の帯へ当てる。
+- 純関数 `Projection.regridBand(centers, origin, grid, params)`（`grid` は帯の `columns`／`columnWidth`／`rowHeight` と、中心にいちばん近い行がどちらの端かを表す `side`。`params` は行間を画面基準に戻すのに使う、§6-9）。入力と同じ並びで新しい 2D の中心を返す。`Scene.render3D()` は `place()` の直後、帯を動かす（`bandShift`）前に Parents／Children の帯へ当てる。
 - 東西は行ごとの中央揃えで、`verticalSpread` をそのまま使う（垂直軸と同じ規則。間隔だけ帯の `columnWidth`、中心は中心ノートの x）。満杯の行は `Layout.place()` と同じ位置になり、半端な行が中心を挟んで対称になる。上流の行ベクトル（`Layout.layout()` の `getRowLayout`）は使わない: 半端な行の振り分けが中心に対して非対称で、2 列に 1 つだと西、3 列に 2 つだと東へずれる。
 - 南北は読み順（北から南）のまま `rowHeight` 間隔で、中心にいちばん近い行を、帯が `place()` で占めていた内側の縁に置く。帯は中心から遠ざからず、丸ごと空いた行があればそのぶん中心側へ詰まる。続く `bandShift`（§6-6）は詰めたあとの内側の行から測る（それでも `bandDistance` より遠ければ動かさない）。
 - 列数は帯のまま（残った数から取り直さない）。列数は `Scene.calculateLayoutParams` が帯の全件数から決めていて、友の帯との東西の余白（`leftFriendOrigoX`）もその数で計算済みなので、ここで狭めると帯と友の間だけが空く。
@@ -218,9 +218,27 @@ Up／Down を垂直軸へ抜く（§6-5）と、帯は 2D の格子の穴が開�
 
 ### 6-9. 帯の行間は画面基準（LEV-149）
 
-`regridBand` に渡す `rowHeight` は、2D の値そのままではなく `groundGapNorthSouth` で画面基準に戻す。投影は南北を `northRise`（0.3）倍に縮めるので、2D の `nodeHeight`（77px）のままだと画面の行間が 23px になり、箱の高さ（`nodeHeight` の約 0.86 ＝ 66px）より小さくて行どうしが重なる（§4-1 の未解決 (a)）。戻すと画面の行間が `nodeHeight` になり、大きな fixture（親 27・子 37）で実際に交差する箱が 25 組 → 15 組に減った（`artifacts/3d-band-rows-e2e/record.md`）。
+`regridBand` は渡された `rowHeight`（2D の値）を `groundGapNorthSouth` で画面基準に戻してから行を並べる。投影は南北を `northRise`（0.3）倍に縮めるので、2D の `nodeHeight`（77px）のまま並べると画面の行間が 23px になり、箱の高さ（`nodeHeight ÷ (1.166 × compactingFactor)`。既定では約 44px）より小さくて行どうしが重なる。戻すと画面の行間が `nodeHeight` になる。
 
-そのぶん帯は 2D では奥・手前に伸びる（行数 × 257px）。床は足元を囲むので床も伸び、`zoomToFit` の倍率は下がる。友と兄弟の帯は今のところ補正していない。
+**変換は `regridBand` の中に置く**（LEV-149 のレビュー指摘）。最初は `Scene.render3D` が `groundGapNorthSouth` を掛けて渡していたが、`BandGrid.rowHeight` の型は 2D の値のつもりで書かれていたので契約と使い方が食い違い、次の呼び出し側が 2D の値をそのまま渡せば黙って行が潰れる。純関数の側に寄せたので、呼び出し側は `LayoutSpecification` の値をそのまま渡すだけになり、単体テストが画面の行間 `nodeHeight` を直接見られる（`tests/graph/projection.test.ts`。変換を外すと落ちることを確かめた）。
+
+そのぶん帯は 2D では奥・手前に伸びる（行数 × 257px）。床は足元を囲むので床も伸びる。副作用は 2 つ:
+
+- **Up／Down が床の縁を追い越す**。固定の高さのままだと帯の外側の行が画面で Up 段と同じ高さに来る（既定値・親 12 件 3 列の 4 行で、行 3 が 244px に対し Up 段は 239px）。§6-10 で高さを床の外へ押し上げて直した。この 2 つは切り離せない（行間だけ直すと交差が別の場所に移る）ので同じ PR で入れている。
+- **`zoomToFit` の倍率が下がる**（大きな fixture で 0.243 → 0.207）。LEV-144 が記録した「2D の ±10% 以内」を外れる。床の広さの決め方（§7）と合わせて別チケットで扱う。
+
+友と兄弟の帯は補正していない（`Layout.place()` が 2D の `rowHeight` で並べたまま）。残る重なりはすべてここ。
+
+### 6-10. Up／Down を床の南北の縁の外へ（LEV-151）
+
+本人の指摘（2026-09-22）: 「7 個のアップがある場合、床の上に見えちゃってる」「アップとダウンの数が少ないときは問題ないんだけど、数が多いと床に被ってしまって、『具体と抽象』という縦方向の Z 座標が強調できてない」。
+
+`upHeight`／`downHeight` は設定の固定値（既定 3.1／3.67 × nodeHeight）なので、帯が伸びて床の縁が画面で上下に広がると追い越される。
+
+- 純関数 `Projection.floorEdgesNorthSouth(feetY, originY, {margin, reach})` が床の南北の縁を返す。床の南北は足元の y と寸法だけで決まり、箱の幅は東西にしか効かないので、箱を描く前に縁が出せる。`floorPlan` も南北はこの関数を通すので、余白と `reach` の扱いが 2 か所に分かれない。
+- `Scene.render3D` は縁までの画面の距離（`|edgeY − rootCenter.y| × northRise`）に余白を足した値を `upHeight`／`downHeight` の**下限**として使う。設定値のほうが大きければ設定値が勝つので、ノードが少ない Vault では見え方が変わらない。
+- 足元は `verticalRow` のあとの中心（`floorPlan` に渡すのと同じ値）を使う。移す前の `laid` を使うと、level ≠ 0 のノードが帯にいたときの y で縁が決まり、Up／Down だけの行がある Vault で高さを取りすぎる（LEV-149 のレビュー指摘）。
+- 南の余白は北の 2 倍（`nodeHeight × 2`）。床の平面は `floorDrop`（床の段の箱の下端）ぶん画面で下にずれているので同じ余白だと Down のほうが縁に近く見える。本人の指定「down のメモ達は、全体的に、床のもっと下に位置するように」もここ。
 
 ## 7. 開いている論点（本人に確認）
 

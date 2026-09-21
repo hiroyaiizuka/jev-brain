@@ -179,6 +179,33 @@ export type FloorPlanOptions = {
 };
 
 /**
+ * 床の南北の縁（2D の地面、y は北が負）。足元を余白で囲み、中心から最低 `reach` は広げる（`floorPlan` の南北と同じ規則）。
+ *
+ * 床の南北は足元の y と寸法だけで決まり、箱の幅は東西にしか効かない。だから箱を描く前でも縁が出せる。これを
+ * 使って `render3D` は Up／Down の高さを床の外へ押し上げる（§6-10、LEV-151）。`floorPlan` も南北はこの関数を
+ * 使うので、余白と `reach` の扱いが 2 か所に分かれない。
+ *
+ * `feetY` は垂直軸へ移したあとの中心の y を渡す（level ≠ 0 は中心と同じ行に来るので床の南北には効かない）。
+ * 移す前の帯の位置を渡すと、丸ごと Up／Down の行が縁を決めてしまい、床より北／南で高さを取りすぎる。
+ */
+export const floorEdgesNorthSouth = (
+  feetY: readonly number[],
+  originY: number,
+  options: { margin: number; reach: FloorReach },
+): { north: number; south: number } => {
+  let north = originY;
+  let south = originY;
+  for (const y of feetY) {
+    if (y < north) north = y;
+    if (y > south) south = y;
+  }
+  return {
+    north: Math.min(north - options.margin, originY - options.reach.north),
+    south: Math.max(south + options.margin, originY + options.reach.south),
+  };
+};
+
+/**
  * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の足元（2D の中心。足元は影を描いていた頃と同じ点）と
  * 箱の幅（幅の広い箱が床の東西の縁や W／E を隠さないよう、東西は箱の横幅も覆う。南北は足元だけ）、`origin` は中心ノートの
  * 足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので十字は必ず床の内側にある。
@@ -197,11 +224,11 @@ export const floorPlan = (feet: readonly Foot[], origin: Point, options: FloorPl
   }
   bounds.minX -= margin;
   bounds.maxX += margin;
-  bounds.minY -= margin;
-  bounds.maxY += margin;
-  // 床の最低の広がり（LEV-128）: 足元が北に寄っていても手前に奥行きを出す。足元がこれより外なら足元が勝つ
-  bounds.minY = Math.min(bounds.minY, origin.y - reach.north);
-  bounds.maxY = Math.max(bounds.maxY, origin.y + reach.south);
+  // 南北は `floorEdgesNorthSouth`（余白＋最低の広がり、LEV-128: 足元が北に寄っていても手前に奥行きを出す。
+  // 足元がこれより外なら足元が勝つ）。`render3D` が描画前に縁を読むのと同じ実装を通す（§6-10、LEV-151）
+  const edges = floorEdgesNorthSouth([bounds.minY, bounds.maxY], origin.y, { margin, reach });
+  bounds.minY = edges.north;
+  bounds.maxY = edges.south;
   // 左右の釣り合い（LEV-135）: 「垂直軸（中心ノート）が床の左右の真ん中に来る」よう、足りない側へ広げる（狭めない）。
   // どちらの基準でも、足元や箱の幅の東西の偏り（西と東でラベルの長さが違う Vault）も一緒に打ち消すので床は広くなる（§7 の論点）。
   //   - "centre-line": 平行四辺形の中心線を中心ノートに通す。2D の東西を origin.x 対称にするだけ（傾きは効かない）。
@@ -399,7 +426,11 @@ export type BandGrid = {
   columns: number;
   /** 列の間隔（帯の `columnWidth`。ラベルの長さとフォントから決まる箱の幅＋余白）。 */
   columnWidth: number;
-  /** 行の間隔（帯の `rowHeight`）。 */
+  /**
+   * 行の間隔（帯の `rowHeight`。上流の `LayoutSpecification` の 2D の値をそのまま渡す）。`regridBand` が
+   * `groundGapNorthSouth` で投影の縮みを戻すので、画面ではこの値が行間になる（§6-9、LEV-149）。
+   * 2D の値のまま並べると画面の行間が `northRise` 倍（既定 0.3）に縮んで箱の高さを下回り、行どうしが重なる。
+   */
   rowHeight: number;
   /** 中心にいちばん近い行がどちらの端か: −1 = 北の帯（Parents なら最も南の行）、+1 = 南の帯（Children なら最も北の行）。 */
   side: -1 | 1;
@@ -418,13 +449,21 @@ export type BandGrid = {
  *   ＝ 中心ノートの x。1 行が満杯なら `Layout.place()` と同じ位置になる。上流の `Layout.layout()` の行ベクトル
  *   （`getRowLayout`）は使わない: 半端な行を列に振り分ける作りが中心に対して非対称で、2 列に 1 つだと西、
  *   3 列に 2 つだと東へずれる（この不揃いを直すのがこのチケット）。
- * - 南北は読み順（北から南）のまま `rowHeight` 間隔で、中心にいちばん近い行を `origin.y` に置く。`origin.y` には
+ * - 南北は読み順（北から南）のまま、画面で `rowHeight` になる間隔（`groundGapNorthSouth` で 2D に戻した値、§6-9）で、
+ *   中心にいちばん近い行を `origin.y` に置く。変換をここに置くのは、呼び出し側が 2D の値をそのまま渡して
+ *   画面の行間が潰れる事故を、型と 1 か所の実装で防ぐため（LEV-149 のレビュー指摘）。`origin.y` には
  *   帯が `place()` で占めていた内側の縁を渡すので、帯は中心から遠ざからず、丸ごと空いた行があればそのぶん中心側へ
  *   詰まる。続く `bandShift`（§6-6）は詰めたあとの内側の行から測る（それでも `bandDistance` より遠ければ動かさない）。
  *
  * 並べ替えの基準は入力の中心（行＝北から南、同じ行は西から東）なので、`Layout` が並べたタイトル順がそのまま残る。
  */
-export const regridBand = (centers: readonly Point[], origin: Point, grid: BandGrid): Point[] => {
+export const regridBand = (
+  centers: readonly Point[],
+  origin: Point,
+  grid: BandGrid,
+  params: ProjectionParams,
+): Point[] => {
+  const pitch = groundGapNorthSouth(grid.rowHeight, params);
   const order = centers
     .map((center, index) => ({ center, index }))
     .sort((a, b) => a.center.y - b.center.y || a.center.x - b.center.x);
@@ -436,7 +475,7 @@ export const regridBand = (centers: readonly Point[], origin: Point, grid: BandG
     const fromInner = grid.side < 0 ? rows - 1 - slots[i].row : slots[i].row;
     placed[index] = {
       x: origin.x + slots[i].dx,
-      y: origin.y + grid.side * fromInner * grid.rowHeight,
+      y: origin.y + grid.side * fromInner * pitch,
     };
   });
   return placed;

@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, isOnAxis, levelOf, limitByAxis, project, regridBand, verticalRow } from "./graph/Projection";
+import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorEdgesNorthSouth, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, isOnAxis, levelOf, limitByAxis, project, regridBand, verticalRow } from "./graph/Projection";
 import { zoomTargets } from "./graph/zoom";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, ExcalidrawImperativeAPI, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
@@ -1174,11 +1174,14 @@ export class Scene {
         {
           columns: layout.spec.columns,
           columnWidth: layout.spec.columnWidth,
-          // 行間は画面で `rowHeight` になるよう戻す（§6-9、LEV-149）: 2D の値のまま投影すると南北が northRise 倍に
-          // 縮み、画面の行間（既定 23px）が箱の高さ（nodeHeight の約 0.86 ＝ 66px）より小さくなって行どうしが重なる
-          rowHeight: groundGapNorthSouth(layout.spec.rowHeight, params),
+          // 2D の値をそのまま渡す。画面で `rowHeight` になるよう戻すのは `regridBand`（§6-9、LEV-149）。
+          // 2D のまま投影すると南北が northRise 倍に縮み、画面の行間（既定 23px）が箱の高さ
+          // （nodeHeight ÷ (1.166 × compactingFactor)。既定の 1.5 では nodeHeight の約 0.57 ＝ 44px）より
+          // 小さくなって行どうしが重なる
+          rowHeight: layout.spec.rowHeight,
           side,
         },
+        params,
       );
       onBand.forEach(({node}, i) => regridded.set(node, centers[i]));
     };
@@ -1208,31 +1211,6 @@ export class Scene {
       return { node, level: node.level, center: {x: c.x, y: c.y + shiftOf(layout)} };
     }));
 
-    // 床の縁の外へ（§6-10、LEV-151）: 帯は行数ぶん 2D で奥・手前へ伸び、画面では床の縁が上下に広がる。設定どおりの
-    // 高さのままだと Up／Down が床の内側に描かれ、「具体と抽象が上下に離れている」と読めなくなる（本人の指摘:
-    // 「7 個のアップがある場合、床の上に見えちゃってる」）。床の南北は足元と設定だけで決まり、箱の幅は東西にしか
-    // 効かないので、描画の前に縁までの距離が出せる。設定値は下限として残る（数が少ない Vault では見え方が変わらない）
-    const feetY = laid.map(p => p.center.y);
-    const floorMargin = view3D.floorMarginFactor * this.nodeHeight;
-    const floorNorthY = Math.min(
-      Math.min(rootCenter.y, ...feetY) - floorMargin,
-      rootCenter.y - view3D.floorNorthFactor * this.nodeHeight,
-    );
-    const floorSouthY = Math.max(
-      Math.max(rootCenter.y, ...feetY) + floorMargin,
-      rootCenter.y + view3D.floorSouthFactor * this.nodeHeight,
-    );
-    // 縁までの画面の距離に余白を足した高さ。南の余白を厚くするのは、床の平面が `floorDrop`（床の段の箱の下端、
-    // 約 nodeHeight/2）ぶん画面で下にずれていて、同じ余白だと Down のほうが縁に近く見えるため。本人の指定
-    // （「down のメモ達は、全体的に、床のもっと下に位置するように」）もここに入っている
-    const clearOfFloor = (edgeY: number, clearance: number): number =>
-      Math.abs(edgeY - rootCenter.y) * params.northRise + clearance;
-    params = {
-      ...params,
-      upHeight: Math.max(params.upHeight, clearOfFloor(floorNorthY, this.nodeHeight)),
-      downHeight: Math.max(params.downHeight, clearOfFloor(floorSouthY, this.nodeHeight * 2)),
-    };
-
     // Up／Down は帯を離れて垂直に（§6-5、本人の追記 2）: level ≠ 0 のノードは中心ノートと同じ north の行（床の十字の
     // 東西の線）へ `verticalGapFactor` の間隔で移る。2D では 1 つなら中心の真上・真下（画面では高さの傾きぶん
     // 東／西へ倒れる、LEV-137）。床の平行四辺形に残るのは level 0 だけ
@@ -1245,6 +1223,31 @@ export class Scene {
     );
     // `verticalColumns`（既定 5、本人の指定）で折り返し、あふれた行は `rowLift` ずつ Up は上・Down は下へ積む（LEV-127）
     const placements = verticalRow(laid, rootCenter, verticalGap, view3D.verticalColumns);
+
+    // 床の縁の外へ（§6-10、LEV-151）: 帯は行数ぶん 2D で奥・手前へ伸び、画面では床の縁が上下に広がる。設定どおりの
+    // 高さのままだと Up／Down が床の内側に描かれ、「具体と抽象が上下に離れている」と読めなくなる（本人の指摘:
+    // 「7 個のアップがある場合、床の上に見えちゃってる」）。床の南北は足元と寸法だけで決まり、箱の幅は東西にしか
+    // 効かないので、描画の前に縁までの距離が出せる。設定値は下限として残る（数が少ない Vault では見え方が変わらない）。
+    // 足元は `placements`（垂直軸へ移したあと）の中心で、`floorPlan` に渡すのと同じ値。`laid`（移す前）を使うと
+    // level ≠ 0 の帯の位置が縁を決めてしまい、Up／Down の行だけの帯がある Vault で高さを取りすぎる
+    const floorEdges = floorEdgesNorthSouth(
+      placements.map(p => p.center.y),
+      rootCenter.y,
+      {
+        margin: view3D.floorMarginFactor * this.nodeHeight,
+        reach: {north: view3D.floorNorthFactor * this.nodeHeight, south: view3D.floorSouthFactor * this.nodeHeight},
+      },
+    );
+    // 縁までの画面の距離に余白を足した高さ。南の余白を厚くするのは、床の平面が `floorDrop`（床の段の箱の下端、
+    // 約 nodeHeight/2）ぶん画面で下にずれていて、同じ余白だと Down のほうが縁に近く見えるため。本人の指定
+    // （「down のメモ達は、全体的に、床のもっと下に位置するように」）もここに入っている
+    const clearOfFloor = (edgeY: number, clearance: number): number =>
+      Math.abs(edgeY - rootCenter.y) * params.northRise + clearance;
+    params = {
+      ...params,
+      upHeight: Math.max(params.upHeight, clearOfFloor(floorEdges.north, this.nodeHeight)),
+      downHeight: Math.max(params.downHeight, clearOfFloor(floorEdges.south, this.nodeHeight * 2)),
+    };
 
     // 投影（§6-1）
     const placed: PlacedNode[] = laid.map(({node}, i) => ({

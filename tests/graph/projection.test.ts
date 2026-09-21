@@ -21,6 +21,7 @@ import {
   levelOf,
   FLOOR_LEVEL,
   floorDrop,
+  floorEdgesNorthSouth,
   groundGapNorthSouth,
   project,
   VerticalEntry,
@@ -956,6 +957,42 @@ describe('floorPlan の最低の広がり (3d-design §6-6、LEV-128)', () => {
   });
 });
 
+describe('floorEdgesNorthSouth (床の南北の縁を描画前に読む、3d-design §6-10・LEV-151)', () => {
+  const options = { margin: 50, reach: { north: 400, south: 300 } };
+
+  it('agrees with the floor `floorPlan` actually builds（同じ規則を 2 か所に書かない）', () => {
+    // 受入条件: `render3D` が高さを決めるのに読む縁と、床の外周が、どんな足元でも一致する。
+    const cases: Point[][] = [
+      [{ x: 0, y: -100 }], // 足元が北だけ（reach が勝つ）
+      [{ x: 0, y: -900 }, { x: 0, y: 500 }], // 足元が reach より外（足元が勝つ）
+      [], // 足元なし
+      [{ x: 120, y: 0 }], // 中心と同じ行だけ（level ≠ 0 を垂直軸へ移したあとの形）
+    ];
+    for (const feet of cases) {
+      const plan = floorPlan(feet, { x: 0, y: 0 }, { spacing: 50, ...options });
+      const edges = floorEdgesNorthSouth(feet.map((f) => f.y), 0, options);
+      expect(edges.north).toBe(plan.bounds.minY);
+      expect(edges.south).toBe(plan.bounds.maxY);
+    }
+  });
+
+  it('never lets the centre fall outside the floor', () => {
+    // 十字は中心ノートの足元を通るので、床は必ず中心を含む（`floorPlan` と同じ不変条件）。
+    const edges = floorEdgesNorthSouth([-900, -800], 0, { margin: 0, reach: { north: 0, south: 0 } });
+    expect(edges.north).toBe(-900);
+    expect(edges.south).toBe(0);
+  });
+
+  it('is the distance the axis has to clear（帯が伸びると縁も外へ出る）', () => {
+    // 行間を画面基準に戻すと帯は 2D で 1 行 257px 伸びる（§6-9）。4 行なら縁は 3 × 257 だけ北へ動く。
+    const pitch = 77 / 0.3;
+    const rows = [0, 1, 2, 3].map((row) => -291 - row * pitch);
+    const edges = floorEdgesNorthSouth(rows, 0, { margin: 115, reach: { north: 547, south: 443 } });
+    expect(edges.north).toBeCloseTo(-291 - 3 * pitch - 115, 9);
+    expect(edges.south).toBe(443); // 南は足元が無いので reach のまま
+  });
+});
+
 describe('floorDrop (床の平面を中心の段から下げる量、3d-design §6-2)', () => {
   // artifacts/3d1-e2e: nodeHeight 76、Down の深さ 3.6 × 76 = 273.6。中心の箱 54（fontSize 30）、他 44。
   // 影は LEV-128 で無くなったので、平面は床の段の最も高い箱の下端をそのまま通る。
@@ -1043,25 +1080,31 @@ describe('帯の行間は画面基準 (§6-9、LEV-149)', () => {
     downHeight: DEFAULT_VIEW_3D_SETTINGS.downHeightFactor * nodeHeight,
     rowLift: DEFAULT_VIEW_3D_SETTINGS.rowLiftFactor * nodeHeight,
   };
-  const grid = (rowHeight: number): BandGrid => ({ columns: 2, columnWidth: 236, rowHeight, side: -1 });
+  const grid: BandGrid = { columns: 2, columnWidth: 236, rowHeight: nodeHeight, side: -1 };
   // 2 列 2 行（北の帯の読み順は y 昇順 → 同じ行は西から東）。入力の並びのまま行 0・行 0・行 1・行 1 になる。
   const twoRows = [{ x: -118, y: -368 }, { x: 118, y: -368 }, { x: -118, y: -291 }, { x: 118, y: -291 }];
+  /** 箱の高さ: nodeHeight ÷ (1.166 × compactingFactor)。既定の compactingFactor は 1.5（`Settings.ts`）。 */
+  const boxHeight = nodeHeight / (1.166 * 1.5);
 
-  it('collapses to less than a box height when the 2D row pitch is projected as is (the bug)', () => {
-    const rows = regridBand(twoRows, { x: 0, y: -291 }, grid(nodeHeight));
+  it('keeps a full nodeHeight between rows on screen（帯の `rowHeight` を 2D で渡しても画面で潰れない）', () => {
+    // 受入条件: 呼び出し側は `LayoutSpecification` の 2D の値をそのまま渡す。変換は `regridBand` の中。
+    const rows = regridBand(twoRows, { x: 0, y: -291 }, grid, params);
     const screen = rows.map((c) => project(c, 0, params).y);
-    const pitch = Math.abs(screen[0] - screen[2]); // 行 0 と行 1
-    expect(pitch).toBeCloseTo(nodeHeight * params.northRise, 9); // 23px
-    expect(pitch).toBeLessThan(nodeHeight * 0.86); // 箱の高さより小さい＝重なる
-  });
-
-  it('keeps a full nodeHeight between rows on screen when the pitch is undone first (the fix)', () => {
-    const rows = regridBand(twoRows, { x: 0, y: -291 }, grid(groundGapNorthSouth(nodeHeight, params)));
-    const screen = rows.map((c) => project(c, 0, params).y);
-    expect(Math.abs(screen[0] - screen[2])).toBeCloseTo(nodeHeight, 9);
+    expect(Math.abs(screen[0] - screen[2])).toBeCloseTo(nodeHeight, 9); // 行 0 と行 1
     // 同じ行の 2 つは高さが揃ったまま、東西の並びも変わらない。
     expect(screen[0]).toBe(screen[1]);
     expect(rows[1].x - rows[0].x).toBe(236);
+  });
+
+  it('is what keeps the rows apart: without the undo the screen pitch is under a box height（退行の検知）', () => {
+    // `regridBand` が変換をやめたら（＝ 2D の値のまま並べたら）こうなる、という比較。行間 23px は箱（約 44px）より
+    // 小さいので行どうしが重なる。上のテストはこの値にならないことを見ている
+    const collapsed = regridBand(twoRows, { x: 0, y: -291 }, grid, { ...params, northRise: 1 })
+      .map((c) => project(c, 0, params).y);
+    const pitch = Math.abs(collapsed[0] - collapsed[2]);
+    expect(pitch).toBeCloseTo(nodeHeight * params.northRise, 9); // 23px
+    expect(pitch).toBeLessThan(boxHeight);
+    expect(boxHeight).toBeGreaterThan(nodeHeight * params.northRise);
   });
 });
 
@@ -1075,15 +1118,21 @@ describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-desi
   const north: BandGrid = { columns: 2, columnWidth: 236, rowHeight: 77, side: -1 };
   const south: BandGrid = { columns: 3, columnWidth: 280, rowHeight: 77, side: 1 };
   const centre = 0;
+  /**
+   * 行間の変換（§6-9、LEV-149）を素通しにする params（`northRise` 1 なら `groundGapNorthSouth` は恒等）。
+   * この describe が見ているのは列の組み直しと読み順だけなので、2D の `rowHeight` がそのまま行間になるほうが読める。
+   * 画面基準に戻すこと自体は「帯の行間は画面基準」の describe が見ている。
+   */
+  const flat: ProjectionParams = { northShearX: 0.4, northRise: 1, heightShearX: 0.64, upHeight: 1, downHeight: 1, rowLift: 1 };
 
   it('puts the one parent left on the band（origin）on the true north of the centre note', () => {
     // 受入条件 1: up の 3 つが垂直軸へ抜けたあと、読書メモ：習慣の本 は 2 列の東側（x 118）に取り残されていた。
-    expect(regridBand([{ x: 118, y: -291 }], { x: centre, y: -291 }, north)).toEqual([{ x: centre, y: -291 }]);
+    expect(regridBand([{ x: 118, y: -291 }], { x: centre, y: -291 }, north, flat)).toEqual([{ x: centre, y: -291 }]);
   });
 
   it('puts two parents left on the band either side of the centre', () => {
     // 受入条件 1 の後半。1 行に 2 つなので columnWidth の半分ずつ東西へ。
-    expect(regridBand([{ x: -118, y: -291 }, { x: 118, y: -368 }], { x: centre, y: -291 }, north)).toEqual([
+    expect(regridBand([{ x: -118, y: -291 }, { x: 118, y: -368 }], { x: centre, y: -291 }, north, flat)).toEqual([
       { x: centre + 118, y: -291 }, // 読み順では y −291 が 2 つ目
       { x: centre - 118, y: -291 },
     ]);
@@ -1092,7 +1141,7 @@ describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-desi
   it('centres the two `leads to` children of the south band on the centre note', () => {
     // 受入条件 2: down／example の 3 つが抜けたあと、習慣トラッカー（x 0）と 週次レビュー（x 280）が東へ寄っていた。
     // 残り 2 つで 1 行になり、丸ごと空いた 1 行目のぶん帯の内側の縁（y 214）まで詰める。
-    expect(regridBand([{ x: 0, y: 290 }, { x: 280, y: 290 }], { x: centre, y: 214 }, south)).toEqual([
+    expect(regridBand([{ x: 0, y: 290 }, { x: 280, y: 290 }], { x: centre, y: 214 }, south, flat)).toEqual([
       { x: centre - 140, y: 214 },
       { x: centre + 140, y: 214 },
     ]);
@@ -1102,10 +1151,10 @@ describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-desi
     // 北の帯は最も南の行が中心側なので、読み順の最後の行が `origin.y`。南の帯は最も北の行が中心側。
     const five = [0, 1, 2, 3, 4].map((i) => ({ x: i * 10, y: i }));
     // 北の帯（2 列）は 3 行になり、読み順の最後の行が y −291、外側へ 77 ずつ北へ
-    expect(regridBand(five, { x: centre, y: -291 }, north).map((c) => c.y))
+    expect(regridBand(five, { x: centre, y: -291 }, north, flat).map((c) => c.y))
       .toEqual([-291 - 2 * 77, -291 - 2 * 77, -291 - 77, -291 - 77, -291]);
     // 南の帯（3 列）は 2 行で、読み順の 1 行目が y 214、外側へ 77 南へ
-    expect(regridBand(five, { x: centre, y: 214 }, south).map((c) => c.y)).toEqual([214, 214, 214, 214 + 77, 214 + 77]);
+    expect(regridBand(five, { x: centre, y: 214 }, south, flat).map((c) => c.y)).toEqual([214, 214, 214, 214 + 77, 214 + 77]);
   });
 
   it('reads the band north to south, then west to east（`Layout` が並べたタイトル順のまま）', () => {
@@ -1117,7 +1166,7 @@ describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-desi
       { x: -280, y: 290 }, // 読み順 4
       { x: 0, y: 214 }, // 読み順 2
     ];
-    expect(regridBand(scattered, { x: centre, y: 214 }, south)).toEqual([
+    expect(regridBand(scattered, { x: centre, y: 214 }, south, flat)).toEqual([
       { x: centre + 140, y: 214 + 77 },
       { x: centre - 280, y: 214 },
       { x: centre + 280, y: 214 },
@@ -1130,7 +1179,7 @@ describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-desi
     // `Layout.place()`: center00.x = origoX − (columns−1)/2 × columnWidth、idx 番目は + idx × columnWidth。
     const placeX = (idx: number, grid: BandGrid) => centre - ((grid.columns - 1) / 2) * grid.columnWidth + idx * grid.columnWidth;
     const row = [{ x: -280, y: 214 }, { x: 0, y: 214 }, { x: 280, y: 214 }];
-    expect(regridBand(row, { x: centre, y: 214 }, south).map((c) => c.x)).toEqual([placeX(0, south), placeX(1, south), placeX(2, south)]);
+    expect(regridBand(row, { x: centre, y: 214 }, south, flat).map((c) => c.x)).toEqual([placeX(0, south), placeX(1, south), placeX(2, south)]);
   });
 
   it('puts the innermost row on `origin.y`, so the band never moves away from the centre', () => {
@@ -1138,7 +1187,7 @@ describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-desi
     // ちょうど `distance` まで動かす（丸ごと空いた行があれば帯は中心側へ詰まるので、測る距離は 2D より小さくなる）
     const centerY = -12;
     const distance = 300;
-    const regridded = regridBand([{ x: 118, y: -291 }], { x: centre, y: -291 }, north);
+    const regridded = regridBand([{ x: 118, y: -291 }], { x: centre, y: -291 }, north, flat);
     expect(regridded[0].y).toBe(-291);
     expect(regridded[0].y + bandShift(centerY, regridded[0].y, distance, -1)).toBe(centerY - distance);
   });
@@ -1146,15 +1195,15 @@ describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-desi
   it('never touches the input centres', () => {
     const centres = [{ x: 118, y: -291 }, { x: -118, y: -368 }];
     const before = JSON.stringify(centres);
-    regridBand(centres, { x: centre, y: -291 }, north);
+    regridBand(centres, { x: centre, y: -291 }, north, flat);
     expect(JSON.stringify(centres)).toBe(before);
   });
 
   it('returns an empty band unchanged and falls back to one column on a broken column count', () => {
-    expect(regridBand([], { x: centre, y: -291 }, north)).toEqual([]);
+    expect(regridBand([], { x: centre, y: -291 }, north, flat)).toEqual([]);
     const broken = { ...north, columns: Number.NaN };
     // 1 列 2 行。読み順は北（y −368）が先で、中心にいちばん近い y −291 が最後の行
-    expect(regridBand([{ x: 118, y: -291 }, { x: -118, y: -368 }], { x: centre, y: -291 }, broken)).toEqual([
+    expect(regridBand([{ x: 118, y: -291 }, { x: -118, y: -368 }], { x: centre, y: -291 }, broken, flat)).toEqual([
       { x: centre, y: -291 },
       { x: centre, y: -291 - 77 },
     ]);
@@ -1195,9 +1244,12 @@ describe('regridBand と Layout.place() (8 ノート fixture の帯、LEV-145 �
     const onBand = nodes.filter((node) => !isOnAxis(node.level));
     const ys = nodes.map((node) => node.center.y);
     const innermostY = grid.side < 0 ? Math.max(...ys) : Math.min(...ys);
-    const centres = regridBand(onBand.map((node) => node.center), { x: 0, y: innermostY }, grid);
+    const centres = regridBand(onBand.map((node) => node.center), { x: 0, y: innermostY }, grid, flat);
     return onBand.map((node, i) => ({ title: node.title, center: centres[i] }));
   };
+
+  /** 行間の変換を素通しにする params（上の describe と同じ理由。2D の格子との対応だけを見る）。 */
+  const flat: ProjectionParams = { northShearX: 0.4, northRise: 1, heightShearX: 0.64, upHeight: 1, downHeight: 1, rowLift: 1 };
 
   /** 実測（artifacts/3d2-vertical-e2e）と同じ寸法。origoY は 1 行目が実測の y に来る値。 */
   const baseSpec: LayoutSpecification = { columns: 1, origoX: 0, origoY: 0, top: null, bottom: null, rowHeight: 77, columnWidth: 236, maxLabelLength: 30 };
