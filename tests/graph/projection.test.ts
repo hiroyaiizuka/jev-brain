@@ -4,6 +4,7 @@ import { DEFAULT_VIEW_3D_SETTINGS } from 'src/constants/constants';
 import {
   Level,
   LevelHierarchy,
+  LevelSubject,
   Point,
   ProjectionParams,
   compareDrawOrder,
@@ -15,6 +16,8 @@ import {
   FLOOR_LEVEL,
   floorDrop,
   project,
+  VerticalEntry,
+  verticalRow,
   verticalSpread,
 } from 'src/graph/Projection';
 
@@ -94,11 +97,13 @@ describe('levelOf', () => {
     expect(levelOf('up', Role.PARENT, hierarchy, { isSibling: false })).toBe(1);
   });
 
-  it('gives an unresolved (virtual) page the level of its field, like any other node (§6-5, LEV-124)', () => {
-    // 未解決リンク（本人の画面の `up:: [[aaaa]]`）も Up の親。ページの種類は見ない: `levelOf` に渡すのは
-    // `isSibling` だけで、LEV-110 の「未解決は 0」は LEV-124 でやめた（床の帯ではなく中心の真上に立てる）。
-    expect(levelOf('up', Role.PARENT, hierarchy)).toBe(1);
-    expect(levelOf('example', Role.CHILD, hierarchy)).toBe(-1);
+  it('gives an unresolved (virtual) page the level of its field: LevelSubject has no way to pin it to 0 (§6-5, LEV-124)', () => {
+    // 未解決リンク（本人の画面の `up:: [[aaaa]]`）も Up の親。LEV-110 の「未解決は 0」は LEV-124 でやめた。
+    // `Record<keyof LevelSubject, …>` なので、`isVirtual` のような逃げ道が型に戻るとこのテストがコンパイルで落ちる
+    // （`Scene.addNodes` が `page.isVirtual` を渡す形も一緒に戻ってしまうため）。
+    const subject: Record<keyof LevelSubject, boolean> = { isSibling: false };
+    expect(levelOf('up', Role.PARENT, hierarchy, subject)).toBe(1);
+    expect(levelOf('example', Role.CHILD, hierarchy, subject)).toBe(-1);
   });
 });
 
@@ -285,6 +290,11 @@ describe('verticalSpread (§6-5: Up／Down は帯を離れて中心の真上・�
     }
   });
 
+  it('truncates a non-integer count instead of centring on it (length and centre agree)', () => {
+    expect(verticalSpread(2.5, columnWidth)).toEqual(verticalSpread(2, columnWidth));
+    expect(verticalSpread(-3, columnWidth)).toEqual([]);
+  });
+
   it('lifts two Ups onto one horizontal line straight above the centre, with no north shear', () => {
     // 追記 2 の不具合: 2 つ目の Up が 2D の北の帯（gy −291）のまま投影され、north のぶん右上（平行四辺形の上）に出ていた。
     const centre = project(rootCenter, 0, params);
@@ -313,6 +323,64 @@ describe('verticalSpread (§6-5: Up／Down は帯を離れて中心の真上・�
       // 東西のずれ込みは中心の行と同じ（帯の north が乗らない）ので、足元の間隔は 2D の columnWidth のまま。
       expect(foot.x - centre.x).toBeCloseTo(axis.x - rootCenter.x, 9);
     }
+  });
+});
+
+describe('verticalRow (§6-5: 帯から中心の行へ移すのはどのノードか)', () => {
+  // artifacts/3d2-vertical-e2e の 2D（nodeHeight 76、中心 y −12）。北の帯は 2 列 2 行、南の帯は 3 列 1 行。
+  const rootCenter: Point = { x: 0, y: -12 };
+  const parentWidth = 236;
+  const childWidth = 280;
+  const up = (x: number, y: number): VerticalEntry => ({ level: 1, center: { x, y }, columnWidth: parentWidth });
+  const down = (x: number, y: number): VerticalEntry => ({ level: -1, center: { x, y }, columnWidth: childWidth });
+  const ground = (x: number, y: number): VerticalEntry => ({ level: 0, center: { x, y }, columnWidth: parentWidth });
+
+  it('leaves level 0 where the 2D band put it (the floor parallelogram keeps exactly these)', () => {
+    const entries = [ground(118, -291), ground(-454, -38), ground(425, -38), ground(0, -12)];
+    expect(verticalRow(entries, rootCenter)).toEqual(entries.map((e) => e.center));
+  });
+
+  it('moves the Ups of the real fixture onto the centre row, centred on the centre note', () => {
+    // 実機の 2D（artifacts/3d2-vertical-e2e）: 北の帯は 2 列 2 行で、1 行目（y −368）が 抽象化のはしご・習慣ループ、
+    // 2 行目（y −291）が 行動デザイン・読書メモ：習慣の本。up の 3 つだけが中心の行へ移り、読書メモは帯に残る。
+    const entries = [up(-118, -368), up(118, -368), up(-118, -291), ground(118, -291)];
+    expect(verticalRow(entries, rootCenter)).toEqual([
+      { x: rootCenter.x - parentWidth, y: rootCenter.y }, // 抽象化のはしご（1 行目の西）
+      { x: rootCenter.x, y: rootCenter.y }, // 習慣ループ（1 行目の東）が中心の真上
+      { x: rootCenter.x + parentWidth, y: rootCenter.y }, // 行動デザイン（2 行目）
+      { x: 118, y: -291 },
+    ]);
+  });
+
+  it('reads the band north to south, then west to east, so a two-row band keeps a stable east-west order', () => {
+    // 5 つの Up が 3 列 2 行（行 0: A B C、行 1: D _ E）に置かれた場合。行優先で A B C D E と並ぶ。
+    const rows = [up(-236, -368), up(0, -368), up(236, -368), up(-236, -291), up(236, -291)];
+    const xs = verticalRow(rows, rootCenter).map((c) => c.x);
+    expect(xs).toEqual([-2 * parentWidth, -parentWidth, 0, parentWidth, 2 * parentWidth]);
+    expect(verticalRow(rows, rootCenter).every((c) => c.y === rootCenter.y)).toBe(true);
+  });
+
+  it('spreads Up and Down independently, each with its own band columnWidth', () => {
+    const entries = [up(-118, -291), up(118, -291), down(-280, 214), down(0, 214), down(280, 214)];
+    expect(verticalRow(entries, rootCenter)).toEqual([
+      { x: -parentWidth / 2, y: rootCenter.y },
+      { x: parentWidth / 2, y: rootCenter.y },
+      { x: -childWidth, y: rootCenter.y },
+      { x: 0, y: rootCenter.y },
+      { x: childWidth, y: rootCenter.y },
+    ]);
+  });
+
+  it('puts the middle of an odd group exactly on the centre note (one foot, one shadow — Scene dedupes)', () => {
+    const entries = [up(-118, -291), up(0, -291), up(118, -291)];
+    expect(verticalRow(entries, rootCenter)[1]).toEqual({ ...rootCenter });
+  });
+
+  it('never touches the input centres (Scene keeps the 2D centres for the floor plan)', () => {
+    const entries = [up(-118, -291), ground(118, -291)];
+    const before = JSON.stringify(entries);
+    verticalRow(entries, rootCenter);
+    expect(JSON.stringify(entries)).toBe(before);
   });
 });
 

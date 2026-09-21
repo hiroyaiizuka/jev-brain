@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, levelOf, pillarTickLevels, project, verticalSpread } from "./graph/Projection";
+import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, levelOf, pillarTickLevels, project, verticalRow } from "./graph/Projection";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
@@ -1104,22 +1104,15 @@ export class Scene {
 
     const laid = this.layouts.flatMap(layout => layout.nodes.map(node => {
       const c = node.getCenter();
-      return { node, center: {x: c.x, y: c.y + shiftOf(layout)}, columnWidth: layout.spec.columnWidth };
+      return { node, level: node.level, center: {x: c.x, y: c.y + shiftOf(layout)}, columnWidth: layout.spec.columnWidth };
     }));
 
-    // Up／Down は帯を離れて垂直に（§6-5、本人の追記 2）: level ≠ 0 のノードを中心ノートと同じ north の行（床の十字の
-    // 東西の線）に、2D の x 順で東西等間隔に置き直す。1 つなら中心の真上・真下。床の平行四辺形に残るのは level 0 だけ
-    const verticalLevels = new Set(laid.map(p => p.node.level).filter(level => level !== FLOOR_LEVEL));
-    for (const level of verticalLevels) {
-      const group = laid
-        .filter(p => p.node.level === level)
-        .sort((a, b) => a.center.x - b.center.x || a.center.y - b.center.y);
-      const offsets = verticalSpread(group.length, Math.max(...group.map(p => p.columnWidth)));
-      group.forEach((p, i) => p.center = {x: rootCenter.x + offsets[i], y: rootCenter.y});
-    }
+    // Up／Down は帯を離れて垂直に（§6-5、本人の追記 2）: level ≠ 0 のノードは中心ノートと同じ north の行（床の十字の
+    // 東西の線）へ東西等間隔で移る。1 つなら中心の真上・真下。床の平行四辺形に残るのは level 0 だけ
+    const centres = verticalRow(laid, rootCenter);
 
     // 投影（§6-1）
-    const placed: PlacedNode[] = laid.map(({node, center}) => ({ node, center, projected: project(center, node.level, params) }));
+    const placed: PlacedNode[] = laid.map(({node}, i) => ({ node, center: centres[i], projected: project(centres[i], node.level, params) }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
     // 奥（north 大）から手前へ逐次描く（§6-1）。`floor` は色とラベルの基準（最下段＝L1、§6-3）で、床の平面（`FLOOR_LEVEL`）とは別
@@ -1143,13 +1136,19 @@ export class Scene {
       return {x: p.x, y: p.y + drop};
     };
 
-    // 影は全ノード足元に。柱は床の上に立つ（Up の親）か床の下に吊る（Down の子）。床のノードは柱なし
+    // 影は全ノード足元に。柱は床の上に立つ（Up の親）か床の下に吊る（Down の子）。床のノードは柱なし。
+    // 段の真ん中の Up・Down は中心ノートと足元が重なる（§6-5 の中央揃え）ので、同じ点には影を 1 つだけ描く
     const shadowIds: string[] = [];
     const pillarIds: string[] = [];
+    const shadowed = new Set<string>();
     this.keepingStyle(() => {
       for (const p of boxed) {
         const foot = plane(p.center);
-        shadowIds.push(this.renderShadow(foot));
+        const at = `${Math.round(foot.x)}:${Math.round(foot.y)}`;
+        if(!shadowed.has(at)) {
+          shadowed.add(at);
+          shadowIds.push(this.renderShadow(foot));
+        }
         if(p.node.level !== FLOOR_LEVEL) {
           pillarIds.push(...this.renderPillar(p.box, p.node, foot, params.levelHeight));
         }
