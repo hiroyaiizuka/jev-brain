@@ -66,6 +66,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 - `Pages`／`Page` の関係判定は `plugin.settings`・`metadataCache`・Dataview API に依存する。テスト用の最小 plugin スタブを作るのは H1 の候補。
 - `Scene`・`Node`・`Link` の描画と、`Layout` が描く側（`node.render()` の中身）は ExcalidrawAutomate に依存する。Mappy のようなブラウザ検証ページは、Excalidraw 本体を外せないため今は作らない。
 - `Scene` の 3D 分岐（LEV-112: 帯の圧縮のずれ適用・投影・depth 順の描画・地面・影・柱）は EA の `addLine`／`addEllipse`／`addText` で描くので実機のみ（LEV-115）。純関数の部分（`levelOf`／`compressBands`／`extentOf`／`project`／`groundLevelOf`／`boundsOf`）は `Projection` のテストで固定済み。
+- `ToolsPanel` の 3D トグル（LEV-114: `ea.DEVICE?.isDesktop` のときだけ作る `ToggleButton`、`scene.view3D` の切替、`setVal` が false を返して保存しないこと）は Obsidian の DOM（`createDiv`／`setIcon`）と `PageSuggest`／`LinkTagFilter` に依存するので実機のみ（LEV-115 で見る: トグルで 3D／2D が切り替わり、再起動後は 2D。17 個目のボタンと 3 本目の区切り線が `.excalibrain-buttons` の `max-width: 37em` に収まるか（収まらなければ `styles.css` で広げる）。描画中に 3D を連打しても要素が二重にならないか。`autoOpenCentralDocument` が on のとき 3D の切替で中心ノートが開くのは他のトグルと同じ挙動）。
 
 ### Obsidian 実機の初回準備
 

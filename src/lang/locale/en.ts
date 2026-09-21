@@ -234,4 +234,5 @@ export default {
     "A field listed both here and under Children is kept here and removed from Children the next time the settings are loaded.",
   LINKSTYLE_UP: "Style of Up (abstract) links",
   LINKSTYLE_DOWN: "Style of Down (concrete) links",
+  TOGGLE_3D_VIEW: "Toggle 3D view. Up parents are raised, Down children lowered, everything else stays on the ground. Not saved: ExcaliBrain always starts in 2D.",
 }

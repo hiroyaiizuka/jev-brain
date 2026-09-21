@@ -469,6 +469,35 @@ export class ToolsPanel {
       })
     );
 
+    // ------------
+    // 3D view (docs/3d-design.md §0, §3-3). Desktop only; the state lives on the Scene
+    // and is never saved, so ExcaliBrain always starts in 2D. The index is unchanged by
+    // the toggle, so reRender(false) is enough to switch the render path.
+    // ------------
+    if(this.plugin.EA?.DEVICE?.isDesktop) {
+      addVerticalDivider(buttonsWrapperDiv);
+      this.buttons.push(
+        new ToggleButton({
+          plugin: this.plugin,
+          getVal: () => this.plugin.scene?.view3D ?? false,
+          setVal: (val: boolean) => {
+            if(this.plugin.scene) this.plugin.scene.view3D = val;
+            return false;
+          },
+          wrapper: buttonsWrapperDiv,
+          options: {
+            display: "3D",
+            icon: {
+              on: "lucide-box",
+              off: "lucide-square",
+            },
+            tooltip: t("TOGGLE_3D_VIEW"),
+          },
+          updateIndex: false,
+        })
+      );
+    }
+
     this.contentEl.appendChild(this.wrapperDiv);
   }
 
