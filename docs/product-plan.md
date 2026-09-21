@@ -33,7 +33,7 @@
 - `npm run harness:prepare` → Dataview／Excalidraw を手で入れる → `npm run harness:preflight` が通り、`Fixtures/` のグラフが実機で E01 の通りに出る。
 - `AGENTS.md`・`docs/` が揃い、Linear の起票テンプレートが使える。
 
-現在の実装: check・CI・test-vault・docs は main（b94bdc3）に入っている。実機の E01〜E11 は未実施（LEV-105）。Linear の Project「Jevbrain」は作成済み。
+現在の実装: check・CI・test-vault・docs は main に入っている。実機は 2026-09-21 に E01〜E07・E09・E10 を確認（`artifacts/h0-e2e/record.md`、LEV-105）。E05 の右クリック表示は本人の目視待ち、E08 は上流に UI が無く対象外、E11・E12 は未実施。Linear の Project「Jevbrain」は作成済み。
 
 ### ONT-1 Up／Down 領域
 

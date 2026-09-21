@@ -86,19 +86,21 @@ npm run harness:preflight
 
 その後、専用 Obsidian 環境で ExcaliBrain だけを再読込して対象画面を開き直す。`preflight` の成功だけでは実行中コードの更新は確認できないので、新しい表示・操作も確認する。
 
+検証用 Obsidian は Mappy と同じもの（`projects/Mappy/artifacts/obsidian-profile` のプロファイル、CDP ポート 9231）で、この Vault を開いておく。エージェントは `artifacts/e2e/cdp.mjs`（Mappy の `lev-71-map-search-e2e/cdp.mjs` を Vault パスだけ変えて複製。gitignore 内）で renderer に JS を流し、`node artifacts/e2e/cdp.mjs eval <probe.js> <out.json>` と `shot <out.png>` で結果と画面を取る。プローブでは `app.workspace.getLeaf(false)` を使わない（brain のリーフを返して scene を閉じる）。E01〜E10 の一式は `artifacts/e2e/*.js`。
+
 | ID | 実機ケース | 期待する結果 |
 | --- | --- | --- |
-| E01 | `Fixtures/Foundation` を中心に開く | 親に Isaac Asimov（Author）と Science Fiction（Genre）、右友に Foundation and Empire（next）、子に Psychohistory（ゴースト）と Robot Series（推論）が出る |
+| E01 | `Fixtures/Foundation` を中心に開く | 既定のオントロジーでは `Author::` `Genre::` はフィールドとして扱われず推論リンクになる。北に Reading List（片方向リンクの推論の親）、左に Isaac Asimov・Science Fiction・Robot Series（相互リンク＝左友）、東に Foundation and Empire（`next::`）、南に Psychohistory（ゴースト）。確認 2026-09-21（`artifacts/h0-e2e/record.md`） |
 | E02 | ノードをクリック／Shift＋クリック | クリックで中心が移り履歴に積まれる。ゴースト Psychohistory の Shift＋クリックで新規ノート作成のプロンプトが出る |
 | E03 | 戻る／進む（HistoryPanel） | 直前の中心に戻り、進むで復帰。中心ノードのファイルが開く設定なら同期して開く |
-| E04 | `Reading List` を開く | `https://www.gutenberg.org/` が URL ノードとして子に出る。origin ノードが有効なら gutenberg.org の下に並ぶ |
-| E05 | エディタで `Author:: ` の行を右クリック | 「Add "Author" to ExcaliBrain Ontology」が出て、選ぶと Ontology に追加され設定に反映される |
+| E04 | `Reading List` を開く | `https://www.gutenberg.org` が URL ノードとして子の行に出る（origin ノードは出ない）。確認 2026-09-21 |
+| E05 | エディタで `Author:: ` の行を右クリック | 「Add "Author" to ExcaliBrain Ontology」が出て、選ぶと Ontology に追加され設定に反映される。`editor-menu` の項目追加は 2026-09-21 に確認済み。右クリックの表示自体は自動化できないので本人の目視 |
 | E06 | フォルダ／タグノードの表示切替 | ツールパネルのトグルでフォルダ・タグのノードが出入りし、レイアウトが崩れない |
 | E07 | 推論リンクの表示切替 | Robot Series（推論の子）が消え、定義済みの関係だけ残る |
-| E08 | Power filter | 指定タグのノードだけ残る。解除で戻る |
+| E08 | Power filter | 対象外。ツールパネルのボタンは上流でコメントアウトされていて UI が無い（設定 `applyPowerFilter` だけ残る） |
 | E09 | 設定画面を開く | 全セクションが描画され、ノード／リンクのデモ画像が更新される |
 | E10 | Excalidraw を無効化して起動 | 起動せず警告 Notice。有効化後に復帰する |
-| E11 | Dataview のインデックス更新中に起動 | 待機の Notice が出て、完了後にグラフが描画される |
+| E11 | Dataview のインデックス更新中に起動 | 待機の Notice が出て、完了後にグラフが描画される。自動では再現できない（再インデックスを起動と同時に強制する手段が無い）。大きな Vault で本人が試す |
 | E12 | モバイル（`isDesktopOnly: false`） | 未実施。証跡が揃うまで対応と言わない |
 
 ## 証跡
