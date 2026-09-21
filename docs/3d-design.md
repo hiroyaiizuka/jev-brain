@@ -59,6 +59,8 @@ Evergreens の `hierarchyLinkStyles` で色・太さを変えているフィー�
 
 ### 3-2. 投影
 
+（2026-09-21 のフィードバックで §6-1 の斜投影に置き換え。以下は 3D-1 で実装した yaw 回転の記録。）
+
 ```text
 // center: Layout が決めた 2D の中心（中心ノート原点）。level: −1 / 0 / +1。
 depthScale（既定 0.38）は帯の「間」にだけ掛ける（§4-1）。
@@ -116,3 +118,49 @@ src/Settings.ts           yaw / levelHeight / depthScale / widthScale / maxItemC
 | 3D-1 | `Projection.ts`（levelOf / project / compressBands）と単体テスト、Layout の分割、Node.level、Scene の分岐、固定ヨー 20°、トグル（デスクトップのみ・非永続）、柱・影・地面、ゲート選び直し、`maxItemCount3D` | ブリーフ §7 の 8 ノート Vault（`up` を Up、`origin` を Parents、`example` を Down に設定）で「行動デザイン」が +1、「読書メモ」が北の地面、「歯磨き」が −1。オフで元の配置。クリックで中心が移る。2D の回帰なし（既存ケース E01〜E03）。親 12・子 12 の fixture で箱が重ならない |
 | 3D-2 | ヨー角の UI（15° 刻み）、設定画面（levelHeight / depthScale / widthScale / showPillars / showGround） | ヨーを変えても 1 回の再描画で済む |
 | 3D-3 | 実測（要素数・描画時間）と重なりの追加対策 | 親 20・子 30 の fixture の記録が `artifacts/` にある |
+
+## 6. フィードバック（2026-09-21）を受けた投影と見た目の作り直し（3D-2）
+
+本人の指摘（`docs/3d-feedback-2026-09-21.md`、模式図 `docs/images/3d-feedback-mock-2026-09-21.png`）で、§3-2 の yaw 回転は廃止し、次に置き換える。§3-2 と §4-1 の帯の圧縮も使わない。
+
+### 6-1. 斜投影（キャビネット図法）
+
+```text
+// gx, gy: Layout が決めた 2D の中心（中心ノート原点、gy は北が負）
+north  = -gy
+floor  = 画面内の最小 level（Down の子があれば −1、無ければ 0）
+height = (level - floor) · levelHeight          levelHeight = levelHeightFactor · nodeHeight（既定 2.2）
+x = gx + north · northShearX                    既定 0.40
+y = -(north · northRise) - height               既定 0.30。中心ノートの足元が原点
+depth = north                                   描画順は north の大きい順（奥 → 手前）
+```
+
+- 東西は水平のまま（2D の横並びが崩れない）。抽象度は真上。南北は右上がりの斜め（北が右上・奥、南が左下・手前）。
+- `northShearX` / `northRise` / `levelHeightFactor` は設定（型・既定値・設定画面の「3D view」節）。視点の切り替え（ヨー角）は作らない。
+- フレンドと中心は同じ `north`・同じ level なので画面上で水平一直線に並ぶ。親の影は右上、子の影は左下に落ちる。
+
+### 6-2. 床・柱・影
+
+- 床は全ノードの影が収まる最小の平行四辺形（余白は nodeHeight 1 つ分）。東西・南北のグリッド線を薄く引き、中心ノートの足元を通る東西軸・南北軸だけ少し太くする（床の十字）。N／S／W／E のラベルは十字の両端。
+- 柱は背景に対してはっきり見える色・太さ（テキスト色、不透明度 60%、太さ 2、破線）で、1 段ごとに短い横線の目盛りを入れる。
+- 影は全ノード同じ小さな楕円で、柱の下端（足元）に置く。床にいるノード（level = floor）は柱なし、箱のすぐ下に接地影。
+- 重ね順: 床 → グリッド → 十字 → 影 → 柱 → リンク → ノード。
+
+### 6-3. 3D のときだけ脇役を引っ込め、高さを二重に符号化する
+
+- リンクは細く薄く（太さ 1、不透明度 50%）、ゲートではなくノードの中心同士を結び、ノードより先に描く（箱の下に隠れる）。LEV-113 のゲート選び直しは 3D では使わなくなる。
+- ゲートの小円とリンク本数の数字は 3D では描かない。
+- ノードの背景色を level 別にする（設定 `levelColors`、既定は模式図の 4 段: L1 淡 → L4 濃）。箱の肩に「L1」のようなラベルを小さく付ける。表示するレベルは `level − floor + 1`（床が L1）。
+
+### 6-4. 変更の入れ方
+
+| チケット | 当たり所 |
+| --- | --- |
+| 3D-2-1 投影と描画順 | `src/graph/Projection.ts`（`project` を書き換え、`compressBands` と yaw の引数を削除）、`src/Scene.ts`（設定値の受け渡し、north 降順）、`src/Settings.ts`（型・既定値・「3D view」節）、`en.ts`、`tests/graph/projection.test.ts` |
+| 3D-2-2 床・柱・影 | `src/Scene.ts` の床・柱・影の描画（3D-2-1 の後） |
+| 3D-2-3 リンク・ゲート・色・ラベル | `src/graph/Link.ts`、`src/graph/Node.ts`、`src/Settings.ts`（`levelColors`）、`tests/graph/link-gates.test.ts` の置き換え（3D-2-1 の後。3D-2-2 と並走可） |
+| 3D-2-4 実機 | フィードバックの「合格の目安」4 点を CDP と本人の目視で |
+
+## 7. 開いている論点（本人に確認）
+
+- 模式図では「朝のルーティン手順（down）」が L2、「歯磨き後に腕立て／9月20日 朝ランの記録（example）」が L1 と段が分かれているが、今の高さは Up +1／Down −1／他 0 の 3 段で、`down` も `example` も同じ床に置かれる。段を分けるなら (a) Down の中で `down` を −1、`example` を −2 にする第 3 の領域を足す、(b) フィールドごとに段を設定できるようにする、のどちらか。3D-2 では 3 段のまま進め、決まったら別チケット。
