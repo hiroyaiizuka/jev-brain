@@ -155,3 +155,47 @@ export function requestUrl(call: RequestUrlCall): Promise<RequestUrlReply> {
   requestUrlMock.calls.push(call);
   return requestUrlMock.respond(call, index);
 }
+
+// ---- LEV-169 ----
+
+/**
+ * The vault surface `src/jev/relations.ts` and `src/jev/log.ts` touch: atomic note edits through
+ * `process`, and the plugin's own data folder (`jev-log.json`) through the adapter. All in memory.
+ */
+export class VaultStub {
+  /** Note path -> body. */
+  readonly notes: Map<string, string>;
+  /** Adapter path -> content: the files outside the vault's file list, such as `jev-log.json`. */
+  readonly dataFiles = new Map<string, string>();
+
+  readonly adapter = {
+    exists: (path: string): Promise<boolean> => Promise.resolve(this.dataFiles.has(path)),
+    read: (path: string): Promise<string> => {
+      const data = this.dataFiles.get(path);
+      return data === undefined
+        ? Promise.reject(new Error(`no such file: ${path}`))
+        : Promise.resolve(data);
+    },
+    write: (path: string, data: string): Promise<void> => {
+      this.dataFiles.set(path, data);
+      return Promise.resolve();
+    },
+  };
+
+  constructor(notes: Record<string, string> = {}) {
+    this.notes = new Map(Object.entries(notes));
+  }
+
+  getAbstractFileByPath(path: string): TFile | null {
+    if (!this.notes.has(path)) return null;
+    const file = new TFile();
+    file.path = path;
+    return file;
+  }
+
+  process(file: TFile, fn: (data: string) => string): Promise<string> {
+    const data = fn(this.notes.get(file.path) ?? '');
+    this.notes.set(file.path, data);
+    return Promise.resolve(data);
+  }
+}
