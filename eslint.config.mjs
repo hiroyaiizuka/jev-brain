@@ -52,11 +52,6 @@ export default defineConfig(
   // 上流のコードにある指摘を、ファイル単位でだけ止める。新しいファイルには適用されない。
   // 該当ファイルを直したらその行を消す。件数と扱いは docs/harness.md「lint のベースライン」。
   {
-    // 恒久: command ID を変えると既存ユーザーのホットキーと obsidian:// URI が壊れる。
-    files: ["src/excalibrain-main.ts"],
-    rules: { "obsidianmd/commands/no-plugin-id-in-command-id": "off" },
-  },
-  {
     // UI 文言の大文字小文字。24 言語の locale と一緒に決める（product-plan H1）。
     files: ["src/Scene.ts", "src/Settings.ts", "src/excalibrain-main.ts", "src/utils/Prompts.ts"],
     rules: { "obsidianmd/ui/sentence-case": "off" },

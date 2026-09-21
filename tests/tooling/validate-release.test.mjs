@@ -20,7 +20,7 @@ function changeJson(filename, update) {
 }
 
 function addArtifacts() {
-  const directory = join(root, 'dist', 'excalibrain');
+  const directory = join(root, 'dist', 'jevbrain');
   mkdirSync(directory, { recursive: true });
   writeFileSync(join(root, 'main.js'), 'module.exports = {};\n');
   writeFileSync(join(root, 'styles.css'), '.excalibrain { color: var(--text-normal); }\n');
@@ -30,19 +30,19 @@ function addArtifacts() {
 }
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'excalibrain-release-test-'));
-  writeJson('package.json', { name: 'excalibrain-dev', version: '0.1.0' });
+  root = mkdtempSync(join(tmpdir(), 'jevbrain-release-test-'));
+  writeJson('package.json', { name: 'jevbrain-dev', version: '0.1.0' });
   writeJson('manifest.json', {
-    id: 'excalibrain', name: 'ExcaliBrain', version: '0.1.0', minAppVersion: '1.6.7',
+    id: 'jevbrain', name: 'JevBrain', version: '0.1.0', minAppVersion: '1.6.7',
     description: 'Edit notes as mind maps.', author: 'Example author', isDesktopOnly: false,
   });
   writeJson('versions.json', { '0.1.0': '1.6.7' });
   writeJson('package-lock.json', {
-    name: 'excalibrain-dev', version: '0.1.0', lockfileVersion: 3,
-    packages: { '': { name: 'excalibrain-dev', version: '0.1.0' } },
+    name: 'jevbrain-dev', version: '0.1.0', lockfileVersion: 3,
+    packages: { '': { name: 'jevbrain-dev', version: '0.1.0' } },
   });
   writeFileSync(join(root, 'LICENSE'), 'Test license\n');
-  writeFileSync(join(root, 'README.md'), '# ExcaliBrain\n');
+  writeFileSync(join(root, 'README.md'), '# JevBrain\n');
 });
 
 afterEach(() => {
@@ -69,6 +69,8 @@ describe('release metadata validation', () => {
     }
   });
 
+  // 以下 3 つの it.each のサンプルは validator の却下規則そのものを見るためのもので、
+  // このプロジェクトの plugin ID とは無関係。ID を変えても追従しない（`excalibrain` のままでよい）。
   it.each(['../other', 'a/b', 'a\\b', '/tmp/excalibrain', '..', '', 'excalibrain2'])('rejects unsafe or invalid plugin ID %j', (id) => {
     changeJson('manifest.json', (manifest) => { manifest.id = id; });
     const errors = validateRelease(root, { artifacts: true });
@@ -159,22 +161,22 @@ describe('distribution artifact validation', () => {
   it('detects stale JavaScript, manifest, and stylesheet independently', () => {
     addArtifacts();
     for (const filename of ['main.js', 'manifest.json', 'styles.css']) {
-      writeFileSync(join(root, 'dist', 'excalibrain', filename), 'stale\n');
+      writeFileSync(join(root, 'dist', 'jevbrain', filename), 'stale\n');
     }
     const errors = validateRelease(root, { artifacts: true });
     expect(errors).toHaveLength(3);
     for (const filename of ['main.js', 'manifest.json', 'styles.css']) {
-      expect(errors).toContain(`dist/excalibrain/${filename}: contents must match the root ${filename}.`);
+      expect(errors).toContain(`dist/jevbrain/${filename}: contents must match the root ${filename}.`);
     }
   });
 
   it('rejects missing and empty distribution artifacts', () => {
     addArtifacts();
-    rmSync(join(root, 'dist', 'excalibrain', 'main.js'));
-    writeFileSync(join(root, 'dist', 'excalibrain', 'styles.css'), '\n');
+    rmSync(join(root, 'dist', 'jevbrain', 'main.js'));
+    writeFileSync(join(root, 'dist', 'jevbrain', 'styles.css'), '\n');
     expect(validateRelease(root, { artifacts: true })).toEqual(expect.arrayContaining([
-      'dist/excalibrain/main.js: file is missing.',
-      'dist/excalibrain/styles.css: must not be empty.',
+      'dist/jevbrain/main.js: file is missing.',
+      'dist/jevbrain/styles.css: must not be empty.',
     ]));
   });
 });
@@ -192,7 +194,7 @@ describe('validation CLI', () => {
   it('honors --artifacts and rejects unknown options instead of silently skipping a check', () => {
     const missingArtifacts = spawnSync(process.execPath, [cliPath, '--artifacts'], { cwd: root, encoding: 'utf8' });
     expect(missingArtifacts.status).toBe(1);
-    expect(missingArtifacts.stderr).toContain('dist/excalibrain/main.js: file is missing');
+    expect(missingArtifacts.stderr).toContain('dist/jevbrain/main.js: file is missing');
 
     const unknownOption = spawnSync(process.execPath, [cliPath, '--artifact'], { cwd: root, encoding: 'utf8' });
     expect(unknownOption.status).toBe(1);

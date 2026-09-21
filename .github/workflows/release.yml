@@ -46,11 +46,11 @@ jobs:
       - run: npm run check
       - uses: actions/upload-artifact@v4
         with:
-          name: excalibrain-${{ steps.version.outputs.version }}
+          name: jevbrain-${{ steps.version.outputs.version }}
           path: |
-            dist/excalibrain/main.js
-            dist/excalibrain/manifest.json
-            dist/excalibrain/styles.css
+            dist/jevbrain/main.js
+            dist/jevbrain/manifest.json
+            dist/jevbrain/styles.css
           if-no-files-found: error
 
   release:
@@ -64,8 +64,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: excalibrain-${{ needs.build.outputs.version }}
-          path: dist/excalibrain
+          name: jevbrain-${{ needs.build.outputs.version }}
+          path: dist/jevbrain
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,4 +78,4 @@ jobs:
           esac
           gh release create "$GITHUB_REF_NAME" $prerelease \
             --verify-tag --title "$GITHUB_REF_NAME" --generate-notes \
-            dist/excalibrain/main.js dist/excalibrain/manifest.json dist/excalibrain/styles.css
+            dist/jevbrain/main.js dist/jevbrain/manifest.json dist/jevbrain/styles.css

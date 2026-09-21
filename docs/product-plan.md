@@ -62,6 +62,8 @@
 - plugin ID と名前を決める（上流と同じ `excalibrain` のままなら上流版と同時インストール不可）。
 - `npm version x.y.z` → tag → Release → BRAT で導入できる。`artifacts/` に導入の記録。
 
+現在の実装（LEV-147）: plugin ID を `jevbrain`、名前を JevBrain、作者を Hiroya Iizuka にした（`manifest.json`、`package.json`＋lock、`disablePlugin()` に渡す自分の ID（`constants.PLUGIN_NAME` をやめて `this.manifest.id`）、`scripts/preflight.mjs`、`release.yml`／`check.yml` の artifact 名と `dist/jevbrain/`、tooling テストのサンプル）。上流版（`excalibrain`）と ID が違うので別プラグインとして入る（実機での同時インストールは未確認。既定の図面ファイルがどちらも `excalibrain.md` なので、並べて使うには片方の設定を変える）。command ID `excalibrain-*`・CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の表示文字列は互換のため据え置き（表示名の置き換えは別チケット）。ID が変わって `obsidianmd/commands/no-plugin-id-in-command-id` が指摘しなくなったので、lint のベースラインから外した（`harness.md` の表も）。BRAT 配布は Jev の実装後まで保留で、Release はまだ作っていない。
+
 ### 3D-2 見た目の作り直し（本人のフィードバック 2026-09-21）
 
 受入条件は `docs/3d-feedback-2026-09-21.md`「合格の目安」と `docs/3d-design.md` §6:
@@ -84,7 +86,7 @@
 
 ### H1 引き継ぎコードの整地（3D-1 の後）
 
-- `eslint.config.mjs` の「引き継ぎ時のベースライン」ブロックが空になる（恒久の command ID を除く）。
+- `eslint.config.mjs` の「引き継ぎ時のベースライン」ブロックが空になる。
 - `tsconfig` に `strict: true` が入り `npm run typecheck` が通る。
 - 設定画面の見出しを `Setting.setHeading()` に変え、実機（E09）で確認して証跡を残す。
 - `Pages`／`Page` の関係判定に plugin スタブ付きの単体テストが付く。

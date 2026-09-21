@@ -1,11 +1,10 @@
 {
-  "id": "excalibrain",
-  "name": "ExcaliBrain",
+  "id": "jevbrain",
+  "name": "JevBrain",
   "version": "0.2.18",
   "minAppVersion": "1.8.7",
-  "description": "A clean, intuitive and editable graph view.",
-  "author": "Zsolt Viczian",
-  "authorUrl": "https://community.sketch-your-mind.com",
-  "fundingUrl": "https://ko-fi.com/zsolt",
+  "description": "A clean, intuitive and editable graph view with a 3D abstraction axis. A fork of ExcaliBrain.",
+  "author": "Hiroya Iizuka",
+  "authorUrl": "https://github.com/hiroyaiizuka",
   "isDesktopOnly": false
 }

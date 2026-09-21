@@ -15,9 +15,9 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 | 型検査 | `npm run typecheck` | 上流設定＋`noImplicitAny`、switch の fallthrough、Bundler 解決。strict は未導入（下記） |
 | 単体テスト | `npm test` | リリース検証・バージョン更新・release.yml の形・preflight／Vault 準備の安全性、URL 抽出、ファイル名、Ontology の領域判定、Layout の配置（列・行・top/bottom）と描画順、3D の投影（高さ・回転・帯の圧縮） |
 | production bundle | `npm run build` | ブラウザ互換 CJS バンドル（`main.js`）。Obsidian 提供 API は external |
-| 配布物 | `npm run package` | `dist/excalibrain/` の必要ファイルと元ビルドとの一致、`dist/build-info.json` に SHA256 |
-| Vault 初期準備 | `npm run harness:prepare` | `check` 後、生成専用 Vault に配布物・fixture を配置。有効プラグインは excalibrain と、すでに有効なら Dataview／Excalidraw だけを残す |
-| 実機前確認 | `npm run harness:preflight` | root / dist / 検証 Vault の SHA256、一致する ID/version、有効プラグインが excalibrain・dataview・obsidian-excalidraw-plugin の 3 つちょうどであること |
+| 配布物 | `npm run package` | `dist/jevbrain/` の必要ファイルと元ビルドとの一致、`dist/build-info.json` に SHA256 |
+| Vault 初期準備 | `npm run harness:prepare` | `check` 後、生成専用 Vault に配布物・fixture を配置。有効プラグインは jevbrain と、すでに有効なら Dataview／Excalidraw だけを残す |
+| 実機前確認 | `npm run harness:preflight` | root / dist / 検証 Vault の SHA256、一致する ID/version、有効プラグインが jevbrain・dataview・obsidian-excalidraw-plugin の 3 つちょうどであること |
 
 まとめて実行するコマンドは `npm run check`。ローカルと GitHub Actions で同じコマンドを使う。ブランチと PR の CI（`check.yml`）は成果物を artifact に保存するだけで、公開を行わない。`manifest.version` と同じタグを push したときだけ `release.yml` が同じ check を通し、配布物 3 ファイルを GitHub Release に添付する（[リリース手順](#リリース手順)）。CodeQL（`codeql-analysis.yml`）は上流から引き継ぎ、停止済みの v1 action を v3 に更新した。Git hook は任意の `npm run hooks:install` で有効にする。
 
@@ -29,7 +29,6 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 
 | ルール | 件数 | ファイル | 扱い |
 | --- | --- | --- | --- |
-| `obsidianmd/commands/no-plugin-id-in-command-id` | 11 | excalibrain-main.ts | 恒久。command ID を変えると既存ユーザーのホットキーと `obsidian://` URI が壊れる |
 | `obsidianmd/ui/sentence-case` | 14 | Scene.ts、Settings.ts、excalibrain-main.ts、utils/Prompts.ts | H1。文言は 24 言語の locale と一緒に決める |
 | `obsidianmd/no-static-styles-assignment` | 18 | Settings.ts、Suggesters/Suggest.ts | H1。CSS クラスへ移し、実機で見た目を確認する |
 | `obsidianmd/settings-tab/no-manual-html-headings` | 4 | Settings.ts | H1。`Setting.setHeading()` へ。見出しの見た目が変わるので実機確認と一緒に |
@@ -78,10 +77,10 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 1. まだ試用していない専用環境で `npm run harness:prepare` を実行する。生成するのはこのプロジェクト内の `test-vault/` のみ。
 2. Obsidian でそのフォルダを Vault として開き、コミュニティプラグインの制限モードを解除して Dataview（`dataview`）と Excalidraw（`obsidian-excalidraw-plugin`、`MINEXCALIDRAWVERSION` 以上）をインストール・有効化する。ハーネスは他プラグインをダウンロードしない。
 3. `npm run harness:preflight` を実行する。これはファイルと設定の検査であり、実行中プラグインが最新である証明ではない。有効プラグインが 3 つちょうどでなければ失敗し、実機確認の条件に含めない。
-4. ExcaliBrain を有効化し、コマンド「ExcaliBrain」でグラフを開く。`Fixtures/` の 14 ノート（Asimov の著作と関係 6 つ、3D 用の 8 つ＝`docs/3d-brief.md` §7）が期待するグラフになるかを画面で確認する。
+4. JevBrain を有効化し、コマンド「ExcaliBrain」（表示名は上流のまま。LEV-147 で変えたのは plugin ID・名前・作者だけ）でグラフを開く。`Fixtures/` の 14 ノート（Asimov の著作と関係 6 つ、3D 用の 8 つ＝`docs/3d-brief.md` §7）が期待するグラフになるかを画面で確認する。
 5. 下記ケースを再現し、UI の状態と（ノートを変えた場合は）変更後の Markdown を両方保存する。
 
-`harness:prepare` は fixture を初期化するため、ユーザーが試用中の Vault には再実行しない。再実行した場合、`community-plugins.json` は excalibrain と、すでに有効なら Dataview／Excalidraw だけを残して書き直す（それらの配布物と設定には触れない）。本人の Vault や他プロジェクトの配布物は操作しない。
+`harness:prepare` は fixture を初期化するため、ユーザーが試用中の Vault には再実行しない。再実行した場合、`community-plugins.json` は jevbrain と、すでに有効なら Dataview／Excalidraw だけを残して書き直す（それらの配布物と設定には触れない）。本人の Vault や他プロジェクトの配布物は操作しない。
 
 ### 試用中の更新
 
@@ -89,11 +88,13 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 
 ```sh
 npm run check
-cp dist/excalibrain/main.js dist/excalibrain/manifest.json dist/excalibrain/styles.css test-vault/.obsidian/plugins/excalibrain/
+cp dist/jevbrain/main.js dist/jevbrain/manifest.json dist/jevbrain/styles.css test-vault/.obsidian/plugins/jevbrain/
 npm run harness:preflight
 ```
 
-その後、専用 Obsidian 環境で ExcaliBrain だけを再読込して対象画面を開き直す。`preflight` の成功だけでは実行中コードの更新は確認できないので、新しい表示・操作も確認する。
+plugin ID を変える前（LEV-147 より前）に作った `test-vault/` には `plugins/jevbrain/` が無いので、この `cp` は失敗する。その Vault は消してから `npm run harness:prepare` をやり直す。`harness:prepare` は古い `plugins/excalibrain/` を消さない（`community-plugins.json` からは外れるので次回起動では読み込まれないが、Obsidian を開いたままだと古い版が動き続ける）。
+
+その後、専用 Obsidian 環境で JevBrain だけを再読込して対象画面を開き直す。`preflight` の成功だけでは実行中コードの更新は確認できないので、新しい表示・操作も確認する。
 
 検証用 Obsidian は Mappy と同じもの（`projects/Mappy/artifacts/obsidian-profile` のプロファイル、CDP ポート 9231）で、この Vault を開いておく。エージェントは `artifacts/e2e/cdp.mjs`（Mappy の `lev-71-map-search-e2e/cdp.mjs` を Vault パスだけ変えて複製。gitignore 内）で renderer に JS を流し、`node artifacts/e2e/cdp.mjs eval <probe.js> <out.json>` と `shot <out.png>` で結果と画面を取る。プローブでは `app.workspace.getLeaf(false)` を使わない（brain のリーフを返して scene を閉じる）。E01〜E10 の一式は `artifacts/e2e/*.js`。
 
@@ -124,10 +125,10 @@ npm run harness:preflight
 
 1. `main` を最新にし、`npm run check` を通す。
 2. `npm version x.y.z`（`v` なし）。`scripts/version-bump.mjs` が `manifest.json` と `versions.json` を更新し、npm が `package.json`／`package-lock.json` とタグ `x.y.z` を作る。
-3. コミットとタグを push する。`release.yml` が check を通し、`dist/excalibrain/` の 3 ファイルを Release に添付する。0.x は pre-release。
+3. コミットとタグを push する。`release.yml` が check を通し、`dist/jevbrain/` の 3 ファイルを Release に添付する。0.x は pre-release。
 4. BRAT にリポジトリを登録して配布物が取れることを確認し、`artifacts/` に記録する。
 
-コミュニティプラグインへの登録は plugin ID と名前（上流と同じ）を決めてから。上流との同時インストールはできない。
+plugin ID は `jevbrain`、名前は JevBrain で、上流版（`excalibrain`）とは別プラグインとして入る（LEV-147）。実機での同時インストールは未確認で、既定の図面ファイルがどちらも `excalibrain.md` なので並べて使うには片方の設定を変える。BRAT での配布は Jev の実装後まで保留。
 
 ## 上流との同期
 
