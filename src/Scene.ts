@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, levelOf, pillarTickLevels, project } from "./graph/Projection";
+import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, levelOf, pillarTickLevels, project, verticalRow } from "./graph/Projection";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
@@ -472,10 +472,7 @@ export class Scene {
         friendGateOnLeft: x.friendGateOnLeft
       });
       if(this.view3D) {
-        node.level = levelOf(n.typeDefinition, x.role, this.plugin.hierarchyLowerCase, {
-          isSibling: x.isSibling,
-          isVirtual: n.page.isVirtual,
-        });
+        node.level = levelOf(n.typeDefinition, x.role, this.plugin.hierarchyLowerCase, {isSibling: x.isSibling});
       }
       this.nodesMap.set(n.page.path,node);
       x.layout.nodes.push(node);
@@ -1077,7 +1074,8 @@ export class Scene {
   }
 
   /**
-   * 3D の描画（docs/3d-design.md §6-1・§6-2）。配置 → 友の帯を中心の y に揃える → 投影 → north 降順にノード → 床の平面
+   * 3D の描画（docs/3d-design.md §6-1・§6-2・§6-5）。配置 → 友の帯を中心の y に揃える → Up／Down（level ≠ 0）を
+   * 中心の真上・真下の垂直軸へ移す → 投影 → north 降順にノード → 床の平面
    * （床の段の箱の下端、`floorDrop`）→ 影（全ノード、足元）と柱（床の上に立つ・床の下に吊る）→ 床（外周・グリッド・十字・方角）。
    * 2D と同じ `place()` の中心を投影で置き換えるだけで、Node の描画は無改造。埋め込みの中心（`retainCentralNode` で
    * 要素を保持する）は Layout が原点に置き、原点は中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は
@@ -1104,12 +1102,17 @@ export class Scene {
     const rootCenter = this.rootNode.getCenter();
     const shiftOf = (layout: Layout): number => friendLayouts.includes(layout) ? friendBandShift(rootCenter.y, layout.spec.rowHeight) : 0;
 
-    // 投影（§6-1）
-    const placed: PlacedNode[] = this.layouts.flatMap(layout => layout.nodes.map(node => {
+    const laid = this.layouts.flatMap(layout => layout.nodes.map(node => {
       const c = node.getCenter();
-      const center = {x: c.x, y: c.y + shiftOf(layout)};
-      return { node, center, projected: project(center, node.level, params) };
+      return { node, level: node.level, center: {x: c.x, y: c.y + shiftOf(layout)}, columnWidth: layout.spec.columnWidth };
     }));
+
+    // Up／Down は帯を離れて垂直に（§6-5、本人の追記 2）: level ≠ 0 のノードは中心ノートと同じ north の行（床の十字の
+    // 東西の線）へ東西等間隔で移る。1 つなら中心の真上・真下。床の平行四辺形に残るのは level 0 だけ
+    const centres = verticalRow(laid, rootCenter);
+
+    // 投影（§6-1）
+    const placed: PlacedNode[] = laid.map(({node}, i) => ({ node, center: centres[i], projected: project(centres[i], node.level, params) }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
     // 奥（north 大）から手前へ逐次描く（§6-1）。`floor` は色とラベルの基準（最下段＝L1、§6-3）で、床の平面（`FLOOR_LEVEL`）とは別
@@ -1133,13 +1136,19 @@ export class Scene {
       return {x: p.x, y: p.y + drop};
     };
 
-    // 影は全ノード足元に。柱は床の上に立つ（Up の親）か床の下に吊る（Down の子）。床のノードは柱なし
+    // 影は全ノード足元に。柱は床の上に立つ（Up の親）か床の下に吊る（Down の子）。床のノードは柱なし。
+    // 段の真ん中の Up・Down は中心ノートと足元が重なる（§6-5 の中央揃え）ので、同じ点には影を 1 つだけ描く
     const shadowIds: string[] = [];
     const pillarIds: string[] = [];
+    const shadowed = new Set<string>();
     this.keepingStyle(() => {
       for (const p of boxed) {
         const foot = plane(p.center);
-        shadowIds.push(this.renderShadow(foot));
+        const at = `${Math.round(foot.x)}:${Math.round(foot.y)}`;
+        if(!shadowed.has(at)) {
+          shadowed.add(at);
+          shadowIds.push(this.renderShadow(foot));
+        }
         if(p.node.level !== FLOOR_LEVEL) {
           pillarIds.push(...this.renderPillar(p.box, p.node, foot, params.levelHeight));
         }

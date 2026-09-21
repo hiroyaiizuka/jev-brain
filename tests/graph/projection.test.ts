@@ -4,6 +4,7 @@ import { DEFAULT_VIEW_3D_SETTINGS } from 'src/constants/constants';
 import {
   Level,
   LevelHierarchy,
+  LevelSubject,
   Point,
   ProjectionParams,
   compareDrawOrder,
@@ -15,6 +16,9 @@ import {
   FLOOR_LEVEL,
   floorDrop,
   project,
+  VerticalEntry,
+  verticalRow,
+  verticalSpread,
 } from 'src/graph/Projection';
 
 /**
@@ -86,14 +90,20 @@ describe('levelOf', () => {
     expect(levelOf('tag-tree', Role.CHILD, hierarchy)).toBe(0);
   });
 
-  it('keeps siblings and unresolved (virtual) pages on the ground regardless of the field', () => {
+  it('keeps siblings on the ground regardless of the field', () => {
     // 兄弟の Neighbour は親の getChildren() 由来: 兄弟が `up:: [[親]]` と書いていれば typeDefinition は 'up'。
     expect(levelOf('up', Role.CHILD, hierarchy, { isSibling: true })).toBe(0);
     expect(levelOf('up', Role.PARENT, hierarchy, { isSibling: true })).toBe(0);
-    // 未解決リンクは addUnresolvedPage のあと定義済みのフィールドで結ばれる。
-    expect(levelOf('up', Role.PARENT, hierarchy, { isVirtual: true })).toBe(0);
-    expect(levelOf('example', Role.CHILD, hierarchy, { isVirtual: true })).toBe(0);
-    expect(levelOf('up', Role.PARENT, hierarchy, { isSibling: false, isVirtual: false })).toBe(1);
+    expect(levelOf('up', Role.PARENT, hierarchy, { isSibling: false })).toBe(1);
+  });
+
+  it('gives an unresolved (virtual) page the level of its field: LevelSubject has no way to pin it to 0 (§6-5, LEV-124)', () => {
+    // 未解決リンク（本人の画面の `up:: [[aaaa]]`）も Up の親。LEV-110 の「未解決は 0」は LEV-124 でやめた。
+    // `Record<keyof LevelSubject, …>` なので、`isVirtual` のような逃げ道が型に戻るとこのテストがコンパイルで落ちる
+    // （`Scene.addNodes` が `page.isVirtual` を渡す形も一緒に戻ってしまうため）。
+    const subject: Record<keyof LevelSubject, boolean> = { isSibling: false };
+    expect(levelOf('up', Role.PARENT, hierarchy, subject)).toBe(1);
+    expect(levelOf('example', Role.CHILD, hierarchy, subject)).toBe(-1);
   });
 });
 
@@ -250,6 +260,127 @@ describe('friendBandShift', () => {
     // 3 行の友（−76, 0, +76 の行が −114, −38, +38 に置かれる）は帯ごと動いて真ん中の行が中心に乗る。
     const rows = [-114, -38, 38].map((y) => y + friendBandShift(-12, 76));
     expect(rows).toEqual([-88, -12, 64]);
+  });
+});
+
+describe('verticalSpread (§6-5: Up／Down は帯を離れて中心の真上・真下)', () => {
+  const columnWidth = 300;
+  // 本人の画面 docs/images/3d-feedback-two-ups-2026-09-21.png の中心（artifacts/3d1-e2e と同じ y −12、nodeHeight 76）。
+  const rootCenter: Point = { x: 0, y: -12 };
+  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * 76 };
+  const spreadCentres = (count: number): Point[] =>
+    verticalSpread(count, columnWidth).map((dx) => ({ x: rootCenter.x + dx, y: rootCenter.y }));
+
+  it('puts a single Up or Down straight above/below the centre (no east-west offset)', () => {
+    expect(verticalSpread(1, columnWidth)).toEqual([0]);
+  });
+
+  it('spreads several of one level evenly around the centre, columnWidth apart (the centring rule of Layout.place)', () => {
+    expect(verticalSpread(2, columnWidth)).toEqual([-150, 150]);
+    expect(verticalSpread(3, columnWidth)).toEqual([-300, 0, 300]);
+    expect(verticalSpread(4, columnWidth)).toEqual([-450, -150, 150, 450]);
+  });
+
+  it('places nothing for an empty level and always keeps the row centred on the centre note', () => {
+    expect(verticalSpread(0, columnWidth)).toEqual([]);
+    for (const count of [1, 2, 3, 7]) {
+      const offsets = verticalSpread(count, columnWidth);
+      expect(offsets.length, String(count)).toBe(count);
+      expect(offsets.reduce((sum, dx) => sum + dx, 0), String(count)).toBeCloseTo(0, 9);
+    }
+  });
+
+  it('truncates a non-integer count instead of centring on it (length and centre agree)', () => {
+    expect(verticalSpread(2.5, columnWidth)).toEqual(verticalSpread(2, columnWidth));
+    expect(verticalSpread(-3, columnWidth)).toEqual([]);
+  });
+
+  it('lifts two Ups onto one horizontal line straight above the centre, with no north shear', () => {
+    // 追記 2 の不具合: 2 つ目の Up が 2D の北の帯（gy −291）のまま投影され、north のぶん右上（平行四辺形の上）に出ていた。
+    const centre = project(rootCenter, 0, params);
+    const ups = spreadCentres(2).map((c) => project(c, 1, params));
+    expect(ups[0].y).toBe(ups[1].y);
+    expect(centre.y - ups[0].y).toBeCloseTo(params.levelHeight, 9);
+    expect(ups.map((u) => u.x - centre.x)).toEqual([-150, 150]);
+    // north が中心と同じなので描画順（depth）も中心の行と同じで、東西のずれ込みは 0。
+    expect(ups.map((u) => u.depth)).toEqual([centre.depth, centre.depth]);
+  });
+
+  it('hangs a single Down straight below the centre, on the same screen x', () => {
+    const centre = project(rootCenter, 0, params);
+    const [down] = spreadCentres(1).map((c) => project(c, -1, params));
+    expect(down.x).toBe(centre.x);
+    expect(down.y - centre.y).toBeCloseTo(params.levelHeight, 9);
+    expect(down.depth).toBe(centre.depth);
+  });
+
+  it('drops the feet of Up and Down onto the east-west axis of the floor cross (the centre row)', () => {
+    // 柱の足元は `project(center, FLOOR_LEVEL, params)`。中心と同じ north なので床の十字の東西の線に乗る。
+    const axis = project(rootCenter, FLOOR_LEVEL, params);
+    for (const centre of [...spreadCentres(2), ...spreadCentres(3)]) {
+      const foot = project(centre, FLOOR_LEVEL, params);
+      expect(foot.y).toBe(axis.y);
+      // 東西のずれ込みは中心の行と同じ（帯の north が乗らない）ので、足元の間隔は 2D の columnWidth のまま。
+      expect(foot.x - centre.x).toBeCloseTo(axis.x - rootCenter.x, 9);
+    }
+  });
+});
+
+describe('verticalRow (§6-5: 帯から中心の行へ移すのはどのノードか)', () => {
+  // artifacts/3d2-vertical-e2e の 2D（nodeHeight 76、中心 y −12）。北の帯は 2 列 2 行、南の帯は 3 列 1 行。
+  const rootCenter: Point = { x: 0, y: -12 };
+  const parentWidth = 236;
+  const childWidth = 280;
+  const up = (x: number, y: number): VerticalEntry => ({ level: 1, center: { x, y }, columnWidth: parentWidth });
+  const down = (x: number, y: number): VerticalEntry => ({ level: -1, center: { x, y }, columnWidth: childWidth });
+  const ground = (x: number, y: number): VerticalEntry => ({ level: 0, center: { x, y }, columnWidth: parentWidth });
+
+  it('leaves level 0 where the 2D band put it (the floor parallelogram keeps exactly these)', () => {
+    const entries = [ground(118, -291), ground(-454, -38), ground(425, -38), ground(0, -12)];
+    expect(verticalRow(entries, rootCenter)).toEqual(entries.map((e) => e.center));
+  });
+
+  it('moves the Ups of the real fixture onto the centre row, centred on the centre note', () => {
+    // 実機の 2D（artifacts/3d2-vertical-e2e）: 北の帯は 2 列 2 行で、1 行目（y −368）が 抽象化のはしご・習慣ループ、
+    // 2 行目（y −291）が 行動デザイン・読書メモ：習慣の本。up の 3 つだけが中心の行へ移り、読書メモは帯に残る。
+    const entries = [up(-118, -368), up(118, -368), up(-118, -291), ground(118, -291)];
+    expect(verticalRow(entries, rootCenter)).toEqual([
+      { x: rootCenter.x - parentWidth, y: rootCenter.y }, // 抽象化のはしご（1 行目の西）
+      { x: rootCenter.x, y: rootCenter.y }, // 習慣ループ（1 行目の東）が中心の真上
+      { x: rootCenter.x + parentWidth, y: rootCenter.y }, // 行動デザイン（2 行目）
+      { x: 118, y: -291 },
+    ]);
+  });
+
+  it('reads the band north to south, then west to east, so a two-row band keeps a stable east-west order', () => {
+    // 5 つの Up が 3 列 2 行（行 0: A B C、行 1: D _ E）に置かれた場合。行優先で A B C D E と並ぶ。
+    const rows = [up(-236, -368), up(0, -368), up(236, -368), up(-236, -291), up(236, -291)];
+    const xs = verticalRow(rows, rootCenter).map((c) => c.x);
+    expect(xs).toEqual([-2 * parentWidth, -parentWidth, 0, parentWidth, 2 * parentWidth]);
+    expect(verticalRow(rows, rootCenter).every((c) => c.y === rootCenter.y)).toBe(true);
+  });
+
+  it('spreads Up and Down independently, each with its own band columnWidth', () => {
+    const entries = [up(-118, -291), up(118, -291), down(-280, 214), down(0, 214), down(280, 214)];
+    expect(verticalRow(entries, rootCenter)).toEqual([
+      { x: -parentWidth / 2, y: rootCenter.y },
+      { x: parentWidth / 2, y: rootCenter.y },
+      { x: -childWidth, y: rootCenter.y },
+      { x: 0, y: rootCenter.y },
+      { x: childWidth, y: rootCenter.y },
+    ]);
+  });
+
+  it('puts the middle of an odd group exactly on the centre note (one foot, one shadow — Scene dedupes)', () => {
+    const entries = [up(-118, -291), up(0, -291), up(118, -291)];
+    expect(verticalRow(entries, rootCenter)[1]).toEqual({ ...rootCenter });
+  });
+
+  it('never touches the input centres (Scene keeps the 2D centres for the floor plan)', () => {
+    const entries = [up(-118, -291), ground(118, -291)];
+    const before = JSON.stringify(entries);
+    verticalRow(entries, rootCenter);
+    expect(JSON.stringify(entries)).toBe(before);
   });
 });
 

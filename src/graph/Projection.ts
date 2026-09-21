@@ -18,21 +18,20 @@ export type LevelHierarchy = {
 };
 
 /**
- * 関係のフィールドとは無関係に高さを 0 に固定する、対象ノードの属性（§3-1 の「兄弟は 0」「未解決は 0」）。
- * 兄弟の Neighbour は親の `getChildren()` 由来で「兄弟→親」のフィールドを持ち、未解決（ゴースト）は
- * `addUnresolvedPage` のあと定義済みのフィールドで結ばれるので、`typeDefinition` だけでは見分けられない。
+ * 関係のフィールドとは無関係に高さを 0 に固定する、対象ノードの属性（§3-1 の「兄弟は 0」）。
+ * 兄弟の Neighbour は親の `getChildren()` 由来で「兄弟→親」のフィールドを持つので、`typeDefinition` だけでは
+ * 見分けられない。未解決ページ（ゴースト）を 0 に落とす規則は LEV-124 でやめた（§6-5）: `up:: [[aaaa]]` のような
+ * 未解決の Up も、解決済みの Up と同じ段に立てる。
  */
 export type LevelSubject = {
   /** `Scene.addNodes` の `isSibling`。 */
   isSibling?: boolean;
-  /** `Page.isVirtual`（ファイルの無い未解決リンク）。 */
-  isVirtual?: boolean;
 };
 
 /**
  * 中心ノートとの関係から隣接ノードの高さを決める。
  *
- * - 兄弟・未解決ページ（`subject`）→ 0
+ * - 兄弟（`subject.isSibling`）→ 0
  * - 親（`Role.PARENT`）で、フィールドのどれかが Up／Down 領域に入る → +1
  * - 子（`Role.CHILD`）で、フィールドのどれかが Up／Down 領域に入る → -1
  * - それ以外（Parents／Children の親子、左右の友、推論リンク、file-tree・tag-tree）→ 0
@@ -48,7 +47,7 @@ export const levelOf = (
   hierarchy: LevelHierarchy,
   subject: LevelSubject = {},
 ): Level => {
-  if (subject.isSibling || subject.isVirtual) return 0;
+  if (subject.isSibling) return 0;
   if (role !== Role.PARENT && role !== Role.CHILD) return 0;
   if (!typeDefinition) return 0;
   const onAxis = typeDefinition
@@ -205,6 +204,48 @@ export type ProjectionParams = {
  * 中心は動かさない（原点は `retainCentralNode` の不動点）。
  */
 export const friendBandShift = (centerY: number, friendRowHeight: number): number => centerY + friendRowHeight / 2;
+
+/**
+ * Up／Down（level ≠ 0）を中心ノートの真上・真下に立てるための、東西のずらし量（§6-5、本人の追記 2）。
+ *
+ * 1 つなら `[0]`（中心の真上・真下）、n 個なら中心を挟んで `columnWidth` 間隔の中央揃え（`Layout.place()` が
+ * 列を中央に揃えるのと同じ規則）。段の中で折り返さないので、`maxItemCount3D` いっぱいの Up は 1 行に伸びる
+ * （§7 の論点）。整数でない `count` は切り捨ててから中央揃えする（長さと中心をずらさない）。
+ */
+export const verticalSpread = (count: number, columnWidth: number): number[] => {
+  const items = Math.max(0, Math.trunc(count));
+  return Array.from({ length: items }, (_, i) => (i - (items - 1) / 2) * columnWidth);
+};
+
+/** `verticalRow` の入力: `Layout.place()` が決めた 2D の中心（友の帯は `friendBandShift` 済み）と、その帯の列の間隔。 */
+export type VerticalEntry = { level: Level; center: Point; columnWidth: number };
+
+/**
+ * Up／Down を帯から外して中心ノートの真上・真下へ移した、各ノードの新しい 2D の中心（§6-5、本人の追記 2）。
+ * 入力と同じ並びで返す。
+ *
+ * - level 0（Parents／Children／Left／Right／Previous／Next）は 2D の帯の中心のまま。床の平行四辺形に残るのはこれだけ。
+ * - level ≠ 0 は中心ノートと同じ north の行（`rootCenter.y`。床の十字の東西の線であって、world の north 0 ではない）に、
+ *   `verticalSpread` の間隔で東西に並べる。したがって 1 つなら中心の真上・真下、複数なら中心を挟んで等間隔。
+ *
+ * 同じ level の並び順は 2D の読み順（行＝北から南、同じ行は西から東）。列の間隔はその帯の `columnWidth` で、
+ * level +1 は Parents、−1 は Children からしか来ない（兄弟は `levelOf` が 0 に固定する）ので段ごとに 1 つに決まる。
+ */
+export const verticalRow = (entries: readonly VerticalEntry[], rootCenter: Point): Point[] => {
+  const centres = entries.map((entry) => ({ ...entry.center }));
+  const levels = new Set(entries.map((entry) => entry.level).filter((level) => level !== 0));
+  for (const level of levels) {
+    const group = entries
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.level === level)
+      .sort((a, b) => a.entry.center.y - b.entry.center.y || a.entry.center.x - b.entry.center.x);
+    const offsets = verticalSpread(group.length, group[0].entry.columnWidth);
+    group.forEach(({ index }, i) => {
+      centres[index] = { x: rootCenter.x + offsets[i], y: rootCenter.y };
+    });
+  }
+  return centres;
+};
 
 export type Projected = {
   x: number;
