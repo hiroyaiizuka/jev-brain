@@ -162,6 +162,8 @@ export interface ExcalidrawAutomate {
   addText(...args: unknown[]): string;
   addRect(...args: unknown[]): string;
   addEllipse(...args: unknown[]): string;
+  /** `addLine(points: [x, y][], id?)`: a line through the points, closed when the first and last coincide. */
+  addLine(...args: unknown[]): string;
   addEmbeddable(...args: unknown[]): string;
   addImage(...args: unknown[]): Promise<string>;
   connectObjects(...args: unknown[]): string;
