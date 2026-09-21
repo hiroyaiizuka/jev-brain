@@ -1,8 +1,8 @@
 {
-  "name": "excalibrain",
+  "name": "jevbrain",
   "version": "0.2.18",
   "private": true,
-  "description": "jev assisted 3d excalibrain: a fork of ExcaliBrain, the editable graph view for Obsidian.",
+  "description": "JevBrain: a fork of ExcaliBrain, the editable graph view for Obsidian, with a 3D abstraction axis.",
   "main": "main.js",
   "type": "module",
   "license": "MIT",

@@ -3,7 +3,7 @@ import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const pluginId = 'excalibrain';
+export const pluginId = 'jevbrain';
 export const pluginFiles = ['main.js', 'manifest.json', 'styles.css'];
 export const markerContents = 'jev-brain generated test vault v1\n';
 /**

@@ -15,9 +15,9 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 | 型検査 | `npm run typecheck` | 上流設定＋`noImplicitAny`、switch の fallthrough、Bundler 解決。strict は未導入（下記） |
 | 単体テスト | `npm test` | リリース検証・バージョン更新・release.yml の形・preflight／Vault 準備の安全性、URL 抽出、ファイル名、Ontology の領域判定、Layout の配置（列・行・top/bottom）と描画順、3D の投影（高さ・回転・帯の圧縮） |
 | production bundle | `npm run build` | ブラウザ互換 CJS バンドル（`main.js`）。Obsidian 提供 API は external |
-| 配布物 | `npm run package` | `dist/excalibrain/` の必要ファイルと元ビルドとの一致、`dist/build-info.json` に SHA256 |
-| Vault 初期準備 | `npm run harness:prepare` | `check` 後、生成専用 Vault に配布物・fixture を配置。有効プラグインは excalibrain と、すでに有効なら Dataview／Excalidraw だけを残す |
-| 実機前確認 | `npm run harness:preflight` | root / dist / 検証 Vault の SHA256、一致する ID/version、有効プラグインが excalibrain・dataview・obsidian-excalidraw-plugin の 3 つちょうどであること |
+| 配布物 | `npm run package` | `dist/jevbrain/` の必要ファイルと元ビルドとの一致、`dist/build-info.json` に SHA256 |
+| Vault 初期準備 | `npm run harness:prepare` | `check` 後、生成専用 Vault に配布物・fixture を配置。有効プラグインは jevbrain と、すでに有効なら Dataview／Excalidraw だけを残す |
+| 実機前確認 | `npm run harness:preflight` | root / dist / 検証 Vault の SHA256、一致する ID/version、有効プラグインが jevbrain・dataview・obsidian-excalidraw-plugin の 3 つちょうどであること |
 
 まとめて実行するコマンドは `npm run check`。ローカルと GitHub Actions で同じコマンドを使う。ブランチと PR の CI（`check.yml`）は成果物を artifact に保存するだけで、公開を行わない。`manifest.version` と同じタグを push したときだけ `release.yml` が同じ check を通し、配布物 3 ファイルを GitHub Release に添付する（[リリース手順](#リリース手順)）。CodeQL（`codeql-analysis.yml`）は上流から引き継ぎ、停止済みの v1 action を v3 に更新した。Git hook は任意の `npm run hooks:install` で有効にする。
 
@@ -29,7 +29,6 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 
 | ルール | 件数 | ファイル | 扱い |
 | --- | --- | --- | --- |
-| `obsidianmd/commands/no-plugin-id-in-command-id` | 11 | excalibrain-main.ts | 恒久。command ID を変えると既存ユーザーのホットキーと `obsidian://` URI が壊れる |
 | `obsidianmd/ui/sentence-case` | 14 | Scene.ts、Settings.ts、excalibrain-main.ts、utils/Prompts.ts | H1。文言は 24 言語の locale と一緒に決める |
 | `obsidianmd/no-static-styles-assignment` | 18 | Settings.ts、Suggesters/Suggest.ts | H1。CSS クラスへ移し、実機で見た目を確認する |
 | `obsidianmd/settings-tab/no-manual-html-headings` | 4 | Settings.ts | H1。`Setting.setHeading()` へ。見出しの見た目が変わるので実機確認と一緒に |
@@ -63,6 +62,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 - `Projection` の床と柱（LEV-120）: `artifacts/3d1-e2e` の実座標（友は friendBandShift 後）と nodeHeight 76 で、`floorPlan` の範囲が足元の最小の長方形＋四方 nodeHeight であり東西は箱の横幅も覆うこと、十字が中心の足元を通り床（`FLOOR_LEVEL` = 0）に投影した東西軸の上に友の足元があること、グリッドが十字から nodeHeight 間隔で外周の内側だけ（十字と重なる 2 本と外周に乗る線は含まない）、N／S／W／E が十字の両端の外側（既定 nodeHeight/2、南北は `northRise` で割った gap で画面の間隔が揃うこと）、足元が無くても origin の周りの床になること、spacing が正でなければグリッド無し、`floorDrop` が床の段の最も高い箱の半分＋影の半分（nodeHeight より高い箱は無視、床の下の箱の上端より下げない、スライダー下限で 0 以上）、`pillarTickLevels` が床と箱の段の間の各段（上下どちら向きも。+1 と −1 で [0]、3 段のままでは常に空）を固定する。`Scene.renderFloor`／`renderShadow`／`renderPillar` は EA 依存で実機のみ（LEV-122）。
 - `Projection` の斜投影（LEV-119。上の `project` の回転・`compressBands`・`groundLevelOf` の記述と下の「未カバー」の関数名はこれで置き換え。`compressBands`／`extentOf` は削除、`groundLevelOf` は `floorOf`）: 3d-brief §7 の 8 ノートと `artifacts/3d1-e2e` の実座標で、`DEFAULT_VIEW_3D_SETTINGS`（0.40／0.30／2.2）、if-then／中心／意志力の y が等しいこと、中心が原点に留まること、親の影は東西軸の右上・子は左下・友は軸の上（床 −1／0 とも）、隣り合う level の差が `levelHeight`、`depth` が north で level に依らないこと、既定値と northRise の下限 0.2 で親の最下行（Layout の bottom −2·nodeHeight）が友と重ならないこと、`friendBandShift` が実座標の友（−38）を中心の行（−12）に乗せて 3 つが同じ y に投影されること、`floorOf` が最小 level（空と +1 だけなら 0）、`compareDrawOrder` が `depth` 降順・同値は画面 x 昇順で実座標を 親 → 友 → 中心 → 子 に並べること、`boundsOf` を固定する。
 - 3D のリンク・ノード（LEV-121。上の「`Link` のゲート」の 3D 側はこれで置き換え）: `link-gates.test.ts` は 2D が役割どおりのゲート（箱の `id` を読まない）、3D が箱同士（`Node.id`。ゲートを読まない）を太さ 1・不透明度 50%（隠すときは 10）で領域の色のまま結ぶこと、`Links.render()` の受け渡しを固定する。`node-render.test.ts` は `measureText`／`addText`（box 付き）／`addEllipse`／`addToGroup`／`getElement` を記録する EA スタブと近傍数だけを持つ Page スタブで、2D の呼び出し列（箱 → ゲート 4 つと近傍数 → グループ）とゲートの位置、3D（`render({floor})`）が箱だけを描いて `levelColors[level − floor]` を箱に solid で塗り文字色を読める側に寄せること（肩の「L{n}」ラベルは LEV-130 でやめた）、level／floor の組ごとの色、`levelColors` が足りないときの fallback、hachure の仮想ノードが solid になること、保持した埋め込みの枠は色を変えず削除済みの束縛矢印だけ落とすこと、枠 1 つだけのときはグループ化を呼ばないこと（`groupIds` を伸ばさない）、枠が無くても落ちないこと、`readableTextColor`（半透明の level 色はキャンバスに合成して測る）を固定する。
+- 初期ズームの対象（LEV-144）: `zoomTargets`（`src/graph/zoom.ts`）が 3D の床・グリッド・十字・方角の id を外してノードとリンクだけを返すこと、2D（床の id が空）と外すと空になるときは入力そのもの（同じ参照）を返すこと、床の id が画面に無いときは同じ内容の配列を返すこと、入力の配列も要素も書き換えず入力の要素そのものを返すことを固定する。`zoomToFit` を呼ぶ `Scene.zoomToFitNodes()`（2D は上流が渡していた対象をそのまま渡し、3D だけ置き換える）は EA 依存で実機のみ（倍率は CDP の `getAppState().zoom.value` を 2D／3D で比べる）。
 - 3D の帯の組み直し（LEV-145）: `regridBand` が帯に残った level 0 だけを行ごとに中央揃えし（満杯の行は `Layout.place()` と同じ位置、半端な行は中心を挟んで対称）、読み順（北から南、同じ行は西から東）を保ち、中心にいちばん近い行を `origin.y` に置いて外へ `rowHeight` ずつ積むこと、入力を書き換えないこと、列数が壊れていたら 1 列に落ちることを固定する。8 ノート fixture の帯は上流の `Layout.place()` に実寸（親 2 列 236・子 3 列 280・行 77）で置かせてから渡し、`origin` の親が中心の真北（x が中心と同じ）に、`leads to` の子 2 つが中心を挟んで対称に来ること、丸ごと空いた行があれば帯が中心側へ詰まって `bandShift` がそこから測ること、軸へ抜けたノードが無い帯でも半端な行が中心に揃うことを受入条件のまま確かめる。`Scene.render3D()` の当てはめ（帯ごとの内側の縁の選び方と `regridded` の引き当て）は EA 依存で実機のみ。
 - `obsidian` モジュールは `tests/mocks/obsidian.ts` に置き換える（`TFile`／`TFolder`／`normalizePath`／`Vault.recurseChildren`／`moment.locale`）。`import ... from "src/..."` は `vitest.config.ts` の alias で解決する。
 
@@ -78,10 +78,10 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 1. まだ試用していない専用環境で `npm run harness:prepare` を実行する。生成するのはこのプロジェクト内の `test-vault/` のみ。
 2. Obsidian でそのフォルダを Vault として開き、コミュニティプラグインの制限モードを解除して Dataview（`dataview`）と Excalidraw（`obsidian-excalidraw-plugin`、`MINEXCALIDRAWVERSION` 以上）をインストール・有効化する。ハーネスは他プラグインをダウンロードしない。
 3. `npm run harness:preflight` を実行する。これはファイルと設定の検査であり、実行中プラグインが最新である証明ではない。有効プラグインが 3 つちょうどでなければ失敗し、実機確認の条件に含めない。
-4. ExcaliBrain を有効化し、コマンド「ExcaliBrain」でグラフを開く。`Fixtures/` の 14 ノート（Asimov の著作と関係 6 つ、3D 用の 8 つ＝`docs/3d-brief.md` §7）が期待するグラフになるかを画面で確認する。
+4. JevBrain を有効化し、コマンド「ExcaliBrain」（表示名は上流のまま。LEV-147 で変えたのは plugin ID・名前・作者だけ）でグラフを開く。`Fixtures/` の 14 ノート（Asimov の著作と関係 6 つ、3D 用の 8 つ＝`docs/3d-brief.md` §7）が期待するグラフになるかを画面で確認する。
 5. 下記ケースを再現し、UI の状態と（ノートを変えた場合は）変更後の Markdown を両方保存する。
 
-`harness:prepare` は fixture を初期化するため、ユーザーが試用中の Vault には再実行しない。再実行した場合、`community-plugins.json` は excalibrain と、すでに有効なら Dataview／Excalidraw だけを残して書き直す（それらの配布物と設定には触れない）。本人の Vault や他プロジェクトの配布物は操作しない。
+`harness:prepare` は fixture を初期化するため、ユーザーが試用中の Vault には再実行しない。再実行した場合、`community-plugins.json` は jevbrain と、すでに有効なら Dataview／Excalidraw だけを残して書き直す（それらの配布物と設定には触れない）。本人の Vault や他プロジェクトの配布物は操作しない。
 
 ### 試用中の更新
 
@@ -89,11 +89,13 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 
 ```sh
 npm run check
-cp dist/excalibrain/main.js dist/excalibrain/manifest.json dist/excalibrain/styles.css test-vault/.obsidian/plugins/excalibrain/
+cp dist/jevbrain/main.js dist/jevbrain/manifest.json dist/jevbrain/styles.css test-vault/.obsidian/plugins/jevbrain/
 npm run harness:preflight
 ```
 
-その後、専用 Obsidian 環境で ExcaliBrain だけを再読込して対象画面を開き直す。`preflight` の成功だけでは実行中コードの更新は確認できないので、新しい表示・操作も確認する。
+plugin ID を変える前（LEV-147 より前）に作った `test-vault/` には `plugins/jevbrain/` が無いので、この `cp` は失敗する。その Vault は消してから `npm run harness:prepare` をやり直す。`harness:prepare` は古い `plugins/excalibrain/` を消さない（`community-plugins.json` からは外れるので次回起動では読み込まれないが、Obsidian を開いたままだと古い版が動き続ける）。
+
+その後、専用 Obsidian 環境で JevBrain だけを再読込して対象画面を開き直す。`preflight` の成功だけでは実行中コードの更新は確認できないので、新しい表示・操作も確認する。
 
 検証用 Obsidian は Mappy と同じもの（`projects/Mappy/artifacts/obsidian-profile` のプロファイル、CDP ポート 9231）で、この Vault を開いておく。エージェントは `artifacts/e2e/cdp.mjs`（Mappy の `lev-71-map-search-e2e/cdp.mjs` を Vault パスだけ変えて複製。gitignore 内）で renderer に JS を流し、`node artifacts/e2e/cdp.mjs eval <probe.js> <out.json>` と `shot <out.png>` で結果と画面を取る。プローブでは `app.workspace.getLeaf(false)` を使わない（brain のリーフを返して scene を閉じる）。E01〜E10 の一式は `artifacts/e2e/*.js`。
 
@@ -124,10 +126,10 @@ npm run harness:preflight
 
 1. `main` を最新にし、`npm run check` を通す。
 2. `npm version x.y.z`（`v` なし）。`scripts/version-bump.mjs` が `manifest.json` と `versions.json` を更新し、npm が `package.json`／`package-lock.json` とタグ `x.y.z` を作る。
-3. コミットとタグを push する。`release.yml` が check を通し、`dist/excalibrain/` の 3 ファイルを Release に添付する。0.x は pre-release。
+3. コミットとタグを push する。`release.yml` が check を通し、`dist/jevbrain/` の 3 ファイルを Release に添付する。0.x は pre-release。
 4. BRAT にリポジトリを登録して配布物が取れることを確認し、`artifacts/` に記録する。
 
-コミュニティプラグインへの登録は plugin ID と名前（上流と同じ）を決めてから。上流との同時インストールはできない。
+plugin ID は `jevbrain`、名前は JevBrain で、上流版（`excalibrain`）とは別プラグインとして入る（LEV-147）。実機での同時インストールは未確認で、既定の図面ファイルがどちらも `excalibrain.md` なので並べて使うには片方の設定を変える。BRAT での配布は Jev の実装後まで保留。
 
 ## 上流との同期
 

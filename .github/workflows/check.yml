@@ -22,6 +22,6 @@ jobs:
       - run: npm run check
       - uses: actions/upload-artifact@v4
         with:
-          name: excalibrain-development-build
+          name: jevbrain-development-build
           path: dist/
           if-no-files-found: error

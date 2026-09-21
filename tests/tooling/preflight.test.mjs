@@ -30,7 +30,7 @@ function writeJson(filename, value) {
 function addBuild() {
   writeFileSync(join(root, 'main.js'), 'module.exports = {};\n');
   writeFileSync(join(root, 'styles.css'), '.excalibrain-warning { color: var(--text-normal); }\n');
-  writeJson(join(root, 'manifest.json'), { id: pluginId, name: 'ExcaliBrain', version: '0.2.18', minAppVersion: '1.8.7' });
+  writeJson(join(root, 'manifest.json'), { id: pluginId, name: 'JevBrain', version: '0.2.18', minAppVersion: '1.8.7' });
   mkdirSync(paths.distribution, { recursive: true });
   for (const filename of pluginFiles) {
     writeFileSync(join(paths.distribution, filename), readFileSync(join(root, filename)));
@@ -92,7 +92,7 @@ describe('preflight community plugin check', () => {
 
   it('rejects a vault where the plugin itself is not enabled', () => {
     addVault([dataview, excalidraw]);
-    expect(() => runPreflight(paths)).toThrow(/community-plugins\.json: excalibrain must be enabled/u);
+    expect(() => runPreflight(paths)).toThrow(/community-plugins\.json: jevbrain must be enabled/u);
   });
 
   it('rejects any other enabled plugin and names it', () => {
@@ -100,7 +100,7 @@ describe('preflight community plugin check', () => {
     expect(() => runPreflight(paths)).toThrow(/community-plugins\.json: .*templater-obsidian/u);
   });
 
-  it.each([{ excalibrain: true }, ['excalibrain', 1], 'excalibrain'])('rejects a community-plugins.json that is not a list of plugin IDs %j', (contents) => {
+  it.each([{ jevbrain: true }, ['jevbrain', 1], 'jevbrain'])('rejects a community-plugins.json that is not a list of plugin IDs %j', (contents) => {
     addVault(contents);
     expect(() => runPreflight(paths)).toThrow('community-plugins.json: expected an array of plugin IDs.');
   });
@@ -180,11 +180,11 @@ describe('prepare-test-vault CLI', () => {
   });
 
   it('refuses a generated vault whose community-plugins.json is not a list of plugin IDs', () => {
-    addVault({ excalibrain: true });
+    addVault({ jevbrain: true });
     const result = runScript('prepare-test-vault.mjs');
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('community-plugins.json: expected an array of plugin IDs.');
-    expect(readEnabled()).toEqual({ excalibrain: true });
+    expect(readEnabled()).toEqual({ jevbrain: true });
   });
 
   it('refuses a test-vault that this harness did not generate', () => {
