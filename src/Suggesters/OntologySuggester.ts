@@ -97,8 +97,9 @@ export class FieldSuggester extends EditorSuggest<string> {
   getKeys = ():string[] => {
     const h = this.plugin.settings.hierarchy;
     const t = this.suggestType;
+    // The generic list carries every region, Up (abstract) and Down (concrete) included; the two have no trigger of their own.
     return t === "all"
-      ? [...h.hidden,...h.parents,...h.children,...h.leftFriends,...h.rightFriends,...h.previous,...h.next, this.plugin.settings.primaryTagField].sort((a,b)=>a.toLowerCase()>b.toLowerCase()?1:-1)
+      ? [...h.hidden,...h.abstract,...h.concrete,...h.parents,...h.children,...h.leftFriends,...h.rightFriends,...h.previous,...h.next, this.plugin.settings.primaryTagField].sort((a,b)=>a.toLowerCase()>b.toLowerCase()?1:-1)
       : t === "parent"
         ? h.parents
         : t === "child"

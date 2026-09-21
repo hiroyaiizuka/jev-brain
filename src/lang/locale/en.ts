@@ -224,4 +224,14 @@ export default {
 
   //AddToOntologyModal
   ADD_TO_ONTOLOGY_MODAL_DESC: "Select the direction of the ontology. If one of the buttons is highlighted, then the field is already part of the ontology in that direction.",
+
+  //Up / Down regions of the ontology (docs/ontology-axis-design.md). Other locales fall back to these.
+  UP_NAME: "Up (abstract)",
+  UP_DESC: "Fields whose target is more abstract than the note. Drawn north like Parents, with the Up link style unless the field has a style of its own. " +
+    "A field listed both here and under Parents is kept here and removed from Parents the next time the settings are loaded.",
+  DOWN_NAME: "Down (concrete)",
+  DOWN_DESC: "Fields whose target is more concrete than the note. Drawn south like Children, with the Down link style unless the field has a style of its own. " +
+    "A field listed both here and under Children is kept here and removed from Children the next time the settings are loaded.",
+  LINKSTYLE_UP: "Style of Up (abstract) links",
+  LINKSTYLE_DOWN: "Style of Down (concrete) links",
 }
