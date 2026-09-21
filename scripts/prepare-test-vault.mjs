@@ -36,17 +36,31 @@ function writeGeneratedFile(paths, filename, contents) {
   }
 }
 
+/**
+ * Every Markdown fixture under `tests/fixtures`, as `[path relative to it, contents]`. Subfolders
+ * are read recursively and keep their shape in the vault (`tests/fixtures/big` → `Fixtures/big`),
+ * so a large fixture stays separate from the small ones. Anything that is not a regular `.md` file
+ * is skipped, symlinks included (`readSafeFile` refuses the ones named `.md`).
+ */
+function readFixtures(paths, directory) {
+  assertSafePath(paths.root, directory, 'directory');
+  const entries = readdirSync(directory, { withFileTypes: true });
+  entries.sort((left, right) => (left.name > right.name ? 1 : -1));
+  return entries.flatMap((entry) => {
+    const source = join(directory, entry.name);
+    if (entry.isDirectory()) return readFixtures(paths, source);
+    if (!entry.isFile() || !entry.name.endsWith('.md')) return [];
+    return [[relative(paths.fixtureSource, source), readSafeFile(paths.root, source)]];
+  });
+}
+
 try {
   if (process.argv.length !== 2) {
     throw new Error('Usage: node scripts/prepare-test-vault.mjs (no arguments).');
   }
   const paths = getHarnessPaths();
   const build = readHarnessBuild(paths);
-  assertSafePath(paths.root, paths.fixtureSource, 'directory');
-  const fixtures = readdirSync(paths.fixtureSource)
-    .filter((filename) => filename.endsWith('.md'))
-    .sort()
-    .map((filename) => [filename, readSafeFile(paths.root, join(paths.fixtureSource, filename))]);
+  const fixtures = readFixtures(paths, paths.fixtureSource);
   if (fixtures.length === 0) {
     throw new Error('No Markdown fixtures found in tests/fixtures.');
   }
@@ -58,9 +72,10 @@ try {
   const previouslyEnabled = vaultExists ? readCommunityPlugins(paths, { optional: true }) : [];
   const enabledPlugins = allowedCommunityPlugins.filter((id) => id === pluginId || previouslyEnabled.includes(id));
 
+  const fixtureOutputs = fixtures.map(([filename, contents]) => [join(paths.fixtureTarget, filename), contents]);
   const outputs = [
     ...Array.from(build.files, ([filename, contents]) => [join(paths.installed, filename), contents]),
-    ...fixtures.map(([filename, contents]) => [join(paths.fixtureTarget, filename), contents]),
+    ...fixtureOutputs,
     [paths.communityPlugins, `${JSON.stringify(enabledPlugins, null, 2)}\n`],
   ];
   // Check all existing destination parents and files before changing any content.
@@ -76,6 +91,9 @@ try {
   assertGeneratedVault(paths);
   ensureDirectory(paths, paths.installed);
   ensureDirectory(paths, paths.fixtureTarget);
+  for (const [filename] of fixtureOutputs) {
+    ensureDirectory(paths, dirname(filename));
+  }
   for (const [filename, contents] of outputs) {
     writeGeneratedFile(paths, filename, contents);
   }
