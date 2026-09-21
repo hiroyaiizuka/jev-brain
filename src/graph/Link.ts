@@ -29,13 +29,13 @@ export class Link {
             case "file-tree": 
               linkstyle = {
                 ...linkstyle,
-                ...plugin.settings.folderLinkStyle    
+                ...settings.folderLinkStyle    
               };
               break;
             case "tag-tree":
               linkstyle = {
                 ...linkstyle,
-                ...plugin.settings.tagLinkStyle    
+                ...settings.tagLinkStyle    
               };
               break;
           }

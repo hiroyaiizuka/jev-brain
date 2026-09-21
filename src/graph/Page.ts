@@ -27,6 +27,16 @@ const concat = (s1: string, s2: string): string => {
       : s2
 }
 
+/**
+ * Whether the ", "-joined list built by {@link concat} already has `definition` as an entry.
+ * Upstream used the substring check String.contains(), which dropped a field whose name is
+ * part of another field already listed ("up" after "group"); the Up/Down region and the 3D
+ * level are read from these entries, so the check must be exact (docs/architecture.md D8).
+ */
+const hasDefinition = (definitions: string|undefined, definition: string): boolean => {
+  return definitions ? definitions.split(", ").includes(definition) : false;
+}
+
 const directionToSet = (currentDirection:LinkDirection, newDirection: LinkDirection):LinkDirection => {
   if(!currentDirection) {
     return newDirection;
@@ -345,7 +355,7 @@ export class Page {
     if(neighbour) {
       neighbour.isParent = true;
       neighbour.parentType = relationTypeToSet(neighbour.parentType,relationType);
-      if(definition && !neighbour.parentTypeDefinition?.contains(definition)) {
+      if(definition && !hasDefinition(neighbour.parentTypeDefinition, definition)) {
         neighbour.parentTypeDefinition = concat(definition, neighbour.parentTypeDefinition);
       }
       neighbour.direction = directionToSet(neighbour.direction, direction);
@@ -369,7 +379,7 @@ export class Page {
     if(neighbour) {
       neighbour.isChild = true;
       neighbour.childType = relationTypeToSet(neighbour.childType,relationType);
-      if(definition && !neighbour.childTypeDefinition?.contains(definition)) {
+      if(definition && !hasDefinition(neighbour.childTypeDefinition, definition)) {
         neighbour.childTypeDefinition = concat(definition,neighbour.childTypeDefinition);
       }
       neighbour.direction = directionToSet(neighbour.direction, direction);
@@ -393,7 +403,7 @@ export class Page {
     if(neighbour) {
       neighbour.isLeftFriend = true;
       neighbour.leftFriendType = relationTypeToSet(neighbour.leftFriendType,relationType);
-      if(definition && !neighbour.leftFriendTypeDefinition?.contains(definition)) {
+      if(definition && !hasDefinition(neighbour.leftFriendTypeDefinition, definition)) {
         neighbour.leftFriendTypeDefinition = concat(definition,neighbour.leftFriendTypeDefinition);
       }
       neighbour.direction = directionToSet(neighbour.direction, direction);
@@ -417,7 +427,7 @@ export class Page {
     if(neighbour) {
       neighbour.isRightFriend = true;
       neighbour.rightFriendType = relationTypeToSet(neighbour.rightFriendType,relationType);
-      if(definition && !neighbour.rightFriendTypeDefinition?.contains(definition)) {
+      if(definition && !hasDefinition(neighbour.rightFriendTypeDefinition, definition)) {
         neighbour.rightFriendTypeDefinition = concat(definition,neighbour.rightFriendTypeDefinition);
       }
       neighbour.direction = directionToSet(neighbour.direction, direction);
@@ -441,7 +451,7 @@ export class Page {
     if(neighbour) {
       neighbour.isNextFriend = true;
       neighbour.nextFriendType = relationTypeToSet(neighbour.nextFriendType,relationType);
-      if(definition && !neighbour.nextFriendTypeDefinition?.contains(definition)) {
+      if(definition && !hasDefinition(neighbour.nextFriendTypeDefinition, definition)) {
         neighbour.nextFriendTypeDefinition = concat(definition,neighbour.nextFriendTypeDefinition);
       }
       neighbour.direction = directionToSet(neighbour.direction, direction);
@@ -465,7 +475,7 @@ export class Page {
     if(neighbour) {
       neighbour.isPreviousFriend = true;
       neighbour.previousFriendType = relationTypeToSet(neighbour.previousFriendType,relationType);
-      if(definition && !neighbour.previousFriendTypeDefinition?.contains(definition)) {
+      if(definition && !hasDefinition(neighbour.previousFriendTypeDefinition, definition)) {
         neighbour.previousFriendTypeDefinition = concat(definition,neighbour.previousFriendTypeDefinition);
       }
       neighbour.direction = directionToSet(neighbour.direction, direction);

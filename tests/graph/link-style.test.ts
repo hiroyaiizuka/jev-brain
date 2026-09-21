@@ -4,17 +4,15 @@ import type ExcaliBrain from 'src/excalibrain-main';
 import type { ExcaliBrainSettings } from 'src/Settings';
 import { Link } from 'src/graph/Link';
 import type { Node } from 'src/graph/Node';
-import { RelationType, Role } from 'src/Types';
+import { type LinkStyle, RelationType, Role } from 'src/Types';
 import type { ExcalidrawAutomate, ExcalidrawStyleLike } from 'src/utils/ExcalidrawAutomateCompatibility';
 import { createEmptyHierarchyLowerCase, type HierarchyLowerCase } from 'src/utils/hierarchy';
-import type { LinkStyle } from 'src/Types';
 
 /**
  * What `Link` reads from the plugin: the per-field styles (as `setHierarchyLinkStylesExtended()`
- * builds them, keyed by the field as written and as a Dataview key), the regions of the ontology
- * (as `buildHierarchyLowerCase()` builds them, Dataview keys only) and the settings. `settings`
- * is passed twice because the constructor takes it as an argument and reads
- * `plugin.settings.folderLinkStyle` / `tagLinkStyle` from the plugin.
+ * builds them, keyed by the field as written and as a Dataview key) and the regions of the
+ * ontology (as `buildHierarchyLowerCase()` builds them, Dataview keys only). The styles come
+ * from the `settings` argument; `plugin.settings` is the same object in Scene and Settings.
  */
 type PluginStub = {
   hierarchyLinkStylesExtended: Record<string, LinkStyle>;

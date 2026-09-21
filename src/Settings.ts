@@ -169,7 +169,9 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   tagLinkStyle: {
     strokeColor: "#4682b4ff",
   },
-  // Separate copies: the settings tab edits these objects in place.
+  // Two objects, not one shared: the settings tab edits a style object in place, so a shared
+  // one would make an edit to Up show up in Down. (Like the other link styles, a data.json
+  // without these keys still gets these very objects from Object.assign in loadSettings.)
   upLinkStyle: { ...DEFAULT_AXIS_LINK_STYLE },
   downLinkStyle: { ...DEFAULT_AXIS_LINK_STYLE },
   hierarchyLinkStyles: {},
