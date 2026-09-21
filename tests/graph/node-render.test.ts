@@ -8,7 +8,7 @@ import type { ExcalidrawAutomate, ExcalidrawElement, ExcalidrawStyleLike } from 
 
 /**
  * What `Node.render()` draws (docs/3d-design.md §6-3): in 2D the upstream text box, four gates, neighbour counts
- * and group; in 3D the text box in the colour of its level, an "L{n}" label at its top right corner, no gates,
+ * and group; in 3D the text box in the colour of its level, no label, no gates,
  * no counts. The elements go through an ExcalidrawAutomate stub that logs every call with the style at that
  * moment and keeps the elements it made, so a test can read the box back as Scene does.
  */
@@ -227,27 +227,19 @@ describe('2D (the defaults): the upstream box, gates, counts and group', () => {
   });
 });
 
-describe('3D: no gates, no counts, the level colour and the L label', () => {
-  it('draws only the text box and the "L{n}" label, grouped together', async () => {
-    const { node, box, text, calls, groups, elements } = await renderNode('if-then プラン', {
+describe('3D: no gates, no counts, no label, just the level colour', () => {
+  it('draws only the text box, grouped with its text (the "L{n}" label was dropped in LEV-130)', async () => {
+    const { node, text, calls, groups } = await renderNode('if-then プラン', {
       counts: { parent: 1, children: 12 },
       view3D: { level: 0, floor: -1 },
     });
-    expect(fns(calls)).toEqual(['measureText', 'addText', 'measureText', 'addText', 'addToGroup']);
-    expect(texts(calls)).toEqual(['if-then プラン', 'L2']);
+    expect(fns(calls)).toEqual(['measureText', 'addText', 'addToGroup']);
+    expect(texts(calls)).toEqual(['if-then プラン']);
     expect(node.friendGateId).toBeUndefined();
     expect(node.nextFriendGateId).toBeUndefined();
     expect(node.parentGateId).toBeUndefined();
     expect(node.childGateId).toBeUndefined();
-
-    const label = elements[calls[3].id];
-    expect(groups).toEqual([[label.id, node.id, text.id]]);
-    // Right-aligned with the box, its bottom on the box's top, 0.6 of the node font, in the node's text colour
-    // (white, which reads on the dark canvas).
-    expect(label.x + label.width).toBe(box.x + box.width);
-    expect(label.y + label.height).toBe(box.y);
-    expect(label.fontSize).toBe(DEFAULT_NODE_STYLE.fontSize * 0.6);
-    expect(label.strokeColor).toBe(DEFAULT_NODE_STYLE.textColor);
+    expect(groups).toEqual([[node.id, text.id]]);
   });
 
   it('colours the box by level − floor, solid, and swaps the white text for black where it would not read', async () => {
@@ -257,22 +249,22 @@ describe('3D: no gates, no counts, the level colour and the L label', () => {
     expect(text.strokeColor).toBe('#000000ff');
   });
 
-  it.each<[Level, Level, string, string]>([
-    [-1, -1, 'L1', DEFAULT_LEVEL_COLORS[0]],
-    [0, -1, 'L2', DEFAULT_LEVEL_COLORS[1]],
-    [1, -1, 'L3', DEFAULT_LEVEL_COLORS[2]],
-    [0, 0, 'L1', DEFAULT_LEVEL_COLORS[0]],
-    [1, 0, 'L2', DEFAULT_LEVEL_COLORS[1]],
-  ])('level %i on floor %i is %s in the colour of that step', async (level, floor, expected, color) => {
+  it.each<[Level, Level, string]>([
+    [-1, -1, DEFAULT_LEVEL_COLORS[0]],
+    [0, -1, DEFAULT_LEVEL_COLORS[1]],
+    [1, -1, DEFAULT_LEVEL_COLORS[2]],
+    [0, 0, DEFAULT_LEVEL_COLORS[0]],
+    [1, 0, DEFAULT_LEVEL_COLORS[1]],
+  ])('level %i on floor %i takes the colour of that step (the step is no longer written out)', async (level, floor, color) => {
     const { box, calls } = await renderNode('a', { view3D: { level, floor } });
-    expect(texts(calls)).toEqual(['a', expected]);
+    expect(texts(calls)).toEqual(['a']);
     expect(box.backgroundColor).toBe(color);
   });
 
-  it('a level beyond levelColors keeps the node colour, fill and text colour but still gets its label', async () => {
+  it('a level beyond levelColors keeps the node colour, fill and text colour', async () => {
     const settings: ExcaliBrainSettings = { ...settingsStub, levelColors: [DEFAULT_LEVEL_COLORS[0]] };
     const { box, text, calls } = await renderNode('a', { settings, view3D: { level: 1, floor: -1 } });
-    expect(texts(calls)).toEqual(['a', 'L3']);
+    expect(texts(calls)).toEqual(['a']);
     expect(box.backgroundColor).toBe(DEFAULT_NODE_STYLE.backgroundColor);
     expect(box.fillStyle).toBe(DEFAULT_NODE_STYLE.fillStyle);
     expect(text.strokeColor).toBe(DEFAULT_NODE_STYLE.textColor);
@@ -284,29 +276,22 @@ describe('3D: no gates, no counts, the level colour and the L label', () => {
     expect(text.strokeColor).toBe('#000000ff');
   });
 
-  it('the central node takes its level colour like any other, and its black text turns white for the label on the canvas', async () => {
-    const { box, text, calls, elements } = await renderNode('centre', { isCentral: true, view3D: { level: 0, floor: 0 } });
-    expect(texts(calls)).toEqual(['centre', 'L1']);
+  it('the central node takes its level colour like any other and keeps its black text on the light floor colour', async () => {
+    const { box, text, calls } = await renderNode('centre', { isCentral: true, view3D: { level: 0, floor: 0 } });
+    expect(texts(calls)).toEqual(['centre']);
     expect(box.backgroundColor).toBe(DEFAULT_LEVEL_COLORS[0]);
-    // The central style's black text already reads on the light floor colour, so it stays inside the box …
     expect(text.strokeColor).toBe('#000000ff');
-    // … but would vanish on the dark canvas, so the label outside the box is white.
-    expect(elements[calls[3].id].strokeColor).toBe('#ffffffff');
   });
 
-  it('a retained embedded centre keeps the colour of its frame and gets the label from the frame bounds', async () => {
+  it('a retained embedded centre keeps the colour of its frame and draws nothing else', async () => {
     const frame: ExcalidrawElement = { id: 'frame', type: 'embeddable', x: -400, y: -300, width: 800, height: 600, backgroundColor: '#B5B5B5' };
     const ea = makeEA({ frame });
     const node = retainedNode(ea);
     await node.render({ floor: -1 });
     expect(node.id).toBe('frame');
-    expect(fns(ea.calls)).toEqual(['measureText', 'addText', 'addToGroup']);
-    expect(texts(ea.calls)).toEqual(['L2']);
+    expect(fns(ea.calls)).toEqual(['addToGroup']);
     expect(ea.elements.frame.backgroundColor).toBe('#B5B5B5');
-    const label = ea.elements[ea.calls[1].id];
-    expect(label.x + label.width).toBe(400);
-    expect(label.y + label.height).toBe(-300);
-    expect(ea.groups).toEqual([[label.id, 'frame']]);
+    expect(ea.groups).toEqual([['frame']]);
   });
 
   it('drops the deleted arrows from the bound elements of a retained frame (the links bind to it again each render)', async () => {
@@ -319,7 +304,7 @@ describe('3D: no gates, no counts, the level colour and the L label', () => {
     expect(ea.elements.frame.boundElements).toEqual([{ id: 'text-live', type: 'text' }]);
   });
 
-  it('a retained frame that is no longer on the canvas gets no label and does not throw', async () => {
+  it('a retained frame that is no longer on the canvas does not throw', async () => {
     const ea = makeEA();
     const node = retainedNode(ea);
     await expect(node.render({ floor: 0 })).resolves.toBeUndefined();

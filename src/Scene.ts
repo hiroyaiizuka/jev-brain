@@ -32,6 +32,15 @@ const VIEW_3D = {
   crossWidth: 2,
   /** 十字の両端の N／S／W／E */
   compassAlpha: 0.6,
+  /**
+   * N と S を床の外周から離す量（画面 px、ノードのフォントサイズに対する比）。文字の高さの 3/4〜1.2 ほどで、
+   * ラベルが床の縁のすぐ外に浮く（本人のフィードバック 4、LEV-130:「もっと床に近づける」→「気持ち、もう少しだけ
+   * 余白を」→「S だけもうほんの少し」）。W と E は床の余白の半分のまま。
+   */
+  compassGapNorthInFont: 0.9,
+  compassGapSouthInFont: 1.2,
+  /** W と E を床の外周から離す量（床の余白 `floorMarginFactor × nodeHeight` に対する比）。本人の指定で少し詰めた（LEV-130）。 */
+  compassGapEastWestInMargin: 0.4,
 } as const;
 
 /** `#rrggbb`／`#rrggbbaa` の色に不透明度（0〜1）を付け直す。 */
@@ -1152,14 +1161,22 @@ export class Scene {
 
     // 床（§6-6）: 足元と箱の横幅をすべて囲む最小の範囲に `floorMarginFactor` の余白。ただし中心から奥へ `floorNorthFactor`、
     // 手前へ `floorSouthFactor` は必ず広げる（Up／Down が帯を離れたので、足元だけでは南に奥行きが出ない）。
-    // グリッドは nodeHeight 間隔、十字は中心ノートの足元。方角は外周から画面で余白の半分（南北は投影で northRise 倍に縮むので割る）
+    // グリッドは nodeHeight 間隔、十字は中心ノートの足元
     const margin = view3D.floorMarginFactor * this.nodeHeight;
+    // 方角の置き場所: W／E は床の縁から余白の 0.4 倍。N／S は床に寄せる（LEV-130）ので文字の高さのぶんだけ離し、
+    // S は N よりわずかに外（本人の指定）。南北は投影で northRise 倍に縮むので、画面で欲しい量を割って 2D の距離にする
+    const compassFont = this.plugin.settings.baseNodeStyle.fontSize;
+    const compassGap = {
+      x: margin * VIEW_3D.compassGapEastWestInMargin,
+      north: (compassFont * VIEW_3D.compassGapNorthInFont) / params.northRise,
+      south: (compassFont * VIEW_3D.compassGapSouthInFont) / params.northRise,
+    };
     const plan = floorPlan(
       boxed.map(p => ({...p.center, width: p.box.width})),
       rootCenter,
       this.nodeHeight,
       margin,
-      {x: margin / 2, y: margin / 2 / params.northRise},
+      compassGap,
       {north: view3D.floorNorthFactor * this.nodeHeight, south: view3D.floorSouthFactor * this.nodeHeight},
     );
     const floorIds = this.keepingStyle(() => this.renderFloor(plan, plane));

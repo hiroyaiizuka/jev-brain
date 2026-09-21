@@ -93,6 +93,13 @@ export type FloorPlan = {
   compass: { north: Point; south: Point; west: Point; east: Point };
 };
 
+/**
+ * 方角ラベルを床の外周から離す量（2D の距離）。東西と南北を分け、さらに南北も別々に持つ: N は床のすぐ外、
+ * S はもう少しだけ外（本人のフィードバック 4、LEV-130）。南北は投影で `northRise` 倍に縮むので、Scene は
+ * 画面で欲しい量を割って渡す。
+ */
+export type CompassGap = { x: number; north: number; south: number };
+
 /** `floorPlan` の足元: ノードの 2D の中心と、その箱の幅（東西は画面で水平なので床は箱の横幅も覆う。省略は 0）。 */
 export type Foot = Point & { width?: number };
 
@@ -121,7 +128,7 @@ const gridPositions = (min: number, max: number, origin: number, spacing: number
  * 箱の幅（幅の広い箱が床の東西の縁や W／E を隠さないよう、東西は箱の横幅も覆う。南北は足元だけ）、`origin` は中心ノートの
  * 足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので十字は必ず床の内側にある。
  * 余白 `margin` は既定で `spacing`（Scene は spacing に nodeHeight、margin に `floorMarginFactor × nodeHeight` を渡す）。`compassGap` は方角ラベルを外周から離す量で、
- * 南北は投影で `northRise` 倍に縮むので Scene は y を `northRise` で割って渡す（画面でどの方角も同じ間隔）。
+ * 東西・北・南を別々に持つ（南北は投影で `northRise` 倍に縮むので Scene は割って渡す）。
  * 足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
  */
 export const floorPlan = (
@@ -129,7 +136,7 @@ export const floorPlan = (
   origin: Point,
   spacing: number,
   margin = spacing,
-  compassGap: Point = { x: margin / 2, y: margin / 2 },
+  compassGap: CompassGap = { x: margin / 2, north: margin / 2, south: margin / 2 },
   reach: FloorReach = { north: 0, south: 0 },
 ): FloorPlan => {
   const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
@@ -153,8 +160,8 @@ export const floorPlan = (
     columnXs: gridPositions(bounds.minX, bounds.maxX, origin.x, spacing),
     rowYs: gridPositions(bounds.minY, bounds.maxY, origin.y, spacing),
     compass: {
-      north: { x: origin.x, y: bounds.minY - compassGap.y },
-      south: { x: origin.x, y: bounds.maxY + compassGap.y },
+      north: { x: origin.x, y: bounds.minY - compassGap.north },
+      south: { x: origin.x, y: bounds.maxY + compassGap.south },
       west: { x: bounds.minX - compassGap.x, y: origin.y },
       east: { x: bounds.maxX + compassGap.x, y: origin.y },
     },
