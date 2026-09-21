@@ -106,13 +106,15 @@ describe('askJev', () => {
     expect(warnings).toEqual([]);
   });
 
-  it('estimates the input tokens from the state when the reply carries no usage', async () => {
+  it('estimates the input tokens from the body it sent when the reply carries no usage', async () => {
     requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-no-usage-200.json'));
 
     const response = await askJev(config, request);
 
     expect(response?.questions.field.choice).toBe('origin');
-    expect(response?.usage).toEqual({ inputTokens: (request.state as string).length });
+    // The criteria travel with the state, so the estimate counts the whole request, not just the state.
+    expect(response?.usage).toEqual({ inputTokens: requestUrlMock.calls[0].body?.length });
+    expect(response?.usage?.inputTokens).toBeGreaterThan((request.state as string).length);
   });
 
   it('waits a second after 429 and retries once, then returns the answers', async () => {
@@ -168,10 +170,49 @@ describe('askJev', () => {
   });
 
   it('treats a 200 whose body is not the documented shape as unreadable', async () => {
-    requestUrlMock.respond = () => Promise.resolve({ status: 200, text: '{"error":"no such model"}' });
+    requestUrlMock.respond = () => Promise.resolve(recorded('wrong-shape-200.json'));
 
     expect(await askJev(config, request)).toBeNull();
     expect(requestUrlMock.calls).toHaveLength(1);
     expect(Notice.messages).toHaveLength(1);
+  });
+
+  it('fails when the reply answers only one of the two questions', async () => {
+    requestUrlMock.respond = () => Promise.resolve(recorded('missing-answer-200.json'));
+
+    expect(await askJev(config, request)).toBeNull();
+    expect(requestUrlMock.calls).toHaveLength(1);
+    expect(Notice.messages).toHaveLength(1);
+  });
+
+  it('does not retry a 4xx that is not 429 (a wrong key must not be asked twice)', async () => {
+    requestUrlMock.respond = () => Promise.resolve(recorded('unauthorized-401.json'));
+
+    expect(await askJev(config, request)).toBeNull();
+    expect(requestUrlMock.calls).toHaveLength(1);
+    expect(Notice.messages).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ message: expect.stringContaining('401') as unknown });
+  });
+
+  it('sends nothing when the endpoint is not https, so the key cannot leak in the clear', async () => {
+    requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-200.json'));
+
+    expect(await askJev({ ...config, endpoint: 'http://api.typesafe.ai/v1/systemone' }, request)).toBeNull();
+    expect(requestUrlMock.calls).toEqual([]);
+    expect(Notice.messages).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ message: expect.stringContaining('not https') as unknown });
+  });
+
+  it('keeps a "__proto__" key in the reply out of the answers it builds', async () => {
+    requestUrlMock.respond = () => Promise.resolve(recorded('proto-pollution-200.json'));
+
+    const response = await askJev(config, request);
+
+    // Only the questions that were asked, and `__proto__` arrives as a plain key: no setter runs,
+    // so nothing is silently dropped and no prototype is replaced.
+    expect(Object.keys(response?.questions ?? {})).toEqual(['field', 'direction']);
+    expect(Object.keys(response?.questions.field.probabilities ?? {})).toEqual(['up', '__proto__']);
+    expect(Object.getPrototypeOf(response?.questions.field.probabilities)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 });
