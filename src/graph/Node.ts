@@ -13,13 +13,27 @@ const LEVEL_LABEL_FONT_SCALE = 0.6;
 /** WCAG contrast a text colour must reach on the level colour before it is swapped for black or white (AA, large text). */
 const MIN_TEXT_CONTRAST = 3;
 
-/** Relative luminance (WCAG, 0 = black, 1 = white) of a `#rrggbb` or `#rrggbbaa` colour; alpha is ignored. NaN if unparsable. */
-const luminanceOf = (color: string): number => {
-  const channel = (at: number): number => {
-    const c = parseInt(color.substring(at, at + 2), 16) / 255;
+type Rgb = [number, number, number];
+
+/** `#rrggbb` or `#rrggbbaa` (the settings' colour pickers write the latter) → channels 0..255 and alpha 0..1. Null if unparsable. */
+const parseColor = (color: string): { rgb: Rgb; alpha: number } | null => {
+  const match = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(color);
+  if (!match) return null;
+  const rgb = [0, 2, 4].map((at) => parseInt(match[1].substring(at, at + 2), 16)) as Rgb;
+  return { rgb, alpha: match[2] ? parseInt(match[2], 16) / 255 : 1 };
+};
+
+/** The colour seen when `color` is drawn over an opaque `ground`. */
+const compositeOver = (color: { rgb: Rgb; alpha: number }, ground: Rgb): Rgb =>
+  color.rgb.map((c, i) => c * color.alpha + ground[i] * (1 - color.alpha)) as Rgb;
+
+/** Relative luminance (WCAG, 0 = black, 1 = white). */
+const luminanceOf = ([r, g, b]: Rgb): number => {
+  const channel = (value: number): number => {
+    const c = value / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
-  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 };
 
 const contrastOf = (l1: number, l2: number): number => (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
@@ -28,14 +42,23 @@ const contrastOf = (l1: number, l2: number): number => (Math.max(l1, l2) + 0.05)
  * The text colour to use on `background`: `preferred` (the node's own text colour) while it reads on it
  * (contrast ≥ `MIN_TEXT_CONTRAST`), otherwise black or white, whichever contrasts more. The default text is
  * white and the default level colours are light, so without this the lower levels would be unreadable in 3D.
- * A colour that does not parse keeps `preferred`.
+ * `canvas` is what shows through a translucent `background` (the pickers have an opacity slider): the
+ * background is composited over it, and the text over the result, before the contrast is measured. Without
+ * `canvas` the background counts as opaque. A background or text colour that does not parse keeps `preferred`.
  */
-export const readableTextColor = (background: string, preferred: string): string => {
-  const bg = luminanceOf(background);
-  const text = luminanceOf(preferred);
-  if (Number.isNaN(bg) || Number.isNaN(text) || contrastOf(bg, text) >= MIN_TEXT_CONTRAST) return preferred;
-  return contrastOf(bg, 0) >= contrastOf(bg, 1) ? "#000000ff" : "#ffffffff";
+export const readableTextColor = (background: string, preferred: string, canvas?: string): string => {
+  const bg = parseColor(background);
+  const text = parseColor(preferred);
+  if (!bg || !text) return preferred;
+  const ground = canvas === undefined ? null : parseColor(canvas);
+  const bgRgb = ground ? compositeOver(bg, ground.rgb) : bg.rgb;
+  const bgL = luminanceOf(bgRgb);
+  if (contrastOf(bgL, luminanceOf(compositeOver(text, bgRgb))) >= MIN_TEXT_CONTRAST) return preferred;
+  return contrastOf(bgL, 0) >= contrastOf(bgL, 1) ? "#000000ff" : "#ffffffff";
 };
+
+/** What `Scene.render3D()` hands `Node.render()` in 3D: the lowest level on screen (`Projection.floorOf`), shown as L1. */
+export type View3DRender = { floor: Level };
 
 export class Node {
   page: Page;
@@ -59,14 +82,6 @@ export class Node {
    * never changes it; `render()` reads it only in 3D (the level colour and label).
    */
   public level: Level = 0;
-  /**
-   * 3D (docs/3d-design.md §6-3). `Scene.render3D()` sets both before `render()`: no gates and no neighbour
-   * counts are drawn (the links join the boxes), the box takes `settings.levelColors[level − floor]` and
-   * gets an "L{level − floor + 1}" label at its top right corner. `floor` is the lowest level on screen
-   * (`Projection.floorOf`), shown as L1. Both stay at their defaults in 2D, which renders as upstream does.
-   */
-  public view3D: boolean = false;
-  public floor: Level = 0;
 
   constructor(x:{
     ea: ExcalidrawAutomate,
@@ -240,7 +255,12 @@ export class Node {
     return labelSize;
   }
 
-  async render() {
+  /**
+   * `view3D` (docs/3d-design.md §6-3, passed by `Scene.render3D()`; 2D callers pass nothing and get the upstream
+   * drawing): no gates and no neighbour counts (the links join the boxes, `Link.render()`), the box takes
+   * `settings.levelColors[level − floor]` and gets an "L{level − floor + 1}" label at its top right corner.
+   */
+  async render(view3D?: View3DRender) {
     const ea = this.ea;
     const settings = this.settings;
     
@@ -265,9 +285,20 @@ export class Node {
     // 3D (§6-3): the box takes the colour of its level and the text a colour that reads on it. Not for an embedded
     // node: its frame survives a re-render (retainCentralNode), so a level colour would stay on it back in 2D,
     // and the frame's background is hidden by the embedded content anyway.
-    const levelColor = this.view3D && !this.isEmbedded ? this.levelColor() : undefined;
+    const levelColor = view3D && !this.isEmbedded ? this.levelColor(view3D.floor) : undefined;
     if(levelColor) {
-      applyEAStyle(ea, { strokeColor: readableTextColor(levelColor, this.style.textColor) });
+      applyEAStyle(ea, { strokeColor: readableTextColor(levelColor, this.style.textColor, settings.backgroundColor) });
+    }
+    if(view3D && this.isEmbedded && this.embeddedElementIds.length>0) {
+      // In 3D the links bind to this retained element (in 2D to gates made afresh each render); the arrows of the
+      // previous render are deleted but stay listed in its boundElements, so drop them or the list grows every render.
+      const box = ea.getElement(this.id);
+      if(box) {
+        box.boundElements = (box.boundElements ?? []).filter(bound => {
+          const element = ea.getElement(bound.id);
+          return element && !element.isDeleted;
+        });
+      }
     }
 
     const labelSize = this.isEmbedded
@@ -277,14 +308,18 @@ export class Node {
       : this.renderText();
 
     if(levelColor) {
-      ea.getElement(this.id).backgroundColor = levelColor;
+      const box = ea.getElement(this.id);
+      box.backgroundColor = levelColor;
+      // The level colour is a solid step; a hatched style (virtual nodes by default) would show mostly canvas.
+      box.fillStyle = "solid";
     }
 
-    if(this.view3D) {
+    if(view3D) {
       // No gates and no neighbour counts in 3D (§6-3): the links join the boxes (`Link.render()`), so the gate ids
       // stay unset. The level label is the only extra element and moves with the box.
+      const labelId = this.renderLevelLabel(view3D.floor);
       ea.addToGroup([
-        this.renderLevelLabel(),
+        ...labelId ? [labelId] : [],
         ...this.isEmbedded
           ? this.embeddedElementIds
           : [this.id, ea.getElement(this.id).boundElements[0].id]
@@ -414,29 +449,32 @@ export class Node {
     ]);
   }
 
-  /** Index of the node's level from the floor: 0 for the floor (L1). Only meaningful in 3D. */
-  private levelIndex(): number {
-    return this.level - this.floor;
+  /** Index of the node's level from `floor`: 0 for the floor (L1). Only meaningful in 3D. */
+  private levelIndex(floor: Level): number {
+    return this.level - floor;
   }
 
   /** `settings.levelColors[level − floor]`, or undefined when the array has no entry for it (the node keeps its own colour). */
-  private levelColor(): string | undefined {
-    return this.settings.levelColors[this.levelIndex()];
+  private levelColor(floor: Level): string | undefined {
+    return this.settings.levelColors[this.levelIndex(floor)];
   }
 
   /**
    * The "L{n}" label at the top right corner of the box, outside it (§6-3): right-aligned with the box, its bottom
-   * at the box's top, `LEVEL_LABEL_FONT_SCALE` of the node's font, in the node's text colour (it sits on the canvas,
-   * not on the level colour). The box is read back from the element `id` points at (text box, frame or image).
+   * at the box's top, `LEVEL_LABEL_FONT_SCALE` of the node's font. It sits on the canvas, not on the level colour,
+   * so the node's text colour is checked against `settings.backgroundColor` (the central style's black text would
+   * vanish on the default dark canvas). The box is read back from the element `id` points at (text box, frame or
+   * image); a retained frame the user removed from the canvas has none, and then there is no label either.
    */
-  private renderLevelLabel(): string {
+  private renderLevelLabel(floor: Level): string | undefined {
     const ea = this.ea;
     const box = ea.getElement(this.id);
-    const text = `L${this.levelIndex() + 1}`;
+    if(!box) return undefined;
+    const text = `L${this.levelIndex(floor) + 1}`;
     applyEAStyle(ea, {
       fontSize: this.style.fontSize * LEVEL_LABEL_FONT_SCALE,
       fontFamily: this.style.fontFamily,
-      strokeColor: this.style.textColor,
+      strokeColor: readableTextColor(this.settings.backgroundColor, this.style.textColor),
     });
     const size = ea.measureText(text);
     return ea.addText(box.x + box.width - size.width, box.y - size.height, text);

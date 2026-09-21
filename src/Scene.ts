@@ -1064,7 +1064,7 @@ export class Scene {
   /**
    * 3D の描画（docs/3d-design.md §6-1、柱・影・地面は §3-4 のまま）。配置 → 友の帯を中心の y に揃える → 床 → 投影 →
    * 地面 → north 降順にノード（床にいないノードには影と柱）。2D と同じ `place()` の中心を投影で置き換え、Node には
-   * `view3D` と `floor` を渡す（§6-3: ゲート・数字なし、level 別の色、L ラベル。`Node.render()`）。
+   * `render({floor})` で 3D を伝える（§6-3: ゲート・数字なし、level 別の色、L ラベル。`Node.render()`）。
    * 埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は
    * 中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は 3D でも合う（床のほうが `floor` のぶん下がる）。
    * `friendLayouts`（左右の友）だけ `friendBandShift` で 2D の y を動かす（上流の Layout の半行のずれを 3D でだけ戻す）。
@@ -1102,14 +1102,13 @@ export class Scene {
       };
     }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
-    placed.forEach(p => { p.node.view3D = true; p.node.floor = floor; });
 
     const sceneryIds = this.keepingStyle(() => this.renderGround(placed, floor, params));
 
     // 奥（north 大）から手前へ逐次描く（§6-1）。影と柱は箱の下端が要るのでノードの直後に描く
     placed.sort((a, b) => compareDrawOrder(a.projected, b.projected));
     for (const p of placed) {
-      await p.node.render();
+      await p.node.render({floor});
       if(p.node.level !== floor) {
         sceneryIds.push(...this.keepingStyle(() => this.renderShadowAndPillar(p.node, project(p.center, floor, params))));
       }
