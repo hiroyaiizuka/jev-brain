@@ -102,6 +102,8 @@
 - 同じスクリプトが正解ごとに設計 §2-2 の state と §2-3 の 2 問で Jev に聞き、フィールド一致率・方向一致率・しきい値（0.5〜0.9）ごとの適合率と対象率・混同の多い組・トークン数と費用の実績を `artifacts/jev-accuracy/record.md` に記録する（500 件以上）。
 - 結果から一括の自動確定（既定 0.8）と見直し（既定 0.9）のしきい値を本人が決め、設計 §2-4 と本書 §5 に記録する。一致率が 5 割未満なら JEV-4 の自動確定をやめる。
 
+現在の実装（LEV-162）: `node scripts/jev-accuracy.mjs extract --vault <path> --out artifacts/jev-accuracy/truth.json` が Vault の Markdown から型付きリンクを抜き出す（frontmatter の `field: [[X]]`、本文の `(field:: [[X]])`、行頭の `field:: [[X]]`＝`## Relations` の行を含む。埋め込みとフェンスの中は数えない）。1 件ごとにフィールド名（Dataview のキー）・領域と方向・相手・前後 500 字・相手の frontmatter と冒頭 300 字を `truth.json` に、フィールド別と方向別の件数とリンク総数に対する型付きの割合を stdout と `record.md` の表に出す。hierarchy は `<vault>/.obsidian/plugins/jevbrain/data.json` から読み、無ければ上流の既定値（Up／Down が空なので `up` は Parents、`down` は Children）。書き出し先は `artifacts/` の中だけを許す。`tests/tooling/jev-accuracy.test.mjs` が 3D 用の fixture（`docs/3d-brief.md` §7 の 8 ノート＋LEV-124／LEV-128 の 3 ノート）で件数を固定する（up 3・leads to 2・example 2・origin 1・similar 1・next 1・down 1 ＝ 親 4・子 3・左友 1・次 1・領域の外 2）。実行（2026-09-22、`tests/fixtures/` 全体 92 ノートを Vault に）: 正解 94 件、リンク 103 件、型付き 91.3%。Jev はまだ呼ばず、`judge` は名前だけで LEV-163 で実装する。
+
 ### JEV-1 判定の中核（UI なし）
 
 - 設定に「Jev」節（API キー、有効化、`]]` 直後のサジェスト、前後の文字数、書き込み先の見出しと方式、しきい値 2 つ、endpoint／model。設計 §6）。キーが空なら Jev のコマンド・ボタン・サジェスター・view を一切登録しない。`data.json` がプレーンテキストである旨と送信する内容を設定画面に書く。
