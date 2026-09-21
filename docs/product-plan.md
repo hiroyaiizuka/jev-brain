@@ -62,6 +62,8 @@
 - plugin ID と名前を決める（上流と同じ `excalibrain` のままなら上流版と同時インストール不可）。
 - `npm version x.y.z` → tag → Release → BRAT で導入できる。`artifacts/` に導入の記録。
 
+現在の実装（LEV-147）: plugin ID を `jevbrain`、名前を JevBrain、作者を Hiroya Iizuka にした（`manifest.json`、`package.json`＋lock、`disablePlugin()` に渡す自分の ID（`constants.PLUGIN_NAME` をやめて `this.manifest.id`）、`scripts/preflight.mjs`、`release.yml`／`check.yml` の artifact 名と `dist/jevbrain/`、tooling テストのサンプル）。上流版（`excalibrain`）と ID が違うので別プラグインとして入る（実機での同時インストールは未確認。既定の図面ファイルがどちらも `excalibrain.md` なので、並べて使うには片方の設定を変える）。command ID `excalibrain-*`・CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の表示文字列は互換のため据え置き（表示名の置き換えは別チケット）。ID が変わって `obsidianmd/commands/no-plugin-id-in-command-id` が指摘しなくなったので、lint のベースラインから外した（`harness.md` の表も）。BRAT 配布は Jev の実装後まで保留で、Release はまだ作っていない。
+
 ### 3D-2 見た目の作り直し（本人のフィードバック 2026-09-21）
 
 受入条件は `docs/3d-feedback-2026-09-21.md`「合格の目安」と `docs/3d-design.md` §6:
@@ -80,11 +82,12 @@
 
 - 親 20・子 30 の fixture で要素数と描画時間を `artifacts/` に記録し、重なりの残りを判断する。
 
+現在の実装（LEV-144）: 初期ズーム（`zoomToFit`）を 3D の床と方角を除いたノード・リンクに合わせる。`Scene.render()` が `render3D()` の戻り値の id を集め、`zoomTargets`（`src/graph/zoom.ts`）がそれを外した配列を `zoomToFit` に渡す（`tests/graph/zoom.test.ts`）。床は最低の広がりを持つ（`floorNorthFactor`／`floorSouthFactor`）ので、8 ノートでは床がビューポートを決めて倍率が 35% まで落ちていた。床と方角は画面からはみ出してよい。タブが隠れている間に描いた場合の遅延ズーム（`zoomToFitOnNextBrainLeafActivate`）も同じ経路にした。2D は床の id が無く、上流がその呼び出しで渡していた対象をそのまま渡すので、対象も倍率も従来どおり。**実機は未実施**: 倍率が 2D と ±10% に収まるか（受入条件）は CDP の `getAppState().zoom.value` を 2D／3D で比べて確かめる必要があり、床と方角が画面からどれだけ外れるかは本人の目視待ち（`docs/3d-design.md` §7）。
 現在の実装（LEV-143）: `tests/fixtures/big/` に中心「大きな脳」と level 0 の親 20（`origin::`）・level 0 の子 30（`leads to::`）・Up 7（`up::`）・Down 7（`down::`／`example::`）・左右の友 5 ずつ（`similar::`／`next::`）の 75 ノート（タイトルの長さは揃えず、最長は `maxLabelLength` ちょうどの 30 文字）を置き、`scripts/prepare-test-vault.mjs` が `tests/fixtures/` をサブフォルダごと `test-vault/Fixtures/` に写すようにして（`tests/tooling/preflight.test.mjs` に 1 件）、要素数（`EA.getViewElements().length` と `nodesMap`）・描画時間（`reRender(false)` を挟む `performance.now()`）・箱の重なり（同じ段で x の差が箱幅の和の半分未満）の測り方と記録先 `artifacts/3d-3-measure/record.md` を `harness.md`「3D の実測手順」と実機ケース E17 に書いた（測定そのものは未実施）。
 
 ### H1 引き継ぎコードの整地（3D-1 の後）
 
-- `eslint.config.mjs` の「引き継ぎ時のベースライン」ブロックが空になる（恒久の command ID を除く）。
+- `eslint.config.mjs` の「引き継ぎ時のベースライン」ブロックが空になる。
 - `tsconfig` に `strict: true` が入り `npm run typecheck` が通る。
 - 設定画面の見出しを `Setting.setHeading()` に変え、実機（E09）で確認して証跡を残す。
 - `Pages`／`Page` の関係判定に plugin スタブ付きの単体テストが付く。
@@ -104,7 +107,7 @@
 
 | 論点 | 現時点の判断 | 決める人・時期 |
 | --- | --- | --- |
-| plugin ID と名前 | 上流と同じ（`excalibrain`）。同時インストール不可 | 本人。R1 の前 |
+| plugin ID と名前 | 決定: ID `jevbrain`、名前 JevBrain、作者 Hiroya Iizuka（上流版と同時インストール可）。BRAT 配布は Jev の実装後まで保留 | 決定済み（2026-09-21） |
 | 「Jev 支援」の意味 | 決定: 貼った後の `[[X]]` にオントロジーのフィールドを順位付けして付ける別プラグイン。既存サジェスターには足さない | 決定済み（2026-09-20） |
 | 「3D」の意味 | 決定: Up／Down 領域を高さにした疑似 3D の検査モード。本物の 3D はやらない | 決定済み（2026-09-20） |
 | 抽象度のデータ | 決定: ノート属性は使わず、オントロジーの領域（Up／Down）で決める。既定値で決め打ちしない | 決定済み（2026-09-20） |

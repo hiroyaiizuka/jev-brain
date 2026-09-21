@@ -58,13 +58,13 @@ describe('release workflow', () => {
     const upload = build.steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
     expect(upload.with.path.trim().split('\n').map((line) => line.trim())).toEqual(distributables);
     expect(upload.with['if-no-files-found']).toBe('error');
-    expect(upload.with.name).toBe('excalibrain-${{ steps.version.outputs.version }}');
+    expect(upload.with.name).toBe(`${manifest.id}-\${{ steps.version.outputs.version }}`);
     expect(build.outputs.version).toBe('${{ steps.version.outputs.version }}');
   });
 
   it('attaches the same three files from the build artifact to a release named after the tag', () => {
     const download = release.steps.find((step) => step.uses?.startsWith('actions/download-artifact@'));
-    expect(download.with).toEqual({ name: 'excalibrain-${{ needs.build.outputs.version }}', path: `dist/${manifest.id}` });
+    expect(download.with).toEqual({ name: `${manifest.id}-\${{ needs.build.outputs.version }}`, path: `dist/${manifest.id}` });
     const create = release.steps.find((step) => typeof step.run === 'string' && step.run.includes('gh release create'));
     expect(create.env).toEqual({ GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}' });
     expect(create.run).toContain('gh release create "$GITHUB_REF_NAME"');
