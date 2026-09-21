@@ -40,14 +40,15 @@ const contrastOf = (l1: number, l2: number): number => (Math.max(l1, l2) + 0.05)
  * (contrast ≥ `MIN_TEXT_CONTRAST`), otherwise black or white, whichever contrasts more. The default text is
  * white and the default level colours are light, so without this the lower levels would be unreadable in 3D.
  * `canvas` is what shows through a translucent `background` (the pickers have an opacity slider): the
- * background is composited over it, and the text over the result, before the contrast is measured. Without
- * `canvas` the background counts as opaque. A background or text colour that does not parse keeps `preferred`.
+ * background is composited over it, and the text over the result, before the contrast is measured. A canvas
+ * colour that does not parse leaves the background opaque. A background or text colour that does not parse
+ * keeps `preferred`.
  */
-export const readableTextColor = (background: string, preferred: string, canvas?: string): string => {
+export const readableTextColor = (background: string, preferred: string, canvas: string): string => {
   const bg = parseColor(background);
   const text = parseColor(preferred);
   if (!bg || !text) return preferred;
-  const ground = canvas === undefined ? null : parseColor(canvas);
+  const ground = parseColor(canvas);
   const bgRgb = ground ? compositeOver(bg, ground.rgb) : bg.rgb;
   const bgL = luminanceOf(bgRgb);
   if (contrastOf(bgL, luminanceOf(compositeOver(text, bgRgb))) >= MIN_TEXT_CONTRAST) return preferred;
@@ -315,11 +316,12 @@ export class Node {
       // No gates and no neighbour counts in 3D (§6-3): the links join the boxes (`Link.render()`), so the gate ids
       // stay unset. The "L{n}" label was dropped in LEV-130 (the author's feedback 4), so the box and its text are
       // all there is; the level still shows as the box colour.
-      ea.addToGroup([
-        ...this.isEmbedded
-          ? this.embeddedElementIds
-          : [this.id, ea.getElement(this.id).boundElements[0].id]
-      ]);
+      const ids = this.isEmbedded
+        ? this.embeddedElementIds
+        : [this.id, ea.getElement(this.id).boundElements[0].id];
+      // 要素が 1 つ（保持した埋め込みの中心）ならグループにする相手がいない。`addToGroup` は呼ぶたびに
+      // 新しい group id を要素に足すので、キャンバスに残り続ける枠では再描画のたびに `groupIds` が伸びる。
+      if(ids.length > 1) ea.addToGroup(ids);
       return;
     }
 

@@ -289,9 +289,10 @@ describe('3D: no gates, no counts, no label, just the level colour', () => {
     const node = retainedNode(ea);
     await node.render({ floor: -1 });
     expect(node.id).toBe('frame');
-    expect(fns(ea.calls)).toEqual(['addToGroup']);
+    // 枠 1 つだけなのでグループにする相手がいない。`addToGroup` を呼ぶと再描画のたびに `groupIds` が伸びる。
+    expect(fns(ea.calls)).toEqual([]);
     expect(ea.elements.frame.backgroundColor).toBe('#B5B5B5');
-    expect(ea.groups).toEqual([['frame']]);
+    expect(ea.groups).toEqual([]);
   });
 
   it('drops the deleted arrows from the bound elements of a retained frame (the links bind to it again each render)', async () => {
@@ -308,8 +309,8 @@ describe('3D: no gates, no counts, no label, just the level colour', () => {
     const ea = makeEA();
     const node = retainedNode(ea);
     await expect(node.render({ floor: 0 })).resolves.toBeUndefined();
-    expect(fns(ea.calls)).toEqual(['addToGroup']);
-    expect(ea.groups).toEqual([['frame']]);
+    expect(fns(ea.calls)).toEqual([]);
+    expect(ea.groups).toEqual([]);
   });
 });
 
@@ -325,22 +326,23 @@ describe('readableTextColor', () => {
   });
 
   it('keeps a text colour that already reads, and picks white on a dark background', () => {
-    expect(readableTextColor(DEFAULT_LEVEL_COLORS[0], '#000000ff')).toBe('#000000ff');
-    expect(readableTextColor('#101010ff', '#202020ff')).toBe('#ffffffff');
-    expect(readableTextColor(CANVAS, '#000000ff')).toBe('#ffffffff');
+    expect(readableTextColor(DEFAULT_LEVEL_COLORS[0], '#000000ff', CANVAS)).toBe('#000000ff');
+    expect(readableTextColor('#101010ff', '#202020ff', CANVAS)).toBe('#ffffffff');
+    expect(readableTextColor(CANVAS, '#000000ff', CANVAS)).toBe('#ffffffff');
   });
 
   it('measures a translucent background as seen over the canvas: a faint level colour over the dark canvas keeps white text', () => {
     const faint = '#eeedfd4d'; // L1 at opacity 0.3, as the settings picker writes it: a mid blue over the canvas
     expect(readableTextColor(faint, '#ffffffff', CANVAS)).toBe('#ffffffff');
-    expect(readableTextColor(faint, '#ffffffff')).toBe('#000000ff'); // opaque without a canvas
+    // 読めない canvas 色を渡したときは背景を不透明として測る（設定が壊れていても落とさない）。
+    expect(readableTextColor(faint, '#ffffffff', 'not a colour')).toBe('#000000ff');
     expect(readableTextColor(faint, '#000000ff', CANVAS)).toBe('#000000ff'); // black still reads on the mid blue (4.2:1)
     expect(readableTextColor('#eeedfd1a', '#000000ff', CANVAS)).toBe('#ffffffff'); // at opacity 0.1 it no longer does
   });
 
   it('keeps the text colour when either colour does not parse', () => {
-    expect(readableTextColor('transparent', '#ffffffff')).toBe('#ffffffff');
-    expect(readableTextColor(DEFAULT_LEVEL_COLORS[0], 'white')).toBe('white');
+    expect(readableTextColor('transparent', '#ffffffff', CANVAS)).toBe('#ffffffff');
+    expect(readableTextColor(DEFAULT_LEVEL_COLORS[0], 'white', CANVAS)).toBe('white');
     expect(readableTextColor(DEFAULT_LEVEL_COLORS[0], '#ffffffff', 'transparent')).toBe('#000000ff'); // an unparsable canvas is ignored
   });
 });

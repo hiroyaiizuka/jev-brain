@@ -60,7 +60,7 @@ export const levelOf = (
 
 /**
  * 画面内の最下段: 中心ノードは常に 0 なので 0 から始め、Down の子（−1）があれば −1。空でも 0。
- * L ラベルと level 別の色（§6-3、LEV-121）が L1 として数える基準。描く床（§6-2）はこれではなく常に中心の段 0
+ * level 別の色（§6-3）の添字の基準（`levelColors[level − floor]`。肩の L ラベルは LEV-130 でやめた）。描く床（§6-2）はこれではなく常に中心の段 0
  * （`FLOOR_LEVEL`）で、最下段が −1 のときそのノードは床の下に吊る。
  */
 export const floorOf = (levels: readonly Level[]): Level => levels.reduce<Level>((floor, level) => (level < floor ? level : floor), 0);
@@ -315,3 +315,12 @@ export const project = (center: Point, level: Level, params: ProjectionParams): 
  * `Array.prototype.sort` の比較関数として `project` の結果を渡す。
  */
 export const compareDrawOrder = (a: Projected, b: Projected): number => b.depth - a.depth || a.x - b.x;
+
+/**
+ * 画面で `screen` px ぶんの南北の隙間に当たる 2D の地面距離（LEV-130）。投影は南北を `northRise` 倍に縮めるので
+ * （`project` の `y = −north · northRise`）、画面で欲しい量から地面の距離を戻すのは割り算になる。方角ラベルのように
+ * 「画面で決めた距離」を 2D の座標に置きたいところで使う。`northRise` が 0 以下（設定を手で壊した場合）なら
+ * 縮まないものとして `screen` をそのまま返す。
+ */
+export const groundGapNorthSouth = (screen: number, params: ProjectionParams): number =>
+  params.northRise > 0 ? screen / params.northRise : screen;

@@ -15,6 +15,7 @@ import {
   levelOf,
   FLOOR_LEVEL,
   floorDrop,
+  groundGapNorthSouth,
   project,
   VerticalEntry,
   verticalRow,
@@ -398,7 +399,7 @@ describe('verticalRow (§6-5: 帯から中心の行へ移すのはどのノー�
   });
 });
 
-describe('floorOf (最下段。L ラベルの基準で、描く床は FLOOR_LEVEL)', () => {
+describe('floorOf (最下段。level 別の色の基準で、描く床は FLOOR_LEVEL)', () => {
   it('is the lowest level on screen, starting from the centre (0) so it is never above 0 and is 0 when empty', () => {
     expect(floorOf([])).toBe(0);
     expect(floorOf([0, 0])).toBe(0);
@@ -527,9 +528,10 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
     // Scene が渡す形: 画面で W／E 38px、N 18px、S 24px。南北は northRise で割って地面の距離にする。
     const plan = floorPlan(feet, origin, nodeHeight, nodeHeight, { x: 38, north: 18 / northRise, south: 24 / northRise });
     const params: ProjectionParams = { northShearX: 0.4, northRise, upHeight: 2.2 * nodeHeight, downHeight: 2.2 * nodeHeight };
-    const screenGap = (edge: Point, label: Point) => project(edge, FLOOR_LEVEL, params).y - project(label, FLOOR_LEVEL, params).y;
+    const screenGap = (edge: Point, label: Point) =>
+      Math.abs(project(edge, FLOOR_LEVEL, params).y - project(label, FLOOR_LEVEL, params).y);
     expect(screenGap({ x: 0, y: plan.bounds.minY }, plan.compass.north)).toBeCloseTo(18, 9);
-    expect(screenGap(plan.compass.south, { x: 0, y: plan.bounds.maxY })).toBeCloseTo(24, 9);
+    expect(screenGap({ x: 0, y: plan.bounds.maxY }, plan.compass.south)).toBeCloseTo(24, 9);
     const edgeW = project({ x: plan.bounds.minX, y: -12 }, FLOOR_LEVEL, params);
     const labelW = project(plan.compass.west, FLOOR_LEVEL, params);
     expect(edgeW.x - labelW.x).toBeCloseTo(38, 9);
@@ -570,6 +572,23 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
       expect(plan.columnXs).toEqual([]);
       expect(plan.rowYs).toEqual([]);
     }
+  });
+});
+
+describe('groundGapNorthSouth (画面の距離を 2D の地面距離に戻す、LEV-130)', () => {
+  const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, upHeight: 100, downHeight: 100 };
+
+  it('undoes the northRise foreshortening, so a screen gap lands as that many pixels after projection', () => {
+    const ground = groundGapNorthSouth(18, params);
+    expect(ground).toBeCloseTo(60, 9);
+    const edge = project({ x: 0, y: 0 }, FLOOR_LEVEL, params);
+    const label = project({ x: 0, y: 0 - ground }, FLOOR_LEVEL, params);
+    expect(edge.y - label.y).toBeCloseTo(18, 9);
+  });
+
+  it('falls back to the screen distance when northRise is 0 (a hand-edited setting), instead of Infinity', () => {
+    expect(groundGapNorthSouth(18, { ...params, northRise: 0 })).toBe(18);
+    expect(groundGapNorthSouth(18, { ...params, northRise: -1 })).toBe(18);
   });
 });
 
