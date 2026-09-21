@@ -42,19 +42,19 @@ function runCli(args, env = {}) {
 }
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'excalibrain-version-bump-test-'));
-  writeJson('package.json', { name: 'excalibrain', version: '0.0.1' });
+  root = mkdtempSync(join(tmpdir(), 'jevbrain-version-bump-test-'));
+  writeJson('package.json', { name: 'jevbrain', version: '0.0.1' });
   writeJson('manifest.json', {
-    id: 'excalibrain', name: 'ExcaliBrain', version: '0.0.1', minAppVersion: '1.8.7',
+    id: 'jevbrain', name: 'JevBrain', version: '0.0.1', minAppVersion: '1.8.7',
     description: 'Edit notes as mind maps.', author: 'Example author', isDesktopOnly: false,
   });
   writeJson('versions.json', { '0.0.1': '1.8.7' });
   writeJson('package-lock.json', {
-    name: 'excalibrain', version: '0.0.1', lockfileVersion: 3,
-    packages: { '': { name: 'excalibrain', version: '0.0.1' } },
+    name: 'jevbrain', version: '0.0.1', lockfileVersion: 3,
+    packages: { '': { name: 'jevbrain', version: '0.0.1' } },
   });
   writeFileSync(join(root, 'LICENSE'), 'Test license\n');
-  writeFileSync(join(root, 'README.md'), '# ExcaliBrain\n');
+  writeFileSync(join(root, 'README.md'), '# JevBrain\n');
 });
 
 afterEach(() => {

@@ -12,6 +12,6 @@
 - ランタイム依存を追加する前に、必要性・バンドル増分・モバイル互換性を記録する。`styles.css` が唯一のスタイル正本で、`src/styles/style.scss` はビルドに使わない。
 - 本番 Vault をテスト対象にしない。自動準備はプロジェクト配下の `test-vault/` のみ。
 - プライマリー（`projects/Jev-brain` のチェックアウト）は常に `main` に置く。ブランチ作業は `orca worktree create` で作った worktree で行い、プライマリーで `git checkout -b`／`git switch` を実行しない。
-- `main.js`、`node_modules/`、`dist/`、`test-vault/`、証跡をコミットしない。plugin ID は上流と同じ `excalibrain` のまま（上流版との同時インストール不可）。変更は本人の判断。
+- `main.js`、`node_modules/`、`dist/`、`test-vault/`、証跡をコミットしない。plugin ID は `jevbrain`、名前は JevBrain、作者は Hiroya Iizuka（本人の決定、2026-09-21）。上流版（`excalibrain`）と同時にインストールできる。command ID・CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の "ExcaliBrain" は互換のため変えない。
 
 現在はフォーク直後（上流 0.2.18 ＋ code scanner fixes）。配布は未公開で、リリース手順は用意済みだが未実行。実装の存在と受入条件の達成は分けて扱い、実機テストの完成を先取りして報告しない。
