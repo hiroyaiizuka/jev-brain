@@ -103,3 +103,47 @@ export class EditorSuggest {
   context: { query: string } | null = null;
   constructor(app: unknown) { this.app = app; }
 }
+
+// ---- LEV-166 ----
+
+/** The request `src/jev/client.ts` builds, not the whole `RequestUrlParam`. */
+export interface RequestUrlCall {
+  url: string;
+  method?: string;
+  contentType?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  throw?: boolean;
+}
+
+/** The two fields of `RequestUrlResponse` that the Jev client reads. */
+export interface RequestUrlReply {
+  status: number;
+  text: string;
+}
+
+const noReply = (): Promise<RequestUrlReply> =>
+  Promise.reject(new Error('requestUrl stub: set requestUrlMock.respond first'));
+
+/**
+ * `requestUrl` for the Jev client tests: a test sets `respond` (it gets the call index, so a retry
+ * can answer differently) and reads `calls` back. The replies come from `tests/fixtures/jev/`.
+ */
+export const requestUrlMock: {
+  calls: RequestUrlCall[];
+  respond: (call: RequestUrlCall, index: number) => Promise<RequestUrlReply>;
+  reset(): void;
+} = {
+  calls: [],
+  respond: () => noReply(),
+  reset(): void {
+    requestUrlMock.calls = [];
+    requestUrlMock.respond = () => noReply();
+  },
+};
+
+export function requestUrl(call: RequestUrlCall): Promise<RequestUrlReply> {
+  const index = requestUrlMock.calls.length;
+  requestUrlMock.calls.push(call);
+  return requestUrlMock.respond(call, index);
+}

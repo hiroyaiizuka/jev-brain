@@ -1,0 +1,5 @@
+{
+  "note": "200 だが本文が途中で切れている応答。bodyText は生のまま（JSON として壊れているので body には置けない）。再試行せず失敗として扱う。実物の記録ではない。",
+  "status": 200,
+  "bodyText": "{\"questions\": {\"field\": {\"choice\": \"up\", \"probabilities\": {\"up\": 0.82"
+}

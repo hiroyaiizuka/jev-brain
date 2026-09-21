@@ -105,7 +105,7 @@
 ### JEV-1 判定の中核（UI なし）
 
 - 設定に「Jev」節（API キー、有効化、`]]` 直後のサジェスト、前後の文字数、書き込み先の見出しと方式、しきい値 2 つ、endpoint／model。設計 §6）。キーが空なら Jev のコマンド・ボタン・サジェスター・view を一切登録しない。`data.json` がプレーンテキストである旨と送信する内容を設定画面に書く。
-- `src/jev/client.ts` が Obsidian の `requestUrl` で `POST /v1/systemone` を呼ぶ。タイムアウト、429／5xx の 1 回再試行、失敗は Notice と `console.warn`。ネットワークはこのファイルだけ。単体テストは `tests/fixtures/jev/*.json` の記録した応答で行い、実際の Jev は呼ばない。
+- `src/jev/client.ts` が Obsidian の `requestUrl` で `POST /v1/systemone` を呼ぶ。タイムアウト、429／5xx の 1 回再試行、失敗は Notice と `console.warn`。ネットワークはこのファイルだけ。単体テストは `tests/fixtures/jev/*.json` の記録した応答で行い、実際の Jev は呼ばない。現在の実装（LEV-166）: 設定の型に依存しない `askJev(config, request)` が `requestUrl` で POST し、10 秒（`DEFAULT_JEV_TIMEOUT_MS`）で打ち切り、429／5xx だけ 1 秒後に 1 回再試行し、失敗は Notice 1 回と `console.warn` を出して `null` を返す。応答に `usage` が無ければ state の文字数から見積もる。`tests/fixtures/jev/` の 5 つは実物の応答の記録ではなく設計 §7 の公開情報から起こした形で、キー発行後に照合する。
 - `src/jev/state.ts`・`judge.ts` が state（frontmatter＋リンク前後 N 字＋相手の frontmatter と冒頭＋hierarchy の全フィールドを説明付きの criteria に）を組み、Q1 フィールド・Q2 方向を 1 回で聞き、整合性チェック（設計 §2-3）で `confident` を決める。純関数で単体テスト。型付きのリンクは「現在のフィールド」を state に入れ、候補の先頭に置く。
 - `src/jev/collect.ts` がノートの未型付けリンク（設計 §2-1）を `metadataCache` と Page の neighbours から求める。埋め込み・URL・除外パスは対象外。単体テスト。
 - `src/jev/relations.ts`・`log.ts` が `## Relations` 節（無ければ末尾に作る）に `field:: [[X]]` を 1 行追記し（同じ行があれば何もしない、本文は触らない）、`jev-log.json` に記録して行単位・一括単位で取り消せる。手で変わった行は取り消さず Notice。vault スタブで単体テスト。
