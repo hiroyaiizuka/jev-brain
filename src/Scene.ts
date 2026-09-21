@@ -13,8 +13,9 @@ import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
 import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, isOnAxis, levelOf, limitByAxis, project, verticalRow } from "./graph/Projection";
+import { zoomTargets } from "./graph/zoom";
 import { t } from "./lang/helpers";
-import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
+import { ExcalidrawAutomate, ExcalidrawElement, ExcalidrawImperativeAPI, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
 /**
  * 床の固定値（docs/3d-design.md §6-2。柱と影は §6-6 でやめた）。投影の係数と床の広がりは設定 `view3D`。
@@ -87,6 +88,11 @@ export class Scene {
   public pinLeaf: boolean = false;
   public focusSearchAfterInitiation: boolean = true;
   private zoomToFitOnNextBrainLeafActivate: boolean = false; //this addresses the issue caused in Obsidian 0.16.0 when the brain graph is rendered while the leaf is hidden because tab is not active
+  /**
+   * 直前の描画で床（外周・グリッド・十字・方角）に使った要素の id（LEV-144）。初期ズームの対象から外す。
+   * 2D の描画では空になるので、2D の `zoomToFit` はこれまでどおり全要素に合わせる。
+   */
+  private sceneryIds: ReadonlySet<string> = new Set<string>();
   private rootNode: Node;
   /**
    * 3D 表示（docs/3d-design.md）。起動時は常に false。ToolsPanel のトグル（LEV-114）が切り替え、設定には保存しない。
@@ -1057,6 +1063,7 @@ export class Scene {
       await Promise.all(this.layouts.map(async (layout) => await layout.render()));
     }
     const sceneryIds = new Set(sceneryElements.map(el=>el.id));
+    this.sceneryIds = sceneryIds; //初期ズームの対象から床を外す（LEV-144）。2D は空集合
     const nodeElements = ea.getElements().filter(el=>!sceneryIds.has(el.id));
     const nodeIds = new Set(nodeElements.map(el=>el.id));
     this.links.render(Array.from(this.toolsPanel.linkTagFilter.selectedLinks), this.view3D);
@@ -1080,7 +1087,7 @@ export class Scene {
     await addElementsToViewTransient(ea);
     updateViewSceneTransient(ea, {appState: {viewBackgroundColor: settings.backgroundColor}});
     if(settings.allowAutozoom && !retainCentralNode) {
-      window.setTimeout(() => excalidrawAPI.zoomToFit?.(ea.getViewElements(), settings.maxZoom, 0.15), 100);
+      window.setTimeout(() => this.zoomToFitNodes(excalidrawAPI), 100);
     }
   
     this.toolsPanel.rerender();
@@ -1090,6 +1097,19 @@ export class Scene {
     }
 
     this.blockUpdateTimer = false;
+  }
+
+  /**
+   * 初期ズームをノードとリンクに合わせる（docs/3d-design.md §7、LEV-144）。3D の床は中心から奥・手前へ最低の
+   * 広がりを持つ（§6-6）ので、床まで対象に入れるとノートが少ないほど倍率が下がっていた（8 ノートの fixture で
+   * 2D 50% に対し 3D 35%）。`zoomTargets` が直前の描画の床の要素（`render3D()` の戻り値の id）を外す。床と方角が
+   * ビューポートからはみ出すのは許す。2D は `sceneryIds` が空なので対象も倍率も従来どおり。
+   */
+  private zoomToFitNodes(api: ExcalidrawImperativeAPI): void {
+    const settings = this.plugin.settings;
+    const targets = zoomTargets(this.ea.getViewElements(), this.sceneryIds);
+    //画面から要素が読めなければ上流どおり null（＝ Excalidraw に全要素を選ばせる）
+    api?.zoomToFit?.(targets.length > 0 ? targets : null, settings.maxZoom, 0.15);
   }
 
   /**
@@ -1375,7 +1395,7 @@ export class Scene {
       if(this.zoomToFitOnNextBrainLeafActivate) {
         this.zoomToFitOnNextBrainLeafActivate = false;
         if(settings.allowAutozoom) {
-          this.ea.getExcalidrawAPI().zoomToFit(null, settings.maxZoom, 0.15);
+          this.zoomToFitNodes(this.ea.getExcalidrawAPI());
         }
       }
       this.blockUpdateTimer = false;

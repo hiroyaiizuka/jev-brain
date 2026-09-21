@@ -80,6 +80,8 @@
 
 - 親 20・子 30 の fixture で要素数と描画時間を `artifacts/` に記録し、重なりの残りを判断する。
 
+現在の実装（LEV-144）: 初期ズーム（`zoomToFit`）を 3D の床と方角を除いたノード・リンクに合わせる。`Scene.render()` が `render3D()` の戻り値の id を `sceneryIds` に持ち、`zoomTargets`（`src/graph/zoom.ts`）がそれを外した配列を `zoomToFit` に渡す（`tests/graph/zoom.test.ts`）。床は最低の広がりを持つ（`floorNorthFactor`／`floorSouthFactor`）ので、8 ノートでは床がビューポートを決めて倍率が 35% まで落ちていた。床と方角は画面からはみ出してよい。タブが隠れている間に描いた場合の遅延ズーム（`zoomToFitOnNextBrainLeafActivate`）も同じ経路にした。2D は `sceneryIds` が空なので対象も倍率も従来どおり。
+
 ### H1 引き継ぎコードの整地（3D-1 の後）
 
 - `eslint.config.mjs` の「引き継ぎ時のベースライン」ブロックが空になる（恒久の command ID を除く）。
