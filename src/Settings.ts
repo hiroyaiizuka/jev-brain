@@ -16,7 +16,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { Node as GraphNode } from "./graph/Node";
 import { svgToBase64 } from "./utils/utils";
 import { Link } from "./graph/Link";
-import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, DEFAULT_VIEW_3D_SETTINGS, PREDEFINED_LINK_STYLES } from "./constants/constants";
+import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LEVEL_COLORS, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, DEFAULT_VIEW_3D_SETTINGS, PREDEFINED_LINK_STYLES } from "./constants/constants";
 import { ExcalidrawAutomate, getEA } from "./utils/ExcalidrawAutomateCompatibility";
 import { axisOf, compareFieldsIgnoringCase, toHierarchyKey, type HierarchyAxis } from "./utils/hierarchy";
 
@@ -53,6 +53,12 @@ export interface ExcaliBrainSettings {
    * The 3D toggle itself (`Scene.view3D`) is not saved. `loadSettings()` merges the defaults into a saved object.
    */
   view3D: View3DSettings;
+  /**
+   * Node background per level while the 3D view is on (docs/3d-design.md §6-3), indexed by `level − floor`
+   * (the floor is index 0, shown as L1). Defaults: `DEFAULT_LEVEL_COLORS`, the four steps of the feedback mock.
+   * A level beyond the array keeps the node's own colour. The 2D view never reads it.
+   */
+  levelColors: string[];
   renderSiblings: boolean;
   applyPowerFilter: boolean;
   baseNodeStyle: NodeStyle;
@@ -126,6 +132,7 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   maxItemCount: 30,
   maxItemCount3D: 12,
   view3D: { ...DEFAULT_VIEW_3D_SETTINGS },
+  levelColors: [...DEFAULT_LEVEL_COLORS],
   renderSiblings: false,
   applyPowerFilter: false,
   baseNodeStyle: DEFAULT_NODE_STYLE,
@@ -2297,6 +2304,25 @@ private normalizeSettings() {
       false,
       DEFAULT_VIEW_3D_SETTINGS.levelHeightFactor
     )
+
+    // Node colour per level (§6-3). One picker per default; the floor is L1.
+    DEFAULT_LEVEL_COLORS.forEach((defaultColor, i) => {
+      this.colorpicker(
+        containerEl,
+        t("VIEW3D_LEVEL_COLOR_NAME").replace("{n}", String(i + 1)),
+        i === 0 ? t("VIEW3D_LEVEL_COLOR_DESC") : null,
+        ()=>this.plugin.settings.levelColors[i],
+        (val)=>{
+          // Copy on write: settings loaded without levelColors share the array of DEFAULT_SETTINGS.
+          const colors = [...this.plugin.settings.levelColors];
+          colors[i] = val;
+          this.plugin.settings.levelColors = colors;
+        },
+        ()=>{},
+        false,
+        defaultColor
+      )
+    });
 
     // ------------------------------
     // Style

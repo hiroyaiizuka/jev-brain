@@ -53,7 +53,7 @@ export class Links {
     this.reverseLinks.add(key2);
   }
 
-  /** `view3D`: in 3D the parent/child gates follow the projected centres (`Link.render()`). */
+  /** `view3D`: in 3D the links join the boxes, thin and faint, instead of the gates (`Link.render()`). */
   render(linksToHide:string[], view3D: boolean = false) {
     this.links.forEach(link=>
       link.render(

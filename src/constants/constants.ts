@@ -36,6 +36,12 @@ export const DEFAULT_VIEW_3D_SETTINGS: Readonly<View3DSettings> = {
   levelHeightFactor: 2.2,
 };
 
+/**
+ * Node background per level in the 3D view (docs/3d-design.md §6-3), floor (L1) first: the four steps of the
+ * feedback mock (docs/images/3d-feedback-mock-2026-09-21.png), light to dark. `settings.levelColors`.
+ */
+export const DEFAULT_LEVEL_COLORS: readonly string[] = ["#eeedfdff", "#cecbf3ff", "#aea9e7ff", "#7e77d7ff"];
+
 export const DEFAULT_NODE_STYLE:NodeStyle = {
   prefix: "",
   backgroundColor: "#00000066",
