@@ -5,8 +5,10 @@ import {
   Level,
   LevelHierarchy,
   Point,
+  boundsOf,
   compressBands,
   extentOf,
+  groundLevelOf,
   levelOf,
   project,
 } from 'src/graph/Projection';
@@ -197,5 +199,22 @@ describe('compressBands', () => {
     expect(extentOf([{ y: 0, height: 40 }])).toEqual({ top: -20, bottom: 20 });
     expect(extentOf([{ y: -40, height: 40 }, { y: 0, height: 40 }, { y: 40, height: 40 }])).toEqual({ top: -60, bottom: 60 });
     expect(extentOf([{ y: 150, height: 300 }, { y: 0, height: 40 }])).toEqual({ top: -20, bottom: 300 });
+  });
+});
+
+describe('ground (Scene の 3D 分岐が使う純関数)', () => {
+  it('groundLevelOf puts the ground at -1 as soon as one node is at -1, else at 0 (never at +1)', () => {
+    expect(groundLevelOf([])).toBe(0);
+    expect(groundLevelOf([0, 0])).toBe(0);
+    expect(groundLevelOf([1, 0])).toBe(0);
+    expect(groundLevelOf([1, 0, -1])).toBe(-1);
+    expect(groundLevelOf([-1])).toBe(-1);
+  });
+
+  it('boundsOf takes the outer edges of the boxes, adds the margin on all four sides, and is null when empty', () => {
+    expect(boundsOf([])).toBeNull();
+    expect(boundsOf([{ x: 0, y: 0, width: 200, height: 40 }])).toEqual({ minX: -100, maxX: 100, minY: -20, maxY: 20 });
+    expect(boundsOf([{ x: -120, y: -200, width: 200, height: 40 }, { x: 300, y: 0, width: 100, height: 40 }, { x: 0, y: 220, width: 200, height: 40 }], 75))
+      .toEqual({ minX: -295, maxX: 425, minY: -295, maxY: 315 });
   });
 });

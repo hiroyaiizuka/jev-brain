@@ -59,7 +59,32 @@ export const levelOf = (
   return role === Role.PARENT ? 1 : -1;
 };
 
+/** 地面の高さ（§3-2）: 表示中に −1 のノードがあれば −1、無ければ 0。中心ノードは常に 0 なので地面が +1 になることはない。 */
+export const groundLevelOf = (levels: readonly Level[]): Level => (levels.includes(-1) ? -1 : 0);
+
 export type Point = { x: number; y: number };
+
+/** 箱（中心と大きさ）の並びが占める 2D の範囲。地面の平行四辺形はこれに余白を足して投影する。 */
+export type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
+
+/** `boundsOf` の入力。`x`/`y` は中心。 */
+export type Box = Point & { width: number; height: number };
+
+/** 箱の外周の範囲に `margin` を四方に足したもの。空なら null。 */
+export const boundsOf = (boxes: readonly Box[], margin = 0): Bounds | null => {
+  if (boxes.length === 0) return null;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const box of boxes) {
+    minX = Math.min(minX, box.x - box.width / 2);
+    maxX = Math.max(maxX, box.x + box.width / 2);
+    minY = Math.min(minY, box.y - box.height / 2);
+    maxY = Math.max(maxY, box.y + box.height / 2);
+  }
+  return { minX: minX - margin, maxX: maxX + margin, minY: minY - margin, maxY: maxY + margin };
+};
 
 export type ProjectionParams = {
   /** ヨー角（度）。3D-1 は 20° 固定。 */

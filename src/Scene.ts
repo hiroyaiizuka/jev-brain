@@ -12,7 +12,8 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { Level, Point, Projected, ProjectionParams, compressBands, extentOf, levelOf, project } from "./graph/Projection";
+import { Level, Point, Projected, ProjectionParams, boundsOf, compressBands, extentOf, groundLevelOf, levelOf, project } from "./graph/Projection";
+import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
 /**
@@ -34,16 +35,17 @@ const VIEW_3D = {
   groundStrokeAlpha: 0.5,
   groundFillAlpha: 0.05,
   compassAlpha: 0.6,
-  /** 方角のラベル。UI の文言（`src/lang`）と同じく英語 */
-  compass: { north: "N", south: "S", west: "W", east: "E" },
 } as const;
+
+/** 帯の名前。`render()` が各 Layout をどの帯に入れるかを決め、`render3D()` がずれ量を引く。 */
+type Band = "north" | "center" | "south" | "siblings";
 
 /** `#rrggbb`／`#rrggbbaa` の色に不透明度（0〜1）を付け直す。 */
 const withAlpha = (color: string, alpha: number): string =>
   `${color.substring(0, 7)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
 
-/** `Layout.place()` が決めた中心（帯のずれ適用後）と、その投影。 */
-type PlacedNode = { node: Node; layout: Layout; center: Point; projected: Projected };
+/** `Layout.place()` が決めた中心（帯のずれ適用後）、その箱の大きさ（Layout の列幅・行高）、投影。 */
+type PlacedNode = { node: Node; center: Point; size: {width: number; height: number}; projected: Projected };
 
 export class Scene {
   ea: ExcalidrawAutomate;
@@ -81,8 +83,6 @@ export class Scene {
    * false のあいだ render() は分岐に入らず、変更前と同じ経路を通る。
    */
   public view3D: boolean = false;
-  /** 直前の render() が 3D だったか。3D から戻った最初の描画で埋め込みの中心を作り直すために使う。 */
-  private lastRenderIn3D: boolean = false;
 
   constructor(plugin: ExcaliBrain, newLeaf: boolean, leaf?: WorkspaceLeaf, ea?: ExcalidrawAutomate) {
     const resolvedEA = ea ?? plugin.EA ?? getEA(leaf?.view);
@@ -799,9 +799,7 @@ export class Scene {
     const ea = this.ea;
     retainCentralNode = 
       retainCentralNode && this.rootNode !== undefined &&
-      settings.embedCentralNode && ((centralPage.file && isEmbedFileType(centralPage.file,ea)) || centralPage.isURL) &&
-      // 3D では中心も投影で動くが、保持した埋め込み要素は動かないので、3D の間と 3D から戻った最初の描画は作り直す
-      !this.view3D && !this.lastRenderIn3D;
+      settings.embedCentralNode && ((centralPage.file && isEmbedFileType(centralPage.file,ea)) || centralPage.isURL);
 
     this.zoomToFitOnNextBrainLeafActivate = !this.leaf.view.containerEl.isShown();
 
@@ -1032,20 +1030,21 @@ export class Scene {
     applyEAStyle(ea, { opacity: 100 });
     let sceneryElements: ExcalidrawElement[] = [];
     if(this.view3D) {
-      sceneryElements = await this.render3D({
-        north: [lParents],
-        center: [lCenter, lFriends, lNextFriends],
-        south: [lChildren],
-        siblings: [lSiblings],
-      });
+      sceneryElements = await this.render3D(new Map<Layout, Band>([
+        [lCenter, "center"], [lFriends, "center"], [lNextFriends, "center"],
+        [lParents, "north"],
+        [lChildren, "south"],
+        [lSiblings, "siblings"],
+      ]));
     } else {
       await Promise.all(this.layouts.map(async (layout) => await layout.render()));
     }
-    this.lastRenderIn3D = this.view3D;
-    const nodeElements = ea.getElements().filter(el=>!sceneryElements.includes(el));
+    const sceneryIds = new Set(sceneryElements.map(el=>el.id));
+    const nodeElements = ea.getElements().filter(el=>!sceneryIds.has(el.id));
+    const nodeIds = new Set(nodeElements.map(el=>el.id));
     this.links.render(Array.from(this.toolsPanel.linkTagFilter.selectedLinks));
     
-    const linkElements = ea.getElements().filter(el=>!nodeElements.includes(el) && !sceneryElements.includes(el));
+    const linkElements = ea.getElements().filter(el=>!nodeIds.has(el.id) && !sceneryIds.has(el.id));
 
 
     //hack to send link elements behind node elements (and, in 3D, the ground, shadows and pillars behind the links)
@@ -1079,52 +1078,66 @@ export class Scene {
   /**
    * 3D の描画（docs/3d-design.md §3-3〜§3-5）。配置 → 帯の圧縮 → 投影 → 地面 → depth 昇順にノード（地面にいない
    * ノードには影と柱）。2D と同じ `place()` の中心を投影で置き換えるだけで、Node の描画は無改造。
+   * 埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は level 0 の投影の不動点で
+   * 中心の帯はずれないので、保持した要素の位置は 3D でも合う。
    * 戻り値は地面・影・柱の要素。`render()` がリンクの後ろに並べる。link は付けず、ノードのグループにも入れない。
+   * 柱・影・地面が変えた `ea.style` は元に戻すので、続く `links.render()` が受け取るスタイルは 2D と同じ（最後のノードが残したもの）。
    */
-  private async render3D(bands: {north: Layout[]; center: Layout[]; south: Layout[]; siblings: Layout[]}): Promise<ExcalidrawElement[]> {
+  private async render3D(bands: Map<Layout, Band>): Promise<ExcalidrawElement[]> {
     const ea = this.ea;
     const params: ProjectionParams = {
       yawDegrees: VIEW_3D.yawDegrees,
       widthScale: VIEW_3D.widthScale,
       levelHeight: VIEW_3D.levelHeightFactor * this.nodeHeight,
     };
+    const layouts = [...bands.keys()];
+    const inBand = (band: Band) => layouts.filter(layout => bands.get(layout) === band);
 
     // 配置: 2D と同じ中心
-    this.layouts.forEach(layout => layout.place());
+    layouts.forEach(layout => layout.place());
 
     // 帯の間だけ潰す（§4-1）。帯の範囲は Layout の rowHeight から取る。兄弟は北の帯に入れず、北と同じ量だけ動かす
-    const extent = (layouts: Layout[]) => extentOf(
-      layouts.flatMap(layout => layout.nodes.map(node => ({y: node.getCenter().y, height: layout.spec.rowHeight})))
+    const extent = (band: Band) => extentOf(
+      inBand(band).flatMap(layout => layout.nodes.map(node => ({y: node.getCenter().y, height: layout.spec.rowHeight})))
     );
-    const shifts = compressBands(
-      {north: extent(bands.north), center: extent(bands.center), south: extent(bands.south)},
-      VIEW_3D.depthScale,
-    );
-    const shiftOf = (layout: Layout): number =>
-      bands.north.includes(layout) || bands.siblings.includes(layout)
-        ? shifts.north
-        : bands.south.includes(layout) ? shifts.south : 0;
+    const shifts = compressBands({north: extent("north"), center: extent("center"), south: extent("south")}, VIEW_3D.depthScale);
+    const shiftOf: Record<Band, number> = {north: shifts.north, siblings: shifts.north, center: 0, south: shifts.south};
 
-    // 投影（§3-2）。地面は −1 の高さ、表示中に −1 が無ければ 0
-    const placed: PlacedNode[] = this.layouts.flatMap(layout => layout.nodes.map(node => {
+    // 投影（§3-2）
+    const placed: PlacedNode[] = layouts.flatMap(layout => layout.nodes.map(node => {
       const c = node.getCenter();
-      const center = {x: c.x, y: c.y + shiftOf(layout)};
-      return {node, layout, center, projected: project(center, node.level, params)};
+      const center = {x: c.x, y: c.y + shiftOf[bands.get(layout)]};
+      return {
+        node,
+        center,
+        size: {width: layout.spec.columnWidth, height: layout.spec.rowHeight},
+        projected: project(center, node.level, params),
+      };
     }));
-    const groundLevel: Level = placed.some(p => p.node.level === -1) ? -1 : 0;
+    const groundLevel = groundLevelOf(placed.map(p => p.node.level));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
-    const sceneryIds = this.renderGround(placed, groundLevel, params);
+    const sceneryIds = this.keepingStyle(() => this.renderGround(placed, groundLevel, params));
 
     // 奥（depth 小）から手前へ逐次描く（§3-5）。影と柱は箱の下端が要るのでノードの直後に描く
     placed.sort((a, b) => a.projected.depth - b.projected.depth);
     for (const p of placed) {
       await p.node.render();
       if(p.node.level !== groundLevel) {
-        sceneryIds.push(...this.renderShadowAndPillar(p.node, project(p.center, groundLevel, params)));
+        sceneryIds.push(...this.keepingStyle(() => this.renderShadowAndPillar(p.node, project(p.center, groundLevel, params))));
       }
     }
     return sceneryIds.map(id => ea.getElement(id));
+  }
+
+  /** `draw` が変えた `ea.style` を元に戻す。柱・影・地面のスタイルを、続くノードやリンクの描画に残さないため。 */
+  private keepingStyle<T>(draw: () => T): T {
+    const saved = {...this.ea.style};
+    try {
+      return draw();
+    } finally {
+      applyEAStyle(this.ea, saved);
+    }
   }
 
   /**
@@ -1134,14 +1147,7 @@ export class Scene {
     const ea = this.ea;
     const settings = this.plugin.settings;
     const margin = this.nodeHeight;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const {center, layout} of placed) {
-      minX = Math.min(minX, center.x - layout.spec.columnWidth / 2);
-      maxX = Math.max(maxX, center.x + layout.spec.columnWidth / 2);
-      minY = Math.min(minY, center.y - layout.spec.rowHeight / 2);
-      maxY = Math.max(maxY, center.y + layout.spec.rowHeight / 2);
-    }
-    minX -= margin; maxX += margin; minY -= margin; maxY += margin;
+    const {minX, maxX, minY, maxY} = boundsOf(placed.map(p => ({...p.center, ...p.size})), margin);
     const at = (x: number, y: number): [number, number] => {
       const p = project({x, y}, groundLevel, params);
       return [p.x, p.y];
@@ -1170,10 +1176,10 @@ export class Scene {
       return ea.addText(x - size.width / 2, y - size.height / 2, text);
     };
     ids.push(
-      label(VIEW_3D.compass.north, at(midX, minY - offset)),
-      label(VIEW_3D.compass.south, at(midX, maxY + offset)),
-      label(VIEW_3D.compass.west, at(minX - offset, midY)),
-      label(VIEW_3D.compass.east, at(maxX + offset, midY)),
+      label(t("COMPASS_NORTH"), at(midX, minY - offset)),
+      label(t("COMPASS_SOUTH"), at(midX, maxY + offset)),
+      label(t("COMPASS_WEST"), at(minX - offset, midY)),
+      label(t("COMPASS_EAST"), at(maxX + offset, midY)),
     );
     return ids;
   }
@@ -1203,8 +1209,11 @@ export class Scene {
     applyEAStyle(ea, {
       strokeColor: withAlpha(settings.baseLinkStyle.strokeColor, VIEW_3D.pillarAlpha),
       backgroundColor: "transparent",
+      fillStyle: "solid",
       strokeWidth: settings.baseLinkStyle.strokeWidth,
       strokeStyle: "dashed",
+      strokeSharpness: "sharp",
+      roughness: 0,
     });
     const pillar = ea.addLine([[box.x + box.width / 2, box.y + box.height], [ground.x, ground.y]]);
     return [shadow, pillar];

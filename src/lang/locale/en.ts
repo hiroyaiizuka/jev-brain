@@ -211,6 +211,11 @@ export default {
   NAVIGATE_BACK: "Navigate back",
   NAVIGATE_FORWARD: "Navigate forward",
   REFRESH_VIEW: "Refresh",
+  //3D view (Scene.renderGround): compass labels on the ground
+  COMPASS_NORTH: "N",
+  COMPASS_SOUTH: "S",
+  COMPASS_WEST: "W",
+  COMPASS_EAST: "E",
   AUTO_OPEN_DOCUMENT: "Synchronize navigation. When plugs are connected, changes to ExcaliBrain focus will be reflected in the active  Obsidian tab and vice versa.\n\n" +
     "You can link/unlink this button to the '<> Display central node as embedded frame' button in the ExcaliBrain settings.",
   TOGGLE_AUTOOPEN_WHEN_EMBED_TOGGLE_NAME: "Synchronize navigation on Embed toggle",
