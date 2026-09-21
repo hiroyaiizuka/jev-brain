@@ -1140,7 +1140,8 @@ export class Scene {
   private async render3D(bands: {friends: Layout[]; parents: Layout; children: Layout}): Promise<ExcalidrawElement[]> {
     const ea = this.ea;
     const view3D = this.plugin.settings.view3D;
-    const params: ProjectionParams = {
+    // `upHeight`／`downHeight` は下の「床の縁の外へ」で床の広がりに応じて上書きするので `let`（§6-10、LEV-151）
+    let params: ProjectionParams = {
       northShearX: view3D.northShearX,
       northRise: view3D.northRise,
       heightShearX: view3D.heightShearX,
@@ -1206,6 +1207,31 @@ export class Scene {
       const c = centerOf(node);
       return { node, level: node.level, center: {x: c.x, y: c.y + shiftOf(layout)} };
     }));
+
+    // 床の縁の外へ（§6-10、LEV-151）: 帯は行数ぶん 2D で奥・手前へ伸び、画面では床の縁が上下に広がる。設定どおりの
+    // 高さのままだと Up／Down が床の内側に描かれ、「具体と抽象が上下に離れている」と読めなくなる（本人の指摘:
+    // 「7 個のアップがある場合、床の上に見えちゃってる」）。床の南北は足元と設定だけで決まり、箱の幅は東西にしか
+    // 効かないので、描画の前に縁までの距離が出せる。設定値は下限として残る（数が少ない Vault では見え方が変わらない）
+    const feetY = laid.map(p => p.center.y);
+    const floorMargin = view3D.floorMarginFactor * this.nodeHeight;
+    const floorNorthY = Math.min(
+      Math.min(rootCenter.y, ...feetY) - floorMargin,
+      rootCenter.y - view3D.floorNorthFactor * this.nodeHeight,
+    );
+    const floorSouthY = Math.max(
+      Math.max(rootCenter.y, ...feetY) + floorMargin,
+      rootCenter.y + view3D.floorSouthFactor * this.nodeHeight,
+    );
+    // 縁までの画面の距離に余白を足した高さ。南の余白を厚くするのは、床の平面が `floorDrop`（床の段の箱の下端、
+    // 約 nodeHeight/2）ぶん画面で下にずれていて、同じ余白だと Down のほうが縁に近く見えるため。本人の指定
+    // （「down のメモ達は、全体的に、床のもっと下に位置するように」）もここに入っている
+    const clearOfFloor = (edgeY: number, clearance: number): number =>
+      Math.abs(edgeY - rootCenter.y) * params.northRise + clearance;
+    params = {
+      ...params,
+      upHeight: Math.max(params.upHeight, clearOfFloor(floorNorthY, this.nodeHeight)),
+      downHeight: Math.max(params.downHeight, clearOfFloor(floorSouthY, this.nodeHeight * 2)),
+    };
 
     // Up／Down は帯を離れて垂直に（§6-5、本人の追記 2）: level ≠ 0 のノードは中心ノートと同じ north の行（床の十字の
     // 東西の線）へ `verticalGapFactor` の間隔で移る。2D では 1 つなら中心の真上・真下（画面では高さの傾きぶん
