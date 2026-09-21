@@ -1170,7 +1170,14 @@ export class Scene {
       const centers = regridBand(
         onBand.map(({center}) => center),
         {x: rootCenter.x, y: side < 0 ? Math.max(...ys) : Math.min(...ys)},
-        {columns: layout.spec.columns, columnWidth: layout.spec.columnWidth, rowHeight: layout.spec.rowHeight, side},
+        {
+          columns: layout.spec.columns,
+          columnWidth: layout.spec.columnWidth,
+          // 行間は画面で `rowHeight` になるよう戻す（§6-9、LEV-149）: 2D の値のまま投影すると南北が northRise 倍に
+          // 縮み、画面の行間（既定 23px）が箱の高さ（nodeHeight の約 0.86 ＝ 66px）より小さくなって行どうしが重なる
+          rowHeight: groundGapNorthSouth(layout.spec.rowHeight, params),
+          side,
+        },
       );
       onBand.forEach(({node}, i) => regridded.set(node, centers[i]));
     };

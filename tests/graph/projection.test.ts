@@ -1033,6 +1033,38 @@ describe('bandShift (床に残る Parents／Children の帯を中心から離す
   });
 });
 
+describe('帯の行間は画面基準 (§6-9、LEV-149)', () => {
+  const nodeHeight = 77;
+  const params: ProjectionParams = {
+    northShearX: DEFAULT_VIEW_3D_SETTINGS.northShearX,
+    northRise: DEFAULT_VIEW_3D_SETTINGS.northRise,
+    heightShearX: DEFAULT_VIEW_3D_SETTINGS.heightShearX,
+    upHeight: DEFAULT_VIEW_3D_SETTINGS.upHeightFactor * nodeHeight,
+    downHeight: DEFAULT_VIEW_3D_SETTINGS.downHeightFactor * nodeHeight,
+    rowLift: DEFAULT_VIEW_3D_SETTINGS.rowLiftFactor * nodeHeight,
+  };
+  const grid = (rowHeight: number): BandGrid => ({ columns: 2, columnWidth: 236, rowHeight, side: -1 });
+  // 2 列 2 行（北の帯の読み順は y 昇順 → 同じ行は西から東）。入力の並びのまま行 0・行 0・行 1・行 1 になる。
+  const twoRows = [{ x: -118, y: -368 }, { x: 118, y: -368 }, { x: -118, y: -291 }, { x: 118, y: -291 }];
+
+  it('collapses to less than a box height when the 2D row pitch is projected as is (the bug)', () => {
+    const rows = regridBand(twoRows, { x: 0, y: -291 }, grid(nodeHeight));
+    const screen = rows.map((c) => project(c, 0, params).y);
+    const pitch = Math.abs(screen[0] - screen[2]); // 行 0 と行 1
+    expect(pitch).toBeCloseTo(nodeHeight * params.northRise, 9); // 23px
+    expect(pitch).toBeLessThan(nodeHeight * 0.86); // 箱の高さより小さい＝重なる
+  });
+
+  it('keeps a full nodeHeight between rows on screen when the pitch is undone first (the fix)', () => {
+    const rows = regridBand(twoRows, { x: 0, y: -291 }, grid(groundGapNorthSouth(nodeHeight, params)));
+    const screen = rows.map((c) => project(c, 0, params).y);
+    expect(Math.abs(screen[0] - screen[2])).toBeCloseTo(nodeHeight, 9);
+    // 同じ行の 2 つは高さが揃ったまま、東西の並びも変わらない。
+    expect(screen[0]).toBe(screen[1]);
+    expect(rows[1].x - rows[0].x).toBe(236);
+  });
+});
+
 describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-design §6-8・LEV-145)', () => {
   // artifacts/3d2-vertical-e2e の 2D（行の間隔 77）。docs/3d-brief.md §7 の 8 ノートを上流の `Layout` が置いたときの格子:
   //   北の帯（親 4 つ）は 2 列 2 行、columnWidth 236。1 行目 y −368 に 抽象化のはしご（up）・習慣ループ（up）、
