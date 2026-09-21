@@ -73,7 +73,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 1. まだ試用していない専用環境で `npm run harness:prepare` を実行する。生成するのはこのプロジェクト内の `test-vault/` のみ。
 2. Obsidian でそのフォルダを Vault として開き、コミュニティプラグインの制限モードを解除して Dataview（`dataview`）と Excalidraw（`obsidian-excalidraw-plugin`、`MINEXCALIDRAWVERSION` 以上）をインストール・有効化する。ハーネスは他プラグインをダウンロードしない。
 3. `npm run harness:preflight` を実行する。これはファイルと設定の検査であり、実行中プラグインが最新である証明ではない。有効プラグインが 3 つちょうどでなければ失敗し、実機確認の条件に含めない。
-4. ExcaliBrain を有効化し、コマンド「ExcaliBrain」でグラフを開く。`Fixtures/` の 6 ノート（Asimov の著作と関係）が期待するグラフになるかを画面で確認する。
+4. ExcaliBrain を有効化し、コマンド「ExcaliBrain」でグラフを開く。`Fixtures/` の 14 ノート（Asimov の著作と関係 6 つ、3D 用の 8 つ＝`docs/3d-brief.md` §7）が期待するグラフになるかを画面で確認する。
 5. 下記ケースを再現し、UI の状態と（ノートを変えた場合は）変更後の Markdown を両方保存する。
 
 `harness:prepare` は fixture を初期化するため、ユーザーが試用中の Vault には再実行しない。再実行した場合、`community-plugins.json` は excalibrain と、すでに有効なら Dataview／Excalidraw だけを残して書き直す（それらの配布物と設定には触れない）。本人の Vault や他プロジェクトの配布物は操作しない。
@@ -106,6 +106,10 @@ npm run harness:preflight
 | E10 | Excalidraw を無効化して起動 | 起動せず警告 Notice。有効化後に復帰する |
 | E11 | Dataview のインデックス更新中に起動 | 待機の Notice が出て、完了後にグラフが描画される。自動では再現できない（再インデックスを起動と同時に強制する手段が無い）。大きな Vault で本人が試す |
 | E12 | モバイル（`isDesktopOnly: false`） | 未実施。証跡が揃うまで対応と言わない |
+| E13 | 設定画面の Ontology 節で Up (abstract) に `up`、Down (concrete) に `down, example` を入れる | 保存され、Parents／Children 側から同じフィールドが消える。再読込後も残る。確認 2026-09-21（CDP で text area に入力、`artifacts/3d1-e2e/record.md`） |
+| E14 | `Fixtures/習慣はトリガー固定で続く` を中心に 2D で開く | 北に 行動デザイン（up、緑 4.5）と 読書メモ：習慣の本（origin、既定色）、西に if-then プラン（similar）、東に 意志力で続ける（next）、南に 朝のルーティン手順（down）・歯磨き後に腕立て・9月20日 朝ランの記録（example）。Up／Down の線だけ緑・太さ 4.5。確認 2026-09-21 |
+| E15 | ツールパネルの 3D トグルを押す | 行動デザインが +1 で最も高く、読書メモは北の地面、Down の 3 つは −1。地面の平行四辺形と N／S／W／E、地面にいないノードに破線の柱と影。console.error なし。確認 2026-09-21（本人の目視は未） |
+| E16 | 3D トグルを戻す／プラグインを再読込する | 2D の座標が押す前と完全一致。再読込後は常に 2D で、Up／Down の設定は残る。確認 2026-09-21 |
 
 ## 証跡
 
