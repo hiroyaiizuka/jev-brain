@@ -1,6 +1,6 @@
 import { App, Editor, FileView, MarkdownView, Menu, MenuItem, Notice, Plugin, PluginManifest, TextFileView, TFile, TFolder, WorkspaceLeaf } from 'obsidian';
 import { Page } from './graph/Page';
-import { DEFAULT_SETTINGS, ExcaliBrainSettings, ExcaliBrainSettingTab } from './Settings';
+import { DEFAULT_SETTINGS, ExcaliBrainSettings, ExcaliBrainSettingTab, isJevActive, withJevDefaults } from './Settings';
 import { errorlog, keepOnTop } from './utils/utils';
 import { t } from './lang/helpers';
 import { DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, MINEXCALIDRAWVERSION, PREDEFINED_LINK_STYLES } from './constants/constants';
@@ -76,6 +76,8 @@ export default class ExcaliBrain extends Plugin {
   public customNodeLabel: (dvPage: Literal, defaultName:string) => string
   public navigationHistory: NavigationHistory
   public urlParser: URLParser;
+  /** Whether this load registered Jev. The settings tab compares it with the settings to ask for a reload. */
+  public jevRegistered = false;
   private addToOntologyModal: AddToOntologyModal;
   
   constructor(app: App, manifest: PluginManifest) {
@@ -97,6 +99,13 @@ export default class ExcaliBrain extends Plugin {
     this.navigationHistory = new NavigationHistory(this.settings.navigationHistory);
 		this.addSettingTab(new ExcaliBrainSettingTab(this.app, this));
     this.registerEditorSuggest(new FieldSuggester(this));
+    // Here rather than with registerCommands() inside onLayoutReady(): Jev works on Markdown notes and
+    // needs neither Excalidraw nor an open brain (docs/jev-link-typer-design.md §4-1), like the ontology
+    // suggester on the line above. Dataview is still required, and a vault without it disables the plugin.
+    this.jevRegistered = isJevActive(this.settings);
+    if(this.jevRegistered) {
+      this.registerJev();
+    }
     this.registerEvents();
     this.urlParser = new URLParser(this);
     this.app.workspace.onLayoutReady(()=>{
@@ -160,6 +169,14 @@ export default class ExcaliBrain extends Plugin {
       this.registerBrainLifecycleEvents();
     });
 	}
+
+  /**
+   * Everything Jev adds to Obsidian (docs/jev-link-typer-design.md §9): the commands of JEV-2, the
+   * editor suggester and the queue view. Only called with a key and the switch on, so a vault without
+   * a key never sees any of it. The parts themselves arrive with their own tickets.
+   */
+  private registerJev() {
+  }
 
   private registerEvents() {
     this.registerEvent(
@@ -840,6 +857,7 @@ export default class ExcaliBrain extends Plugin {
       ...DEFAULT_SETTINGS.view3D,
       ...this.settings.view3D,
     };
+    this.settings.jev = withJevDefaults(this.settings.jev);
 
     // Defaults, the Up-over-Parents exclusivity and the sort live in src/utils/hierarchy.ts (unit-tested).
     const { hierarchy, hierarchyLowerCase } = buildHierarchyLowerCase(this.settings.hierarchy);

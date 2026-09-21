@@ -104,6 +104,14 @@ export class EditorSuggest {
   constructor(app: unknown) { this.app = app; }
 }
 
+// ---- LEV-165 ----
+/** `ExcaliBrainSettingTab extends PluginSettingTab`, so the class has to exist to import `src/Settings` at all. */
+export class PluginSettingTab {
+  app: unknown;
+  containerEl = new ElementStub();
+  constructor(app: unknown) { this.app = app; }
+}
+
 // ---- LEV-169 ----
 
 /**
