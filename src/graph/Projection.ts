@@ -67,8 +67,8 @@ export const levelOf = (
 export const floorOf = (levels: readonly Level[]): Level => levels.reduce<Level>((floor, level) => (level < floor ? level : floor), 0);
 
 /**
- * 床の段（§6-2、本人の追記 2026-09-21）: 常に中心ノートの段。床の平面は `project(·, FLOOR_LEVEL, params)` の少し下
- * （中心の箱の下端に影が接する量。Scene が箱の高さから決める）にあり、Up の親はその上に柱で立ち、Down の子は床の下に柱で吊る。
+ * 床の段（§6-2、本人の追記 2026-09-21）: 常に中心ノートの段。床の平面は `project(·, FLOOR_LEVEL, params)` の
+ * `floorDrop` 下にあり、Up の親はその上に柱で立ち、Down の子は床の下に柱で吊る。
  */
 export const FLOOR_LEVEL: Level = 0;
 
@@ -82,7 +82,7 @@ export type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
  * （東西は水平のまま、南北は northShearX／northRise の向きに傾く平行四辺形になる）。
  */
 export type FloorPlan = {
-  /** 影の足元（`feet` と `origin`）をすべて含む最小の長方形に、四方 `margin` の余白を足した範囲。 */
+  /** 影の足元（`feet` と `origin`）と箱の横幅をすべて含む最小の長方形に、四方 `margin` の余白を足した範囲。 */
   bounds: Bounds;
   /** 床の十字の交点 = 中心ノートの足元。 */
   origin: Point;
@@ -90,9 +90,12 @@ export type FloorPlan = {
   columnXs: number[];
   /** 東西に走るグリッド線の y（南北に `spacing` 間隔で並ぶ）。同上。 */
   rowYs: number[];
-  /** 方角ラベルの位置: 十字の両端の外側、外周から `margin / 2`。 */
+  /** 方角ラベルの位置: 十字の両端の外側、外周から `compassGap`（既定 `margin / 2`）。 */
   compass: { north: Point; south: Point; west: Point; east: Point };
 };
+
+/** `floorPlan` の足元: 2D の中心と、その箱の幅（東西は画面で水平なので床は箱の横幅も覆う。省略は 0）。 */
+export type Foot = Point & { width?: number };
 
 /** `origin + k·spacing`（k ≠ 0）のうち `min` と `max` の間（両端を除く）にあるもの。`spacing` が正でなければ空。 */
 const gridPositions = (min: number, max: number, origin: number, spacing: number): number[] => {
@@ -109,16 +112,25 @@ const gridPositions = (min: number, max: number, origin: number, spacing: number
 };
 
 /**
- * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の足元（2D の中心。影はどのノードも足元にある）、
- * `origin` は中心ノートの足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので
- * 十字は必ず床の内側にある。余白 `margin` は既定で `spacing`（Scene はどちらも nodeHeight）。足元が 1 つも無ければ
- * （`origin` だけでも）その点の周りに余白だけの床を返す。
+ * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の足元（2D の中心。影はどのノードも足元にある）と
+ * 箱の幅（幅の広い箱が床の東西の縁や W／E を隠さないよう、東西は箱の横幅も覆う。南北は足元だけ）、`origin` は中心ノートの
+ * 足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので十字は必ず床の内側にある。
+ * 余白 `margin` は既定で `spacing`（Scene はどちらも nodeHeight）。`compassGap` は方角ラベルを外周から離す量で、
+ * 南北は投影で `northRise` 倍に縮むので Scene は y を `northRise` で割って渡す（画面でどの方角も同じ間隔）。
+ * 足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
  */
-export const floorPlan = (feet: readonly Point[], origin: Point, spacing: number, margin = spacing): FloorPlan => {
+export const floorPlan = (
+  feet: readonly Foot[],
+  origin: Point,
+  spacing: number,
+  margin = spacing,
+  compassGap: Point = { x: margin / 2, y: margin / 2 },
+): FloorPlan => {
   const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
   for (const foot of feet) {
-    bounds.minX = Math.min(bounds.minX, foot.x);
-    bounds.maxX = Math.max(bounds.maxX, foot.x);
+    const halfWidth = (foot.width ?? 0) / 2;
+    bounds.minX = Math.min(bounds.minX, foot.x - halfWidth);
+    bounds.maxX = Math.max(bounds.maxX, foot.x + halfWidth);
     bounds.minY = Math.min(bounds.minY, foot.y);
     bounds.maxY = Math.max(bounds.maxY, foot.y);
   }
@@ -126,25 +138,41 @@ export const floorPlan = (feet: readonly Point[], origin: Point, spacing: number
   bounds.maxX += margin;
   bounds.minY -= margin;
   bounds.maxY += margin;
-  const offset = margin / 2;
   return {
     bounds,
     origin: { ...origin },
     columnXs: gridPositions(bounds.minX, bounds.maxX, origin.x, spacing),
     rowYs: gridPositions(bounds.minY, bounds.maxY, origin.y, spacing),
     compass: {
-      north: { x: origin.x, y: bounds.minY - offset },
-      south: { x: origin.x, y: bounds.maxY + offset },
-      west: { x: bounds.minX - offset, y: origin.y },
-      east: { x: bounds.maxX + offset, y: origin.y },
+      north: { x: origin.x, y: bounds.minY - compassGap.y },
+      south: { x: origin.x, y: bounds.maxY + compassGap.y },
+      west: { x: bounds.minX - compassGap.x, y: origin.y },
+      east: { x: bounds.maxX + compassGap.x, y: origin.y },
     },
   };
+};
+
+/** `floorDrop` の入力: 描画済みの箱の段と画面上の高さ（px）。 */
+export type FloorBox = { level: Level; height: number };
+
+/**
+ * 床の平面を、中心の段（`FLOOR_LEVEL`）の投影から画面で下げる量（px、§6-2「中心のメモのノードのちょい下」）。
+ * 床の段にある箱のうち最も高いものの半分＋影の半分で、その箱の下端に影の上端が接し、低い箱はその少し上に乗る。
+ * `nodeHeight` より高い箱（埋め込みの中心）は数えない（LEV-123）。床の下に吊る箱（level < 0）の上端より下には
+ * 下げない（`levelHeight` が箱と同じくらい小さい設定でも柱が反転しない）。床の段の箱が無ければ nodeHeight を箱とみなす。
+ */
+export const floorDrop = (boxes: readonly FloorBox[], nodeHeight: number, levelHeight: number, shadowHeight: number): number => {
+  const onFloor = boxes.filter((box) => box.level === FLOOR_LEVEL && box.height <= nodeHeight).map((box) => box.height);
+  const tallest = onFloor.length > 0 ? Math.max(...onFloor) : nodeHeight;
+  const below = boxes.filter((box) => box.level < FLOOR_LEVEL).map((box) => box.height / 2);
+  const ceiling = levelHeight - (below.length > 0 ? Math.max(...below) : 0) - shadowHeight / 2;
+  return Math.max(0, Math.min(tallest / 2 + shadowHeight / 2, ceiling));
 };
 
 /**
  * 柱の目盛りを置く段（§6-2「1 段ごとに短い横線」）: 床と箱の段の間の各段（床の上に立つ柱も床の下に吊る柱も同じ）。
  * 箱の段の高さは箱に隠れるので含めない。床にいる箱や床から 1 段の箱には目盛りが無く、柱そのものが 1 段を表す
- * （3 段のままでは常に空。§7 で段が増えたときに効く）。Scene は各段を `project(center, tick, params)` で柱の上の位置にする。
+ * （3 段のままでは常に空。§7 で段が増えたときに効く）。Scene は足元から `(tick − FLOOR_LEVEL) · levelHeight` 上（下）に置く。
  */
 export const pillarTickLevels = (level: Level, floor: Level): Level[] => {
   const ticks: Level[] = [];
