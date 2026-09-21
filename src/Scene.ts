@@ -12,8 +12,39 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
+import { Level, Point, Projected, ProjectionParams, compressBands, extentOf, levelOf, project } from "./graph/Projection";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
+/**
+ * 3D 表示の固定値（docs/3d-design.md §3-2〜§3-4）。3D-1 は既定値のままで、3D-2 で設定に移す。
+ * 柱・影・地面の色は設定のリンク色・ノード色から不透明度だけ落として作る。
+ */
+const VIEW_3D = {
+  yawDegrees: 20,
+  widthScale: 0.8,
+  /** 1 段の高さ = nodeHeight × この倍率 */
+  levelHeightFactor: 1.5,
+  /** 帯と帯の隙間に掛ける倍率（帯の中は潰さない） */
+  depthScale: 0.38,
+  pillarAlpha: 0.5,
+  shadowAlpha: 0.4,
+  /** 影の幅 = 箱の幅 × この比率。高さは幅 × shadowAspect */
+  shadowWidthRatio: 0.6,
+  shadowAspect: 0.3,
+  groundStrokeAlpha: 0.5,
+  groundFillAlpha: 0.05,
+  compassAlpha: 0.6,
+  /** 方角のラベル。UI の文言（`src/lang`）と同じく英語 */
+  compass: { north: "N", south: "S", west: "W", east: "E" },
+} as const;
+
+/** `#rrggbb`／`#rrggbbaa` の色に不透明度（0〜1）を付け直す。 */
+const withAlpha = (color: string, alpha: number): string =>
+  `${color.substring(0, 7)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
+
+/** `Layout.place()` が決めた中心（帯のずれ適用後）と、その投影。 */
+type PlacedNode = { node: Node; layout: Layout; center: Point; projected: Projected };
+
 export class Scene {
   ea: ExcalidrawAutomate;
   plugin: ExcaliBrain;
@@ -45,6 +76,13 @@ export class Scene {
   public focusSearchAfterInitiation: boolean = true;
   private zoomToFitOnNextBrainLeafActivate: boolean = false; //this addresses the issue caused in Obsidian 0.16.0 when the brain graph is rendered while the leaf is hidden because tab is not active
   private rootNode: Node;
+  /**
+   * 3D 表示（docs/3d-design.md）。起動時は常に false。ToolsPanel のトグル（LEV-114）が切り替え、設定には保存しない。
+   * false のあいだ render() は分岐に入らず、変更前と同じ経路を通る。
+   */
+  public view3D: boolean = false;
+  /** 直前の render() が 3D だったか。3D から戻った最初の描画で埋め込みの中心を作り直すために使う。 */
+  private lastRenderIn3D: boolean = false;
 
   constructor(plugin: ExcaliBrain, newLeaf: boolean, leaf?: WorkspaceLeaf, ea?: ExcalidrawAutomate) {
     const resolvedEA = ea ?? plugin.EA ?? getEA(leaf?.view);
@@ -410,7 +448,9 @@ export class Scene {
     layout:Layout,
     isCentral:boolean,
     isSibling:boolean,
-    friendGateOnLeft: boolean
+    friendGateOnLeft: boolean,
+    /** 中心ノートから見た隣接ノードの役割。3D の高さ（`levelOf`）にだけ使う */
+    role: Role,
   }) {
     x.neighbours.forEach(n => {
       if(n.page.path === this.plugin.settings.excalibrainFilepath) {
@@ -425,6 +465,12 @@ export class Scene {
         isSibling: x.isSibling,
         friendGateOnLeft: x.friendGateOnLeft
       });
+      if(this.view3D) {
+        node.level = levelOf(n.typeDefinition, x.role, this.plugin.hierarchyLowerCase, {
+          isSibling: x.isSibling,
+          isVirtual: n.page.isVirtual,
+        });
+      }
       this.nodesMap.set(n.page.path,node);
       x.layout.nodes.push(node);
     });
@@ -438,6 +484,8 @@ export class Scene {
     siblings: Neighbour[]
   } {
     const settings = this.plugin.settings;
+    // 3D は帯の中を潰さないぶん画面が高くなるので、領域ごとの上限を下げる（docs/3d-design.md §4-1）
+    const maxItemCount = this.view3D ? settings.maxItemCount3D : settings.maxItemCount;
     
     //List nodes for the graph
     const parents = centralPage.getParents()
@@ -446,7 +494,7 @@ export class Scene {
         !settings.excludeFilepaths.some(p => x.page.path.startsWith(p)) &&
         //tha node either has no primary tag or the tag is not filtered out
         (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag)))
-      .slice(0,settings.maxItemCount);
+      .slice(0,maxItemCount);
     const parentPaths = parents.map(x=>x.page.path);
 
     const children =centralPage.getChildren()
@@ -454,21 +502,21 @@ export class Scene {
         (x.page.path !== centralPage.path) &&
         !settings.excludeFilepaths.some(p => x.page.path.startsWith(p)) &&
         (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag)))
-      .slice(0,settings.maxItemCount);
+      .slice(0,maxItemCount);
     
     const leftFriends = centralPage.getLeftFriends().concat(centralPage.getPreviousFriends())
       .filter(x => 
         (x.page.path !== centralPage.path) &&
         !settings.excludeFilepaths.some(p => x.page.path.startsWith(p)) &&
         (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag)))
-      .slice(0,settings.maxItemCount);
+      .slice(0,maxItemCount);
 
     const rightFriends = centralPage.getRightFriends().concat(centralPage.getNextFriends())
       .filter(x => 
         (x.page.path !== centralPage.path) &&
         !settings.excludeFilepaths.some(p => x.page.path.startsWith(p)) &&
         (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag)))
-      .slice(0,settings.maxItemCount);
+      .slice(0,maxItemCount);
 
     const rawSiblings = centralPage
       .getSiblings()
@@ -491,7 +539,7 @@ export class Scene {
         s.page.getParents().map(x=>x.page.path).some(y=>parentPaths.includes(y)) &&
         //filter based on primary tag
         (!s.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(s.page.primaryStyleTag)))
-      .slice(0,settings.maxItemCount);
+      .slice(0,maxItemCount);
     return {parents,children,leftFriends,rightFriends,siblings};
   }
 
@@ -751,7 +799,9 @@ export class Scene {
     const ea = this.ea;
     retainCentralNode = 
       retainCentralNode && this.rootNode !== undefined &&
-      settings.embedCentralNode && ((centralPage.file && isEmbedFileType(centralPage.file,ea)) || centralPage.isURL);
+      settings.embedCentralNode && ((centralPage.file && isEmbedFileType(centralPage.file,ea)) || centralPage.isURL) &&
+      // 3D では中心も投影で動くが、保持した埋め込み要素は動かないので、3D の間と 3D から戻った最初の描画は作り直す
+      !this.view3D && !this.lastRenderIn3D;
 
     this.zoomToFitOnNextBrainLeafActivate = !this.leaf.view.containerEl.isShown();
 
@@ -904,7 +954,8 @@ export class Scene {
       layout: lParents,
       isCentral: false,
       isSibling: false,
-      friendGateOnLeft: true
+      friendGateOnLeft: true,
+      role: Role.PARENT,
     });
   
     this.addNodes({
@@ -912,7 +963,8 @@ export class Scene {
       layout: lChildren,
       isCentral: false,
       isSibling: false,
-      friendGateOnLeft: true
+      friendGateOnLeft: true,
+      role: Role.CHILD,
     });
   
     this.addNodes({
@@ -920,7 +972,8 @@ export class Scene {
       layout: lFriends,
       isCentral: false,
       isSibling: false,
-      friendGateOnLeft: false
+      friendGateOnLeft: false,
+      role: Role.LEFT,
     });
 
     this.addNodes({
@@ -928,7 +981,8 @@ export class Scene {
       layout: lNextFriends,
       isCentral: false,
       isSibling: false,
-      friendGateOnLeft: true
+      friendGateOnLeft: true,
+      role: Role.RIGHT,
     });
 
     if(settings.renderSiblings) {
@@ -937,7 +991,8 @@ export class Scene {
         layout: lSiblings,
         isCentral: false,
         isSibling: true,
-        friendGateOnLeft: true
+        friendGateOnLeft: true,
+        role: Role.CHILD, // 親の getChildren() 由来。isSibling で高さは 0 になる
       });
     }
 
@@ -975,15 +1030,26 @@ export class Scene {
     //-------------------------------------------------------
     // Render
     applyEAStyle(ea, { opacity: 100 });
-    await Promise.all(this.layouts.map(async (layout) => await layout.render()));
-    const nodeElements = ea.getElements();
+    let sceneryElements: ExcalidrawElement[] = [];
+    if(this.view3D) {
+      sceneryElements = await this.render3D({
+        north: [lParents],
+        center: [lCenter, lFriends, lNextFriends],
+        south: [lChildren],
+        siblings: [lSiblings],
+      });
+    } else {
+      await Promise.all(this.layouts.map(async (layout) => await layout.render()));
+    }
+    this.lastRenderIn3D = this.view3D;
+    const nodeElements = ea.getElements().filter(el=>!sceneryElements.includes(el));
     this.links.render(Array.from(this.toolsPanel.linkTagFilter.selectedLinks));
     
-    const linkElements = ea.getElements().filter(el=>!nodeElements.includes(el));
+    const linkElements = ea.getElements().filter(el=>!nodeElements.includes(el) && !sceneryElements.includes(el));
 
 
-    //hack to send link elements behind node elements
-    const newImagesDict = linkElements.concat(nodeElements) 
+    //hack to send link elements behind node elements (and, in 3D, the ground, shadows and pillars behind the links)
+    const newImagesDict = sceneryElements.concat(linkElements, nodeElements) 
       .reduce<Record<string, ExcalidrawElement>>((dict, obj) => {
         dict[obj.id] = obj;
         return dict;
@@ -1008,6 +1074,140 @@ export class Scene {
     }
 
     this.blockUpdateTimer = false;
+  }
+
+  /**
+   * 3D の描画（docs/3d-design.md §3-3〜§3-5）。配置 → 帯の圧縮 → 投影 → 地面 → depth 昇順にノード（地面にいない
+   * ノードには影と柱）。2D と同じ `place()` の中心を投影で置き換えるだけで、Node の描画は無改造。
+   * 戻り値は地面・影・柱の要素。`render()` がリンクの後ろに並べる。link は付けず、ノードのグループにも入れない。
+   */
+  private async render3D(bands: {north: Layout[]; center: Layout[]; south: Layout[]; siblings: Layout[]}): Promise<ExcalidrawElement[]> {
+    const ea = this.ea;
+    const params: ProjectionParams = {
+      yawDegrees: VIEW_3D.yawDegrees,
+      widthScale: VIEW_3D.widthScale,
+      levelHeight: VIEW_3D.levelHeightFactor * this.nodeHeight,
+    };
+
+    // 配置: 2D と同じ中心
+    this.layouts.forEach(layout => layout.place());
+
+    // 帯の間だけ潰す（§4-1）。帯の範囲は Layout の rowHeight から取る。兄弟は北の帯に入れず、北と同じ量だけ動かす
+    const extent = (layouts: Layout[]) => extentOf(
+      layouts.flatMap(layout => layout.nodes.map(node => ({y: node.getCenter().y, height: layout.spec.rowHeight})))
+    );
+    const shifts = compressBands(
+      {north: extent(bands.north), center: extent(bands.center), south: extent(bands.south)},
+      VIEW_3D.depthScale,
+    );
+    const shiftOf = (layout: Layout): number =>
+      bands.north.includes(layout) || bands.siblings.includes(layout)
+        ? shifts.north
+        : bands.south.includes(layout) ? shifts.south : 0;
+
+    // 投影（§3-2）。地面は −1 の高さ、表示中に −1 が無ければ 0
+    const placed: PlacedNode[] = this.layouts.flatMap(layout => layout.nodes.map(node => {
+      const c = node.getCenter();
+      const center = {x: c.x, y: c.y + shiftOf(layout)};
+      return {node, layout, center, projected: project(center, node.level, params)};
+    }));
+    const groundLevel: Level = placed.some(p => p.node.level === -1) ? -1 : 0;
+    placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
+
+    const sceneryIds = this.renderGround(placed, groundLevel, params);
+
+    // 奥（depth 小）から手前へ逐次描く（§3-5）。影と柱は箱の下端が要るのでノードの直後に描く
+    placed.sort((a, b) => a.projected.depth - b.projected.depth);
+    for (const p of placed) {
+      await p.node.render();
+      if(p.node.level !== groundLevel) {
+        sceneryIds.push(...this.renderShadowAndPillar(p.node, project(p.center, groundLevel, params)));
+      }
+    }
+    return sceneryIds.map(id => ea.getElement(id));
+  }
+
+  /**
+   * 地面（§3-4）: 全ノードの 2D の範囲に余白を足した長方形を地面の高さに投影した平行四辺形と、各辺の外側の方角ラベル。
+   */
+  private renderGround(placed: PlacedNode[], groundLevel: Level, params: ProjectionParams): string[] {
+    const ea = this.ea;
+    const settings = this.plugin.settings;
+    const margin = this.nodeHeight;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const {center, layout} of placed) {
+      minX = Math.min(minX, center.x - layout.spec.columnWidth / 2);
+      maxX = Math.max(maxX, center.x + layout.spec.columnWidth / 2);
+      minY = Math.min(minY, center.y - layout.spec.rowHeight / 2);
+      maxY = Math.max(maxY, center.y + layout.spec.rowHeight / 2);
+    }
+    minX -= margin; maxX += margin; minY -= margin; maxY += margin;
+    const at = (x: number, y: number): [number, number] => {
+      const p = project({x, y}, groundLevel, params);
+      return [p.x, p.y];
+    };
+
+    applyEAStyle(ea, {
+      strokeColor: withAlpha(settings.baseLinkStyle.strokeColor, VIEW_3D.groundStrokeAlpha),
+      backgroundColor: withAlpha(settings.baseNodeStyle.textColor, VIEW_3D.groundFillAlpha),
+      fillStyle: "solid",
+      strokeWidth: settings.baseLinkStyle.strokeWidth,
+      strokeStyle: "solid",
+      strokeSharpness: "sharp",
+      roughness: 0,
+    });
+    const nw = at(minX, minY), ne = at(maxX, minY), se = at(maxX, maxY), sw = at(minX, maxY);
+    const ids = [ea.addLine([nw, ne, se, sw, nw])];
+
+    applyEAStyle(ea, {
+      strokeColor: withAlpha(settings.baseNodeStyle.textColor, VIEW_3D.compassAlpha),
+      fontFamily: settings.baseLinkStyle.fontFamily,
+      fontSize: settings.baseNodeStyle.fontSize,
+    });
+    const midX = (minX + maxX) / 2, midY = (minY + maxY) / 2, offset = margin / 2;
+    const label = (text: string, [x, y]: [number, number]): string => {
+      const size = ea.measureText(text);
+      return ea.addText(x - size.width / 2, y - size.height / 2, text);
+    };
+    ids.push(
+      label(VIEW_3D.compass.north, at(midX, minY - offset)),
+      label(VIEW_3D.compass.south, at(midX, maxY + offset)),
+      label(VIEW_3D.compass.west, at(minX - offset, midY)),
+      label(VIEW_3D.compass.east, at(maxX + offset, midY)),
+    );
+    return ids;
+  }
+
+  /**
+   * 地面にいないノードの影（地面の位置の小さな楕円）と柱（箱の下端から地面へ、破線、リンクより薄い色）（§3-4）。
+   * 箱の位置は描画済みの要素（`node.id`: テキストなら枠、埋め込みなら iframe／画像）から読む。
+   */
+  private renderShadowAndPillar(node: Node, ground: Projected): string[] {
+    const ea = this.ea;
+    const settings = this.plugin.settings;
+    const box = ea.getElement(node.id);
+    const shadowWidth = box.width * VIEW_3D.shadowWidthRatio;
+    const shadowHeight = shadowWidth * VIEW_3D.shadowAspect;
+    const shadowColor = withAlpha(settings.baseNodeStyle.backgroundColor, VIEW_3D.shadowAlpha);
+    applyEAStyle(ea, {
+      strokeColor: shadowColor,
+      backgroundColor: shadowColor,
+      fillStyle: "solid",
+      strokeWidth: 1,
+      strokeStyle: "solid",
+      strokeSharpness: "sharp",
+      roughness: 0,
+    });
+    const shadow = ea.addEllipse(ground.x - shadowWidth / 2, ground.y - shadowHeight / 2, shadowWidth, shadowHeight);
+
+    applyEAStyle(ea, {
+      strokeColor: withAlpha(settings.baseLinkStyle.strokeColor, VIEW_3D.pillarAlpha),
+      backgroundColor: "transparent",
+      strokeWidth: settings.baseLinkStyle.strokeWidth,
+      strokeStyle: "dashed",
+    });
+    const pillar = ea.addLine([[box.x + box.width / 2, box.y + box.height], [ground.x, ground.y]]);
+    return [shadow, pillar];
   }
 
   public isCentralLeafStillThere():boolean {

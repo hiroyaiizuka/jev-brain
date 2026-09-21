@@ -45,6 +45,8 @@ export interface ExcaliBrainSettings {
   showNeighborCount: boolean;
   showFullTagName: boolean;
   maxItemCount: number;
+  /** Per-area node cap while the 3D view is on (docs/3d-design.md §4-1). The 2D view keeps `maxItemCount`. */
+  maxItemCount3D: number;
   renderSiblings: boolean;
   applyPowerFilter: boolean;
   baseNodeStyle: NodeStyle;
@@ -112,6 +114,7 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   showNeighborCount: true,
   showFullTagName: false,
   maxItemCount: 30,
+  maxItemCount3D: 12,
   renderSiblings: false,
   applyPowerFilter: false,
   baseNodeStyle: DEFAULT_NODE_STYLE,

@@ -96,6 +96,11 @@ export class Node {
     this.center = center;
   }
 
+  /** The centre `setCenter()` stored, as a copy. The 3D branch of Scene reads it to project the node. */
+  getCenter(): {x:number, y:number} {
+    return {...this.center};
+  }
+
 
   async renderEmbedded():Promise<Dimensions> {
     const ea = this.ea;
