@@ -128,7 +128,9 @@ const gridPositions = (min: number, max: number, origin: number, spacing: number
  * 箱の幅（幅の広い箱が床の東西の縁や W／E を隠さないよう、東西は箱の横幅も覆う。南北は足元だけ）、`origin` は中心ノートの
  * 足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので十字は必ず床の内側にある。
  * 余白 `margin` は既定で `spacing`（Scene は spacing に nodeHeight、margin に `floorMarginFactor × nodeHeight` を渡す）。`compassGap` は方角ラベルを外周から離す量で、
- * 東西・北・南を別々に持つ（南北は投影で `northRise` 倍に縮むので Scene は割って渡す）。
+ * 東西・北・南を別々に持つ（南北は投影で `northRise` 倍に縮むので Scene は割って渡す）。`balanceShear`（投影の傾き
+ * `northShearX`）を渡すと、投影後の床の左右の端が中心ノートの足元から等距離になるよう東西を広げる（LEV-135。
+ * 省略すると足元を囲む最小の範囲のまま）。
  * 足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
  */
 export const floorPlan = (
@@ -138,6 +140,7 @@ export const floorPlan = (
   margin = spacing,
   compassGap: CompassGap = { x: margin / 2, north: margin / 2, south: margin / 2 },
   reach: FloorReach = { north: 0, south: 0 },
+  balanceShear?: number,
 ): FloorPlan => {
   const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
   for (const foot of feet) {
@@ -154,6 +157,15 @@ export const floorPlan = (
   // 床の最低の広がり（LEV-128）: 足元が北に寄っていても手前に奥行きを出す。足元がこれより外なら足元が勝つ
   bounds.minY = Math.min(bounds.minY, origin.y - reach.north);
   bounds.maxY = Math.max(bounds.maxY, origin.y + reach.south);
+  // 傾きぶんの釣り合い（LEV-135）: 投影は北の辺を右へ、南の辺を左へずらすので、東西の範囲をそのまま投影すると
+  // 左右の端が中心ノートの足元に対して非対称になる（奥のほうが深い既定値では床が右に伸びて見える）。
+  // `balanceShear`（= `northShearX`）を渡すと、投影後の左端（南西の角）と右端（北東の角）が中心から等距離に
+  // なるよう足りない側へ広げる（狭めない）。渡さなければ足元を囲む最小の範囲のまま。
+  if (balanceShear !== undefined) {
+    const balance = 2 * origin.x + (bounds.minY + bounds.maxY - 2 * origin.y) * balanceShear - (bounds.minX + bounds.maxX);
+    if (balance < 0) bounds.minX += balance;
+    else bounds.maxX += balance;
+  }
   return {
     bounds,
     origin: { ...origin },

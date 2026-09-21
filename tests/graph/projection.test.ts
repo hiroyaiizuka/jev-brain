@@ -575,6 +575,63 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   });
 });
 
+describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () => {
+  const origin: Point = { x: 0, y: -12 };
+  const shear = 0.4;
+  const params: ProjectionParams = { northShearX: shear, northRise: 0.3, upHeight: 238, downHeight: 277 };
+  // 実機と同じ形: 足元は中心の行に並び、床は奥 546・手前 443 まで広がる。
+  const feet = [{ x: -293, y: -12, width: 150 }, { x: 0, y: -12, width: 330 }, { x: 293, y: -12, width: 150 }];
+  const reach = { north: 546, south: 443 };
+  const gap = { x: 46, north: 60, south: 80 };
+
+  /** 投影後の床の左端（南西の角）と右端（北東の角）。 */
+  const edges = (plan: ReturnType<typeof floorPlan>) => ({
+    left: project({ x: plan.bounds.minX, y: plan.bounds.maxY }, FLOOR_LEVEL, params).x,
+    right: project({ x: plan.bounds.maxX, y: plan.bounds.minY }, FLOOR_LEVEL, params).x,
+  });
+
+  it('leaves the centre of the floor off to one side when the shear is not given (the old behaviour)', () => {
+    const plan = floorPlan(feet, origin, 77, 115, gap, reach);
+    const { left, right } = edges(plan);
+    const centre = project(origin, FLOOR_LEVEL, params).x;
+    expect(centre - left).toBeLessThan(right - centre); // 床が右に伸びて中心が左寄りに見える
+  });
+
+  it('widens the floor so the projected left and right edges are the same distance from the centre note', () => {
+    const plan = floorPlan(feet, origin, 77, 115, gap, reach, shear);
+    const { left, right } = edges(plan);
+    const centre = project(origin, FLOOR_LEVEL, params).x;
+    expect(centre - left).toBeCloseTo(right - centre, 9);
+  });
+
+  it('only ever widens: every foot and box stays inside the floor', () => {
+    const before = floorPlan(feet, origin, 77, 115, gap, reach);
+    const after = floorPlan(feet, origin, 77, 115, gap, reach, shear);
+    expect(after.bounds.minX).toBeLessThanOrEqual(before.bounds.minX);
+    expect(after.bounds.maxX).toBeGreaterThanOrEqual(before.bounds.maxX);
+    for (const foot of feet) {
+      expect(after.bounds.minX).toBeLessThan(foot.x - foot.width / 2);
+      expect(after.bounds.maxX).toBeGreaterThan(foot.x + foot.width / 2);
+    }
+  });
+
+  it('widens to the east instead when the floor reaches further in front than behind', () => {
+    const deepFront = floorPlan(feet, origin, 77, 115, gap, { north: 300, south: 700 }, shear);
+    const plain = floorPlan(feet, origin, 77, 115, gap, { north: 300, south: 700 });
+    expect(deepFront.bounds.maxX).toBeGreaterThan(plain.bounds.maxX);
+    expect(deepFront.bounds.minX).toBe(plain.bounds.minX);
+  });
+
+  it('keeps the cross and the compass on the centre note (only the outline moves)', () => {
+    const plan = floorPlan(feet, origin, 77, 115, gap, reach, shear);
+    expect(plan.origin).toEqual(origin);
+    expect(plan.compass.north.x).toBe(origin.x);
+    expect(plan.compass.south.x).toBe(origin.x);
+    expect(plan.compass.west.y).toBe(origin.y);
+    expect(plan.compass.east.y).toBe(origin.y);
+  });
+});
+
 describe('groundGapNorthSouth (画面の距離を 2D の地面距離に戻す、LEV-130)', () => {
   const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, upHeight: 100, downHeight: 100 };
 

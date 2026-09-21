@@ -151,7 +151,7 @@ depth = north                                   描画順は north の大きい�
 - 柱は背景に対してはっきり見える色・太さ（テキスト色、不透明度 60%、太さ 2、破線）で、箱と足元を結ぶ（床より上の箱は下端から、床より下の箱は上端から）。床と箱の段の間の各段に短い横線の目盛りを入れる。
 - 影は全ノード同じ小さな楕円で、足元（柱の床側の端）に置く。床にいるノード（level 0）は柱なし、箱のすぐ下に影。
 - 重ね順: 床 → グリッド → 十字 → 影 → 柱 → リンク → ノード。
-- 実装（LEV-120）: 床の平面は `project(·, FLOOR_LEVEL, params)` を画面で `Projection.floorDrop` px 下げたもの（床の段で最も高い箱の半分＋影の半分。nodeHeight より高い箱＝埋め込みの中心は数えず、床の下に吊る箱の上端より下には下げない）。床の平面図は `Projection.floorPlan`（2D の地面座標。全ノードの足元＝2D の中心と箱の横幅、中心ノートの足元を囲む最小の長方形＋四方 nodeHeight、グリッドは中心の足元から nodeHeight 間隔で外周の内側だけ、方角は十字の両端の外側。W／E は画面で余白の 0.4 倍（`VIEW_3D.compassGapEastWestInMargin`）、N／S は床の縁に寄せて `fontSize × VIEW_3D.compassGapNorthInFont`（0.9、画面 18px）と `× compassGapSouthInFont`（1.2、24px。本人の指定で S だけ少し外）。南北は `northRise` で割って地面距離にする）で、Scene が各点を床の平面に置く。影は全ノード足元に（床の段の最も高い箱の下端に上端が接し、低い箱はその少し上）。目盛りは `pillarTickLevels`＝床と箱の段の間の各段（箱の段は箱に隠れるので引かない。3 段のままでは常に無く、§7 で段が増えたときに効く）で足元から levelHeight ごと。影は幅 nodeHeight × 0.6・高さ × 0.25 の楕円。床・グリッド・十字・柱・影・方角の色はどれもテキスト色（`baseNodeStyle.textColor`）から不透明度だけ落として作る（外周 25%・面 5%・グリッド 15%・十字 40%・影 40%・柱 60%・方角 60%）。床は薄い面（5%）なので床の下の子は透けて見える。埋め込みの中心（高さ 700）は床の平面が箱を横切る（LEV-123）。
+- 実装（LEV-120）: 床の平面は `project(·, FLOOR_LEVEL, params)` を画面で `Projection.floorDrop` px 下げたもの（床の段で最も高い箱の半分＋影の半分。nodeHeight より高い箱＝埋め込みの中心は数えず、床の下に吊る箱の上端より下には下げない）。床の平面図は `Projection.floorPlan`（2D の地面座標。全ノードの足元＝2D の中心と箱の横幅、中心ノートの足元を囲む最小の長方形＋四方 nodeHeight、投影後の左右の端が中心ノートから等距離になるよう東西を広げる（LEV-135。傾き `balanceShear` を渡したときだけ）、グリッドは中心の足元から nodeHeight 間隔で外周の内側だけ、方角は十字の両端の外側。W／E は画面で余白の 0.4 倍（`VIEW_3D.compassGapEastWestInMargin`）、N／S は床の縁に寄せて `fontSize × VIEW_3D.compassGapNorthInFont`（0.9、画面 18px）と `× compassGapSouthInFont`（1.2、24px。本人の指定で S だけ少し外）。南北は `northRise` で割って地面距離にする）で、Scene が各点を床の平面に置く。影は全ノード足元に（床の段の最も高い箱の下端に上端が接し、低い箱はその少し上）。目盛りは `pillarTickLevels`＝床と箱の段の間の各段（箱の段は箱に隠れるので引かない。3 段のままでは常に無く、§7 で段が増えたときに効く）で足元から levelHeight ごと。影は幅 nodeHeight × 0.6・高さ × 0.25 の楕円。床・グリッド・十字・柱・影・方角の色はどれもテキスト色（`baseNodeStyle.textColor`）から不透明度だけ落として作る（外周 25%・面 5%・グリッド 15%・十字 40%・影 40%・柱 60%・方角 60%）。床は薄い面（5%）なので床の下の子は透けて見える。埋め込みの中心（高さ 700）は床の平面が箱を横切る（LEV-123）。
 
 ### 6-3. 3D のときだけ脇役を引っ込め、高さを二重に符号化する
 
@@ -188,6 +188,7 @@ depth = north                                   描画順は north の大きい�
 - **level 0 の Parents／Children の帯を中心から等距離に置く**（`bandDistanceFactor` 3.9）。帯のうち中心にいちばん近い行が中心から `bandDistance` に来るよう、帯ごと動かす（`Projection.bandShift`。友の `friendBandShift` と同じ当たり所）。これで Up と Parents、Down と Children が画面上で重ならない。
 - **床は最低の広がりを持つ**（`floorNorthFactor` 7.1・`floorSouthFactor` 5.75、余白は `floorMarginFactor` 1.5）。`Projection.floorPlan` は足元の最小外接＋余白に加えて、中心から奥・手前へこの距離までは必ず広げる。Up／Down が帯を離れてからは南に足元が無く、外接だけでは手前に奥行きが出ないため。
 - 友の帯は変更なし（2D の位置のまま `friendBandShift` だけ）。
+- 床の左右は中心ノート（＝ Up／Down の垂直軸）に対して対称にする（LEV-135）。平行四辺形は north のぶん右上に傾くので、東西の範囲をそのまま投影すると左右の端が中心から等距離にならない。`floorPlan` が `(south − north) × northShearX / 2` ぶん足りない側へ広げる（狭めない）。
 - **単位**: `upHeightFactor`／`downHeightFactor` は画面の px（段の高さは投影で縮まない）、`bandDistanceFactor` と床の 3 つは 2D の地面距離で、画面の南北では `northRise` 倍（既定 0.3）に縮む。本人が壁打ちのページで動かしたのと同じ座標系なので、ページの見た目がそのまま実機になる（帯 300 は画面で 90px、床の手前 443 は画面で 133px）。
 - `bandShift` は「最低距離」で、既にそれより遠い帯は動かさない。埋め込みの中心では上流の `Layout` が箱の高さ（`heightInCenter`）ぶん帯を押し出しており、一定距離を当てはめると帯が箱の中に入るため。
 
