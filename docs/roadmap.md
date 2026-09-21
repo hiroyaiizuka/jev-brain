@@ -1,34 +1,42 @@
 # jev-brain ロードマップ
 
-更新日: 2026-09-20。受入条件の正本は `docs/product-plan.md`、各設計は下の表のリンク先。進捗は Linear（Project 作成後）。
+更新日: 2026-09-22。受入条件の正本は `docs/product-plan.md`、各設計は下の表のリンク先。進捗は Linear（`docs/linear-workflow.md`）。
 
 ## 順序と依存
 
 ```text
-H0 ハーネス ──┬── ONT-1 Up/Down 領域（2D の色）──── 3D-1 固定視点トグル ──┬── 3D-2 視点と設定 ── 3D-3 実測と重なり
-              │                                                          ├── R1 ベータ配布（BRAT）
-              │                                                          └── H1 引き継ぎコードの整地
-              └── JEV-1 別プラグイン（Jev の API 待ち。フォークとは独立）
+H0 ハーネス ──┬── ONT-1 Up/Down 領域 ── 3D-1 固定視点トグル ──┬── 3D-2 見た目 ── 3D-3 実測と重なり
+              │                                               ├── R1 ベータ配布（BRAT は JEV-3 の後）
+              │                                               └── H1 引き継ぎコードの整地
+              └── JEV-0 精度テスト ─────────────────────────────┐
+                  JEV-1 判定の中核 ──┬── JEV-2 エディタのサジェスター │
+                                    └── JEV-3 型付け待ちキュー ── JEV-4 一括確定と見直し ── JEV-5 関連候補
 ```
 
 | 順 | フェーズ | 何ができるようになるか | 設計 | 状態 |
 | --- | --- | --- | --- | --- |
-| 0 | H0 ハーネス | `npm run check`、test-vault、CI、docs。エージェントと人が同じ条件で検証できる | `docs/harness.md` | 完了（実機 E01〜E11 は未実施） |
-| 1 | ONT-1 Up/Down 領域 | 設定に Up（抽象）／Down（具体）の領域。入れたフィールドの関係は 2D で専用の色になる | `docs/ontology-axis-design.md` | 未着手 |
-| 2 | 3D-1 固定視点トグル | ツールパネルの 3D で、Up の親が上、Down の子が下、由来の親は地面に出る。柱・影・地面。起動時は 2D | `docs/3d-design.md` | 着手（フェーズ 0 調査完了、`Projection.ts` と単体テストは LEV-110 で main へ。Scene 以降は未着手） |
-| 3 | R1 ベータ配布 | tag → GitHub Release → BRAT。本人と数名が日常で使う | `docs/harness.md`「リリース手順」 | ID を jevbrain に変更中（LEV-99 の子）。release.yml の dry-run は成功。BRAT 配布は Jev の実装後まで保留 |
-| 3 | 3D-2 見た目の作り直し | 斜投影（キャビネット図法）、床のグリッドと十字、目立つ柱と目盛り、接地影、3D では細いリンクと level 別の色・ラベル。本人のフィードバック（2026-09-21）を反映 | `docs/3d-design.md` §6、`docs/3d-feedback-2026-09-21.md` | 着手 |
-| 4 | 3D-3 実測と重なり | 大きな fixture（親 27・子 37）での要素数・描画時間と重なりの追加対策 | 同上 | 未着手 |
-| 4 | H1 整地 | strict 化、lint ベースラインの解消、設定画面の見出し | `docs/harness.md`「lint のベースライン」 | 未着手（3D-1 の merge 後） |
-| 任意 | JEV-1 別プラグイン | `[[X]]` の上でホットキー → Jev がフィールドを順位付け → `(field:: [[X]])` | `docs/jev-link-typer-design.md` | 未着手（Jev の API・キー・リポジトリ名待ち） |
+| 0 | H0 ハーネス | `npm run check`、test-vault、CI、docs。エージェントと人が同じ条件で検証できる | `docs/harness.md` | 完了 |
+| 1 | ONT-1 Up/Down 領域 | 設定に Up（抽象）／Down（具体）の領域。入れたフィールドの関係は 2D で専用の色になる | `docs/ontology-axis-design.md` | 完了 |
+| 2 | 3D-1 固定視点トグル | ツールパネルの 3D で、Up の親が上、Down の子が下に出る。起動時は 2D | `docs/3d-design.md` | 完了 |
+| 3 | 3D-2 見た目の作り直し | 斜投影（キャビネット図法）、床、Up／Down の垂直配置。本人のフィードバック（2026-09-21）を反映 | `docs/3d-design.md` §6、`docs/3d-feedback-2026-09-21.md` | 完了（LEV-123 埋め込みの中心だけ Todo） |
+| 4 | 3D-3 実測と重なり | 75 ノートの fixture で要素数・描画時間・重なりを実測し、帯の行間と zoom を直した | 同上 | 完了 |
+| 4 | R1 ベータ配布 | plugin ID `jevbrain`。tag → GitHub Release → BRAT | `docs/harness.md`「リリース手順」 | ID 変更は完了。BRAT 配布は JEV-3 の後（LEV-148 は上流版と並べたときの衝突） |
+| 4 | H1 整地 | strict 化、lint ベースラインの解消、設定画面の見出し | `docs/harness.md`「lint のベースライン」 | 未着手 |
+| 5 | JEV-0 精度テスト | Evergreens の既存の型付きリンクを正解に Jev の精度を測り、しきい値を決める | `docs/jev-link-typer-design.md` §10 | 未着手（本人の API キー待ち） |
+| 5 | JEV-1 判定の中核 | 設定・Jev クライアント・state と判定・未型付けの収集・`## Relations` への書き込みと取り消し。UI なしのコマンド 1 本 | 同 §2・§3・§6・§9 | 未着手 |
+| 6 | JEV-2 エディタのサジェスター | `]]` を閉じた直後とホットキーで候補が出て、Enter で型が付く。JevBrain を開いていなくても動く | 同 §4-1 | 未着手 |
+| 6 | JEV-3 型付け待ちキュー | JevBrain の右パネルに中心ノートの未型付けが並び、1 件ずつ確定・取り消し | 同 §4-2 | 未着手 |
+| 7 | JEV-4 一括確定と見直し | 範囲を選んで一括判定、しきい値以上は自動確定、既存の型は見直しタブ | 同 §4-3・§5 | 未着手（JEV-0 の結果でしきい値を確定） |
+| 任意 | JEV-5 関連候補 | まだ無いリンクを Obsidian の信号で候補化し、Jev の Score で絞る | 同 §8 | Backlog |
 
 ## Linear
 
-Team LEV の Project「Jevbrain」に 2026-09-20 起票済み。親と子の対応表は `docs/linear-workflow.md`。親は誰にも渡さない。子 issue は受入条件 1 件ずつで、依存は blocks 関係。
+Team LEV の Project「Jevbrain」。親と子の対応表は `docs/linear-workflow.md`。親は誰にも渡さない。子 issue は受入条件 1 件ずつで、依存は blocks 関係。
 
 ## やらないこと
 
 - WebGL などの本物の 3D、ドラッグでの滑らかな回転。
 - インデックス作成や関係判定の変更（ONT-1 は領域を足すだけで判定の仕組みは変えない）。
-- フォーク本体からの外部 API 呼び出し（Jev は別プラグイン）。
-- モバイルでの 3D。
+- Jev 以外への外部通信。Jev への通信も `src/jev/client.ts` に閉じ、API キーが無ければ何も登録しない。
+- 既存の型の自動更新（見直しは提案までで、確定は本人）。
+- モバイルでの 3D とキュー。

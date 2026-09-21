@@ -120,6 +120,17 @@ plugin ID を変える前（LEV-147 より前）に作った `test-vault/` に�
 | E15 | ツールパネルの 3D トグルを押す | 斜投影（東西は水平、南北は右上がり、高さは東へ倒れる＝`heightShearX` 0.64、LEV-137）。if-then プラン／中心／意志力で続ける が水平一直線、Up の 3 つ（行動デザイン・習慣ループ・抽象化のはしご）は同じ高さで東西に等間隔、Down の 3 つは床の下で東西に等間隔。どちらも 2D では中心の真上・真下だが、画面では高さの傾き（`heightShearX` 0.64、LEV-137）のぶん Up が東・Down が西へ倒れる（既定値では Up が 153px 東、Down が 181px 西）。床の平行四辺形の上にいるのは level 0 だけ（読書メモ：習慣の本＝奥、if-then プラン＝西、意志力で続ける＝東、習慣トラッカーの使い方・週次レビューのテンプレート＝手前）で、Up と Parents、Down と Children は重ならない。床はグリッドと十字と N／S／W／E を持ち、手前（S）にも奥行きがあり、左右は中心ノート（垂直軸）に対して対称（LEV-135）。柱と影は描かない（LEV-128）。リンクは細く薄く箱同士、ゲートと数字なし、箱は level 別の色（L ラベルは LEV-130 でやめた）。方角の N と S は床の縁のすぐ外。console.error なし。確認 2026-09-21（3D-2 は `artifacts/3d2-e2e/record.md`、Up／Down の垂直軸と未解決の Up（LEV-124）は `artifacts/3d2-vertical-e2e/record.md`、柱と影の廃止・床の奥行き・帯の距離（LEV-128）は `artifacts/3d-floor-depth-e2e/record.md`。L ラベルの廃止と方角の位置（LEV-130）は `artifacts/3d-labels-e2e/record.md`（本人が編集中の Vault に対してで、確かめたのは L ラベル 0 個・方角の距離・2D の一致だけ）、床の左右の釣り合い（LEV-135）は `artifacts/3d-floor-centre-e2e/record.md`（同じく編集中の Vault で、確かめたのは床の 4 隅と中心までの距離・Up の列の中央・2D の一致だけ）、高さの傾き（LEV-137）は `artifacts/3d-height-shear-e2e/record.md`（同じく編集中の Vault で、確かめたのは上の段の東へのずれと 2D の一致だけ）、折り返しと上限（LEV-127）は `artifacts/3d-wrap-e2e/record.md`（同じく編集中の Vault で、確かめたのは 5 列での折り返し・行の高さ・Down が切られないこと・2D の一致）。この表の Up／Down の並びと床の上の顔ぶれは LEV-128 の証跡のまま。本人の目視は未） |
 | E16 | 3D トグルを戻す／プラグインを再読込する | 2D の座標が押す前と完全一致。再読込後は常に 2D で、Up／Down の設定は残る。確認 2026-09-21 |
 | E17 | `Fixtures/big/大きな脳` を中心に開き、2D → 3D → 2D と切り替える（3D-3 の実測用の大きな fixture。親 20（`origin::`）・子 30（`leads to::`）・Up 7・Down 7・左右の友 5 ずつ） | 2D は領域ごとに `maxItemCount`（既定 30）で切る。Up／Down は `Page` の `parentFields`／`childFields` の先頭なので残り、北は Up 7 ＋ 親 20 ＝ 27（上限内）、南は Down 7 ＋ 子 23（`leads to` の後ろ 7 件が落ちる）、左右は 5 ずつ＝箱 68。3D は帯が `maxItemCount3D`（既定 12）、垂直軸が `verticalColumns × maxVerticalRows`（5 × 3 ＝ 15）で別々に切られ（§6-7）、北は Up 7 ＋ 親 12、南は Down 7 ＋ 子 12、左右は 5 ずつ＝箱 49。Up 7 も Down 7 も 5＋2 の 2 行に折り返し、床の平行四辺形の上は level 0 だけ。3D を戻すと 2D の座標が完全一致、console.error なし。要素数・描画時間・箱の重なりは下記「3D の実測手順」で測り `artifacts/3d-3-measure/record.md` に記録する。未実施（箱の数はコードと既定値からの見積もりで、実測で確かめる） |
+| E18 | （JEV-1）設定に Jev の API キーを入れ、`Fixtures/習慣はトリガー固定で続く` の本文の未型付けリンクにカーソルを置いてコマンド「Jev: カーソルのリンクに型を付ける（第一候補で確定）」 | `## Relations` に `field:: [[X]]` が 1 行入り、本文は変わらない。JevBrain を開くと次の描画で X が型の位置に移る。`jev-log.json` に 1 件。未実施 |
+| E19 | （JEV-2）JevBrain の view を閉じたままノートに `[[X]]` を書いて `]]` を閉じる | サジェストに候補・確率・方向が出て、Enter で `## Relations` に追記、Esc で消える。同じリンクで 2 度目は出ない。未実施 |
+| E20 | （JEV-3）ツールパネルの Jev ボタンでキューを開き、中心を変える | 中心ノートの未型付けが並び、確定でノードが移り、取り消しで戻る。下部に呼び出し回数と概算費用。未実施 |
+| E21 | （JEV-4）`Fixtures/big/大きな脳` を中心に「一括」→ Vault 全体 | 件数と概算費用が出て、実行後に確定 n・確認待ち m と「この一括を取り消す」。取り消しで全行が消える。見直しタブに型付きの提案だけが出る。未実施 |
+
+### Jev の実機確認（JEV-1〜JEV-4、E18〜E21）
+
+- API キーは検証用 Obsidian の `test-vault/.obsidian/plugins/jevbrain/data.json`（gitignore 内）に設定画面から入れる。リポジトリ、`artifacts/` の記録、Linear のコメント、スクリーンショットにキーを写さない。
+- Jev は実際に呼ぶ（費用は 1 判定 0.01 円台）。記録には呼び出し回数・トークン・費用の実績を書く。
+- 単体テスト（`tests/jev/`）は `tests/fixtures/jev/*.json` の記録した応答だけを使う。新しい応答の形を記録するときは Vault の内容を含まない fixture（`tests/fixtures/` の 3D 用 8 ノート）で取る。
+- 精度テスト（JEV-0、`scripts/jev-accuracy.mjs`）は本人の Vault を読むのでプラグインの外で走らせ、`artifacts/jev-accuracy/` に集計だけを残す。
 
 ### 3D の実測手順（3D-3、E17）
 

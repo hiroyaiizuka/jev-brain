@@ -1,6 +1,6 @@
 # Linear 起票と Orca での進め方
 
-更新日: 2026-09-20
+更新日: 2026-09-22
 
 Mappy の運用（`projects/Mappy/docs/linear-workflow.md`）をそのまま使う。要件と受入条件の正本は `product-plan.md`、検証手順の正本は `harness.md`、証跡は `artifacts/`。Linear は進捗と担当の正本であり、受入条件を Linear 側で書き換えない。
 
@@ -17,7 +17,12 @@ Linear は Team LEV の Project「Jevbrain」（2026-09-20 に本人が作成）
 | 3D-2 視点と設定 | LEV-100 | 3D-1 の実機確認後 |
 | 3D-3 実測と重なり | LEV-101 | 同上 |
 | H1 整地 | LEV-102 | 3D-1 の merge 後 |
-| JEV-1 別プラグイン | LEV-103 | Jev の API・キー・リポジトリ名の決定後 |
+| JEV-0 精度テスト | LEV-157 | LEV-162（正解の抽出）→ LEV-163（Jev 判定と集計。本人のキーが要る）→ LEV-164（しきい値の決定、needs-human） |
+| JEV-1 判定の中核 | LEV-103 | LEV-165（設定と登録の分岐。`Settings.ts`・`excalibrain-main.ts` はこの子だけ）→ LEV-166（client）・LEV-167（state と judge）・LEV-168（collect）・LEV-169（relations と log）は並行可 → LEV-170（実機 E18、needs-human） |
+| JEV-2 エディタのサジェスター | LEV-158 | LEV-171（`]]` 直後の EditorSuggest）→ LEV-172（ホットキー、付け替え）→ LEV-173（実機 E19、needs-human）。JEV-1 の後 |
+| JEV-3 型付け待ちキュー | LEV-159 | LEV-174（JevQueueView）→ LEV-175（ツールパネルのボタンと styles.css）→ LEV-176（実機 E20、needs-human）。JEV-1 の後、JEV-2 と並行可 |
+| JEV-4 一括確定と見直し | LEV-160 | LEV-177（範囲と費用のモーダル）→ LEV-178（しきい値で自動確定、一括取り消し）→ LEV-179（見直しタブ）→ LEV-180（実機 E21、needs-human）。JEV-3 と JEV-0 の後 |
+| JEV-5 関連候補 | LEV-161 | LEV-181（Backlog）。JEV-4 の後 |
 | Ideas | LEV-104 | 区分 idea の子だけ |
 
 ## 正本の分担
@@ -31,7 +36,7 @@ Linear は Team LEV の Project「Jevbrain」（2026-09-20 に本人が作成）
 
 ## チケットの構造
 
-- 親 issue はフェーズ（`docs/roadmap.md` の H0 / ONT-1 / 3D-1 / R1 / 3D-2 / 3D-3 / H1 / JEV-1）と「Ideas: 将来候補」。親自体は誰にも渡さない。
+- 親 issue はフェーズ（`docs/roadmap.md` の H0 / ONT-1 / 3D-1 / R1 / 3D-2 / 3D-3 / H1 / JEV-0〜JEV-5）と「Ideas: 将来候補」。親自体は誰にも渡さない。
 - 子 issue は `product-plan.md` の受入条件 1 件、または lint ベースラインのルール群 1 つ。Orca に渡すのは子だけ。
 - 作業中に見つけた範囲外の不具合は `orca linear create --parent-current` で子として戻す。
 
@@ -79,4 +84,4 @@ orca worktree create --name jev-<番号>-<短い名前> --linear-issue <ISSUE-ID
 
 ワーカーの手順は Mappy と同じ: チケットを読む → 受入条件とケースを確認 → 実装・検証・`npm run check` → 証跡 → product-plan 更新 → `/visual-pr` の形式で PR → `src/` 変更なら `/code-review <PR番号> high` → `orca linear attach`・完了コメント・In Review。
 
-同時に走らせる worktree は層で分け、`src/excalibrain-main.ts` と `src/Settings.ts` を複数が触らないようにする。Obsidian 実機は 1 台なので、実機を使うチケットは同時に 1 本にする。
+同時に走らせる worktree は層で分け、`src/excalibrain-main.ts` と `src/Settings.ts` を複数が触らないようにする。Obsidian 実機は 1 台なので、実機を使うチケットは同時に 1 本にする。Jev を実際に呼ぶチケット（LEV-163・170・173・176・180）は本人の API キーが要り、キーは worktree の外（環境変数 `JEV_API_KEY`、または検証用 Vault の `data.json`）に置いて PR・コメント・証跡に写さない。

@@ -8,6 +8,7 @@
 - `src/excalibrain-main.ts` は登録・ライフサイクル・外部プラグインとの接続に限定。`src/graph/` はインデックスと関係の判定、`src/Scene.ts`・`src/Components/` は Excalidraw 上の描画と操作。graph 層に描画 API を持ち込まない。
 - 上流は zsviczian/excalibrain（MIT）。上流の挙動を変える変更は `docs/architecture.md` の判断記録に理由を書く。ユーザーの Vault のノートを書き換えるのは Ontology への追加など明示的な操作だけ。
 - Dataview と Excalidraw の API は `src/utils/ExternalPluginTypes.ts` と `src/utils/ExcalidrawAutomateCompatibility.ts` の型を通して使い、`any` を広げない。
+- Jev との通信は `src/jev/client.ts` だけ。`src/jev/` は収集・判定・書き込みで UI を持たず、UI は `src/Components/Jev*`・`src/Suggesters/Jev*`。graph 層と `Scene` は jev を import しない。API キーが空なら Jev の機能を登録しない。単体テストは記録した応答（`tests/fixtures/jev/`）で行い、実際の Jev を呼ばない。キー、Vault の内容、生の応答はコミットしない（`docs/jev-link-typer-design.md` §9・§10）。
 - runtime はブラウザ互換。Node/Electron や個人パスを持ち込まない。`isDesktopOnly: false` を維持し、デスクトップ専用の分岐は `ea.DEVICE.isDesktop` で守る。
 - ランタイム依存を追加する前に、必要性・バンドル増分・モバイル互換性を記録する。`styles.css` が唯一のスタイル正本で、`src/styles/style.scss` はビルドに使わない。
 - 本番 Vault をテスト対象にしない。自動準備はプロジェクト配下の `test-vault/` のみ。
