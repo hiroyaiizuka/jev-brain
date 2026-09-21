@@ -66,6 +66,31 @@ export const levelOf = (
 export const floorOf = (levels: readonly Level[]): Level => levels.reduce<Level>((floor, level) => (level < floor ? level : floor), 0);
 
 /**
+ * そのノードが垂直軸（Up／Down）に立つか（§6-5）。床の平行四辺形の帯に残るのは level 0 だけ。
+ * 「床の平面を描く段」である `FLOOR_LEVEL` とは別の判断なので、こちらを使う（§7 で段が増えても壊れない）。
+ */
+export const isOnAxis = (level: Level): boolean => level !== 0;
+
+/**
+ * 3D の上限の配り方（§6-7、LEV-127）: 垂直軸（Up／Down）と床の帯を別々に切って混ぜる。
+ *
+ * 1 つの上限を共有して先頭から切ると、`Page` の並び順しだいで垂直軸のノードが帯のノートに押し出される
+ * （本人の「ダウンを追加してるのに 4 個しか出ない」: 子 15 件のうち先頭 12 件が残り `down` は 4 件だけだった）。
+ * 逆に垂直軸を優先するだけだと、軸のノードが上限に届いた時点で帯が丸ごと消える。そこで軸と帯で別々の上限を持つ。
+ * 軸は折り返す（`verticalSpread`）ので `列数 × 行数` まで置ける。並び順はそれぞれの中で保つ。
+ */
+export const limitByAxis = <T>(
+  items: readonly T[],
+  levelOfItem: (item: T) => Level,
+  limits: { axis: number; band: number },
+): T[] => {
+  const onAxis: T[] = [];
+  const onBand: T[] = [];
+  for (const item of items) (isOnAxis(levelOfItem(item)) ? onAxis : onBand).push(item);
+  return [...onAxis.slice(0, Math.max(0, limits.axis)), ...onBand.slice(0, Math.max(0, limits.band))];
+};
+
+/**
  * 床の段（§6-2、本人の追記 2026-09-21）: 常に中心ノートの段。床の平面は `project(·, FLOOR_LEVEL, params)` の
  * `floorDrop` 下にあり、Up の親はその上に浮き、Down の子は床の下に吊られる（柱と影は §6-6 でやめた）。
  */
@@ -282,13 +307,14 @@ export const friendBandShift = (centerY: number, friendRowHeight: number): numbe
  * 揃えるのと同じ規則）。`gap` は設定 `verticalGapFactor × nodeHeight`（LEV-128 で帯の `columnWidth` から変えた:
  * 垂直軸は帯を離れているので、帯の列幅ではなく 3D 専用の間隔で並べる）。
  *
- * `columns` を渡すとその数で折り返し、あふれた行は `row` 1, 2… になる（LEV-127、本人の指定で既定 5 列）。
- * 行は `liftOf` が `rowLift` ずつ Up は上へ、Down は下へ積む。省略すると 1 行に伸びる（折り返さない）。
- * 整数でない `count` は切り捨ててから中央揃えする。
+ * `columns` の数で折り返し、あふれた行は `row` 1, 2… になる（LEV-127、本人の指定で既定 5 列）。
+ * 行は `liftOf` が `rowLift` ずつ Up は上へ、Down は下へ積む。整数でない `count` は切り捨ててから中央揃えし、
+ * `columns` が数でなければ 1 列に落とす（設定が壊れていても描画を止めない）。
  */
-export const verticalSpread = (count: number, gap: number, columns?: number): VerticalSlot[] => {
+export const verticalSpread = (count: number, gap: number, columns: number): VerticalSlot[] => {
   const items = Math.max(0, Math.trunc(count));
-  const perRow = columns === undefined ? Math.max(items, 1) : Math.max(1, Math.trunc(columns));
+  // 設定が壊れていても（NaN・0・負）1 列に落として描画を止めない
+  const perRow = Number.isFinite(columns) ? Math.max(1, Math.trunc(columns)) : 1;
   const slots: VerticalSlot[] = [];
   for (let start = 0, row = 0; start < items; start += perRow, row++) {
     const n = Math.min(perRow, items - start);
@@ -324,10 +350,10 @@ export const verticalRow = (
   entries: readonly VerticalEntry[],
   rootCenter: Point,
   gap: number,
-  columns?: number,
+  columns: number,
 ): VerticalPlacement[] => {
   const placements: VerticalPlacement[] = entries.map((entry) => ({ center: { ...entry.center }, row: 0 }));
-  const levels = new Set(entries.map((entry) => entry.level).filter((level) => level !== 0));
+  const levels = new Set(entries.map((entry) => entry.level).filter(isOnAxis));
   for (const level of levels) {
     const group = entries
       .map((entry, index) => ({ entry, index }))

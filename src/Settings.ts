@@ -2359,7 +2359,9 @@ private normalizeSettings() {
       containerEl,
       t("VIEW3D_ROW_LIFT_FACTOR_NAME"),
       t("VIEW3D_ROW_LIFT_FACTOR_DESC"),
-      {min:0.5,max:4,step:0.05},
+      // 下限 0.9: 箱の高さ（nodeHeight の約 0.86 倍）より小さいと折り返した行が下の行に重なる。
+      // 上限 2.5: `upHeightFactor` の既定 3.1 を超えると、折り返した行が 1 段ぶんより高くなる（§6-7）。
+      {min:0.9,max:2.5,step:0.05},
       ()=>this.plugin.settings.view3D.rowLiftFactor,
       (val)=>this.plugin.settings.view3D.rowLiftFactor = val,
       ()=>{},

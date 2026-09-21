@@ -10,6 +10,8 @@ import {
   compareDrawOrder,
   floorOf,
   floorPlan,
+  isOnAxis,
+  limitByAxis,
   bandShift,
   friendBandShift,
   levelOf,
@@ -349,8 +351,9 @@ describe('verticalSpread (§6-5: Up／Down は帯を離れて中心の真上・�
   // 本人の画面 docs/images/3d-feedback-two-ups-2026-09-21.png の中心（artifacts/3d1-e2e と同じ y −12、nodeHeight 76）。
   const rootCenter: Point = { x: 0, y: -12 };
   const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 3.1 * 76, downHeight: 3.6 * 76, rowLift: 92 };
-  /** 折り返さない並び（1 行）の東西のずらし量。 */
-  const offsetsOf = (count: number): number[] => verticalSpread(count, gap).map((slot) => slot.dx);
+  /** 1 行に収まるだけの列数を渡して、東西のずらし量だけ取り出す（折り返しは専用の describe で見る）。 */
+  const offsetsOf = (count: number): number[] =>
+    verticalSpread(count, gap, Math.max(1, Math.trunc(count))).map((slot) => slot.dx);
   const spreadCentres = (count: number): Point[] =>
     offsetsOf(count).map((dx) => ({ x: rootCenter.x + dx, y: rootCenter.y }));
 
@@ -418,7 +421,7 @@ describe('verticalRow (§6-5: 帯から中心の行へ移すのはどのノー�
   const down = (x: number, y: number): VerticalEntry => ({ level: -1, center: { x, y } });
   const ground = (x: number, y: number): VerticalEntry => ({ level: 0, center: { x, y } });
   /** 折り返さない並びの中心だけを取り出す（行のテストは別に置く）。 */
-  const centresOf = (entries: VerticalEntry[], columns?: number): Point[] =>
+  const centresOf = (entries: VerticalEntry[], columns = entries.length || 1): Point[] =>
     verticalRow(entries, rootCenter, gap, columns).map((p) => p.center);
 
   it('leaves level 0 where the 2D band put it (the floor parallelogram keeps exactly these)', () => {
@@ -540,6 +543,64 @@ describe('折り返し (§6-7、LEV-127: 上限 5 列であふれたら上・下
     const placements = verticalRow(mixed, rootCenter, gap, 5);
     expect(placements[0]).toEqual({ center: { x: 118, y: -291 }, row: 0 });
     expect(placements.slice(1).map((p) => p.row)).toEqual([0, 0, 0, 0, 0, 1]);
+  });
+});
+
+describe('limitByAxis (§6-7、LEV-127: 垂直軸と帯で別々に切る)', () => {
+  type Item = { t: string; level: Level };
+  const axis = (t: string, level: Level): Item => ({ t, level });
+  const levelOfItem = (i: Item) => i.level;
+  const names = (items: Item[]) => items.map((i) => i.t);
+
+  it('keeps the Up/Down that a shared cap would have pushed out (the author\'s "only 4 Downs")', () => {
+    // 実機と同じ形: 子 15 件のうち先頭 8 件が帯（leads to）、あとが Down。共有の上限 12 だと Down は 4 件しか残らない。
+    const children: Item[] = [
+      ...Array.from({ length: 8 }, (_, i) => axis(`band${i}`, 0)),
+      ...Array.from({ length: 7 }, (_, i) => axis(`down${i}`, -1)),
+    ];
+    expect(names(children.slice(0, 12)).filter((t) => t.startsWith('down'))).toHaveLength(4);
+    const kept = limitByAxis(children, levelOfItem, { axis: 15, band: 12 });
+    expect(names(kept).filter((t) => t.startsWith('down'))).toHaveLength(7);
+    expect(names(kept).filter((t) => t.startsWith('band'))).toHaveLength(8);
+  });
+
+  it('never lets the axis eat the band: both keep their own cap', () => {
+    const many: Item[] = [
+      ...Array.from({ length: 20 }, (_, i) => axis(`up${i}`, 1)),
+      ...Array.from({ length: 4 }, (_, i) => axis(`band${i}`, 0)),
+    ];
+    const kept = limitByAxis(many, levelOfItem, { axis: 15, band: 12 });
+    expect(names(kept).filter((t) => t.startsWith('up'))).toHaveLength(15);
+    expect(names(kept).filter((t) => t.startsWith('band'))).toHaveLength(4); // 帯は消えない
+  });
+
+  it('keeps the order inside each group (the axis reads 2D order, the band keeps the band order)', () => {
+    const mixed: Item[] = [axis('b1', 0), axis('u1', 1), axis('b2', 0), axis('d1', -1), axis('u2', 1)];
+    expect(names(limitByAxis(mixed, levelOfItem, { axis: 10, band: 10 }))).toEqual(['u1', 'd1', 'u2', 'b1', 'b2']);
+  });
+
+  it('treats every level ≠ 0 as the axis, including Down', () => {
+    expect(isOnAxis(1)).toBe(true);
+    expect(isOnAxis(-1)).toBe(true);
+    expect(isOnAxis(0)).toBe(false);
+  });
+
+  it('takes nothing when a cap is 0 or negative', () => {
+    const mixed: Item[] = [axis('u1', 1), axis('b1', 0)];
+    expect(names(limitByAxis(mixed, levelOfItem, { axis: 0, band: 10 }))).toEqual(['b1']);
+    expect(names(limitByAxis(mixed, levelOfItem, { axis: 10, band: -3 }))).toEqual(['u1']);
+  });
+});
+
+describe('verticalSpread の壊れた設定 (LEV-127)', () => {
+  it('falls back to one column instead of returning nothing (which would throw in verticalRow)', () => {
+    for (const columns of [NaN, Infinity, undefined as unknown as number]) {
+      const slots = verticalSpread(3, 300, columns);
+      expect(slots.length, String(columns)).toBe(3);
+      expect(slots.map((s) => s.row), String(columns)).toEqual([0, 1, 2]);
+    }
+    expect(verticalSpread(3, 300, 0).map((s) => s.row)).toEqual([0, 1, 2]);
+    expect(verticalSpread(3, 300, -2).map((s) => s.row)).toEqual([0, 1, 2]);
   });
 });
 
