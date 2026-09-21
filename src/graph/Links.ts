@@ -53,11 +53,13 @@ export class Links {
     this.reverseLinks.add(key2);
   }
 
-  render(linksToHide:string[]) {
+  /** `view3D`: in 3D the parent/child gates follow the projected centres (`Link.render()`). */
+  render(linksToHide:string[], view3D: boolean = false) {
     this.links.forEach(link=>
       link.render(
         linksToHide.some(lth=>link.hierarchyDefinition?.includes(lth)) ||
-        (link.isInferred && linksToHide.includes("inferred-link"))
+        (link.isInferred && linksToHide.includes("inferred-link")),
+        view3D
       )
     );
   }
