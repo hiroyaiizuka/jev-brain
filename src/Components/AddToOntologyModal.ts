@@ -1,6 +1,7 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import ExcaliBrain from "src/excalibrain-main";
 import { t } from "src/lang/helpers";
+import { compareFieldsIgnoringCase, toHierarchyKey } from "src/utils/hierarchy";
 
 export enum Ontology {
   Hidden = "hidden",
@@ -75,13 +76,11 @@ export class AddToOntologyModal extends Modal {
         break;
       case Ontology.Up:
         settings.hierarchy.abstract = settings.hierarchy.abstract.filter(f=>f!==this.fieldName);
-        plugin.hierarchyLowerCase.abstract = [];
-        settings.hierarchy.abstract.forEach(f=>plugin.hierarchyLowerCase.abstract.push(f.toLowerCase().replaceAll(" ","-")));
+        plugin.hierarchyLowerCase.abstract = settings.hierarchy.abstract.map(toHierarchyKey);
         break;
       case Ontology.Down:
         settings.hierarchy.concrete = settings.hierarchy.concrete.filter(f=>f!==this.fieldName);
-        plugin.hierarchyLowerCase.concrete = [];
-        settings.hierarchy.concrete.forEach(f=>plugin.hierarchyLowerCase.concrete.push(f.toLowerCase().replaceAll(" ","-")));
+        plugin.hierarchyLowerCase.concrete = settings.hierarchy.concrete.map(toHierarchyKey);
         break;
       case Ontology.Parent:
         settings.hierarchy.parents = settings.hierarchy.parents.filter(f=>f!==this.fieldName);
@@ -124,16 +123,12 @@ export class AddToOntologyModal extends Modal {
         settings.hierarchy.hidden.forEach(f=>plugin.hierarchyLowerCase.hidden.push(f.toLowerCase().replaceAll(" ","-")));
         break;
       case Ontology.Up:
-        settings.hierarchy.abstract.push(this.fieldName);
-        settings.hierarchy.abstract = settings.hierarchy.abstract.sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-        plugin.hierarchyLowerCase.abstract = [];
-        settings.hierarchy.abstract.forEach(f=>plugin.hierarchyLowerCase.abstract.push(f.toLowerCase().replaceAll(" ","-")));
+        settings.hierarchy.abstract = [...settings.hierarchy.abstract, this.fieldName].sort(compareFieldsIgnoringCase);
+        plugin.hierarchyLowerCase.abstract = settings.hierarchy.abstract.map(toHierarchyKey);
         break;
       case Ontology.Down:
-        settings.hierarchy.concrete.push(this.fieldName);
-        settings.hierarchy.concrete = settings.hierarchy.concrete.sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-        plugin.hierarchyLowerCase.concrete = [];
-        settings.hierarchy.concrete.forEach(f=>plugin.hierarchyLowerCase.concrete.push(f.toLowerCase().replaceAll(" ","-")));
+        settings.hierarchy.concrete = [...settings.hierarchy.concrete, this.fieldName].sort(compareFieldsIgnoringCase);
+        plugin.hierarchyLowerCase.concrete = settings.hierarchy.concrete.map(toHierarchyKey);
         break;
       case Ontology.Parent:
         settings.hierarchy.parents.push(this.fieldName);

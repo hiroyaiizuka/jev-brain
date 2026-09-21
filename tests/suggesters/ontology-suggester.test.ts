@@ -16,7 +16,7 @@ function makeSuggester(hierarchy: Partial<Hierarchy>, suggestType: FieldSuggeste
 }
 
 const ontology: Partial<Hierarchy> = {
-  hidden: [''],
+  hidden: ['secret'],
   abstract: ['part of'],
   concrete: ['example'],
   parents: ['origin'],
@@ -30,7 +30,7 @@ const ontology: Partial<Hierarchy> = {
 describe('FieldSuggester.getKeys with the Up / Down regions', () => {
   it('lists the Up and Down fields in the generic suggester, sorted with the rest', () => {
     expect(makeSuggester(ontology, 'all').getKeys()).toEqual([
-      '', 'after', 'before', 'example', 'Note type', 'opposes', 'origin', 'part of', 'similar', 'steps',
+      'after', 'before', 'example', 'Note type', 'opposes', 'origin', 'part of', 'secret', 'similar', 'steps',
     ]);
   });
 

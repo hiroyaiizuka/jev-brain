@@ -18,7 +18,7 @@ import { svgToBase64 } from "./utils/utils";
 import { Link } from "./graph/Link";
 import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, PREDEFINED_LINK_STYLES } from "./constants/constants";
 import { ExcalidrawAutomate, getEA } from "./utils/ExcalidrawAutomateCompatibility";
-import { axisOf } from "./utils/hierarchy";
+import { axisOf, compareFieldsIgnoringCase, toHierarchyKey, type HierarchyAxis } from "./utils/hierarchy";
 
 export interface ExcaliBrainSettings {
   compactView: boolean;
@@ -206,7 +206,7 @@ const HIDE_DISABLED_CLASS = "excalibrain-settings-disabled";
  * Keys of the Up / Down region styles (settings.upLinkStyle / downLinkStyle) in the link style
  * dropdown. Not plain "up" / "down": those are field names in the default ontology and would
  * collide with a per-field style. Kept apart from PREDEFINED_LINK_STYLES because the entries are
- * registered by this tab (registerAxisLinkStyles), not by loadSettings.
+ * registered by this tab (ensureAxisLinkStyles), not by loadSettings.
  */
 const UP_LINK_STYLE_KEY = "up-axis";
 const DOWN_LINK_STYLE_KEY = "down-axis";
@@ -289,6 +289,10 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
   private demoNodeImg: HTMLImageElement;
   private demoLinkImg: HTMLImageElement;
   private demoLinkStyle: LinkStyleData;
+  /** Dropdown key of demoLinkStyle; the region entries are told apart by key, not by object identity. */
+  private demoLinkStyleKey: string = "base";
+  /** Region of demoLinkStyle when its pickers were built, to rebuild them when a textarea moves the field. */
+  private demoLinkAxis: HierarchyAxis | null = null;
   private demoNodeStyle: NodeStyleData;
   private updateTimer: boolean = false;
 
@@ -312,26 +316,32 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
 
   /**
    * The Up / Down region styles as entries of the link style dropdown, next to base / inferred /
-   * folder / tag. plugin.linkStyles is read only by this tab and loadSettings() rebuilds it on
-   * every display(), so the two entries are added here after that call rather than in
-   * excalibrain-main.ts. Their inherited style is base: Link layers base → inferred → region → field.
+   * folder / tag. plugin.linkStyles is read only by this tab, so the two entries are added here
+   * rather than in excalibrain-main.ts. Every loadSettings() (display(), but also Scene and the
+   * ontology modal) rebuilds the map without them, so this runs before each lookup and only fills
+   * what is missing. Their inherited style is base: Link layers base → inferred → region → field.
    */
-  private registerAxisLinkStyles() {
+  private ensureAxisLinkStyles() {
     const { settings, linkStyles } = this.plugin;
-    linkStyles[UP_LINK_STYLE_KEY] = {
+    linkStyles[UP_LINK_STYLE_KEY] ??= {
       style: settings.upLinkStyle,
       allowOverride: true,
       userStyle: false,
       display: t("LINKSTYLE_UP"),
       getInheritedStyle: () => this.plugin.settings.baseLinkStyle,
     };
-    linkStyles[DOWN_LINK_STYLE_KEY] = {
+    linkStyles[DOWN_LINK_STYLE_KEY] ??= {
       style: settings.downLinkStyle,
       allowOverride: true,
       userStyle: false,
       display: t("LINKSTYLE_DOWN"),
       getInheritedStyle: () => this.plugin.settings.baseLinkStyle,
     };
+  }
+
+  /** The region a per-field entry's field is in; the predefined and region entries have none. */
+  private axisOfLinkStyle(ls: LinkStyleData): HierarchyAxis | null {
+    return ls.userStyle ? axisOf(ls.display, this.plugin.hierarchyLowerCase) : null;
   }
 
   /**
@@ -342,13 +352,11 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
    */
   private inheritedLinkStyle(ls: LinkStyleData): LinkStyle {
     const inherited = ls.getInheritedStyle();
-    if(!ls.userStyle) return inherited;
-    const axis = axisOf(ls.display, this.plugin.hierarchyLowerCase);
-    return axis === "abstract"
-      ? { ...inherited, ...this.plugin.settings.upLinkStyle }
-      : axis === "concrete"
-        ? { ...inherited, ...this.plugin.settings.downLinkStyle }
-        : inherited;
+    switch(this.axisOfLinkStyle(ls)) {
+      case "abstract": return { ...inherited, ...this.plugin.settings.upLinkStyle };
+      case "concrete": return { ...inherited, ...this.plugin.settings.downLinkStyle };
+      default: return inherited;
+    }
   }
 
   /**
@@ -356,9 +364,9 @@ export class ExcaliBrainSettingTab extends PluginSettingTab {
    * or Parents; the Down entry and its fields point south like Children, as everything else does.
    */
   private demoLinkIsParent(): boolean {
-    const { hierarchy, upLinkStyle } = this.plugin.settings;
-    const { display, style } = this.demoLinkStyle;
-    return style === upLinkStyle || hierarchy.abstract.contains(display) || hierarchy.parents.contains(display);
+    const { hierarchy } = this.plugin.settings;
+    const { display } = this.demoLinkStyle;
+    return this.demoLinkStyleKey === UP_LINK_STYLE_KEY || hierarchy.abstract.contains(display) || hierarchy.parents.contains(display);
   }
 
   async updateNodeDemoImg() {
@@ -1462,8 +1470,8 @@ private normalizeSettings() {
     });
     const assigned = new Set<string>();
     this.plugin.settings.hierarchy.hidden.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
-    this.plugin.settings.hierarchy.abstract.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
-    this.plugin.settings.hierarchy.concrete.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
+    this.plugin.settings.hierarchy.abstract.forEach(x=>assigned.add(toHierarchyKey(x)))
+    this.plugin.settings.hierarchy.concrete.forEach(x=>assigned.add(toHierarchyKey(x)))
     this.plugin.settings.hierarchy.parents.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
     this.plugin.settings.hierarchy.children.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
     this.plugin.settings.hierarchy.leftFriends.forEach(x=>assigned.add(x.toLowerCase().replaceAll(" ","-")))
@@ -1494,7 +1502,7 @@ private normalizeSettings() {
 
   private async displayAsync(): Promise<void> {
     await this.plugin.loadSettings(); //in case sync loaded changed settings in the background
-    this.registerAxisLinkStyles();
+    this.ensureAxisLinkStyles();
 
     this.ea = getEA();
 
@@ -1606,9 +1614,8 @@ private normalizeSettings() {
             this.plugin.settings.hierarchy.abstract = value
               .split(",")
               .map(s=>s.trim())
-              .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-            this.plugin.hierarchyLowerCase.abstract = [];
-            this.plugin.settings.hierarchy.abstract.forEach(f=>this.plugin.hierarchyLowerCase.abstract.push(f.toLowerCase().replaceAll(" ","-")))
+              .sort(compareFieldsIgnoringCase);
+            this.plugin.hierarchyLowerCase.abstract = this.plugin.settings.hierarchy.abstract.map(toHierarchyKey);
             onHierarchyChange();
             this.dirty = true;
           })
@@ -1628,9 +1635,8 @@ private normalizeSettings() {
             this.plugin.settings.hierarchy.concrete = value
               .split(",")
               .map(s=>s.trim())
-              .sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);
-            this.plugin.hierarchyLowerCase.concrete = [];
-            this.plugin.settings.hierarchy.concrete.forEach(f=>this.plugin.hierarchyLowerCase.concrete.push(f.toLowerCase().replaceAll(" ","-")))
+              .sort(compareFieldsIgnoringCase);
+            this.plugin.hierarchyLowerCase.concrete = this.plugin.settings.hierarchy.concrete.map(toHierarchyKey);
             onHierarchyChange();
             this.dirty = true;
           })
@@ -2421,6 +2427,7 @@ private normalizeSettings() {
     let linkStyleDiv: HTMLDivElement;
     const linkDropdownOnChange = (value:string) => {
       linkStyleDiv.empty();
+      this.ensureAxisLinkStyles();
       const ls = this.plugin.linkStyles[value];
       this.linkSettings(
         linkStyleDiv,
@@ -2429,6 +2436,8 @@ private normalizeSettings() {
         this.inheritedLinkStyle(ls)
       )
       this.demoLinkStyle = ls;
+      this.demoLinkStyleKey = value;
+      this.demoLinkAxis = this.axisOfLinkStyle(ls);
       void this.updateLinkDemoImg();
     }
 
@@ -2475,31 +2484,25 @@ private normalizeSettings() {
     linkStylesDropdown
       .setValue("base")
       .onChange(linkDropdownOnChange)
-      const ls = this.plugin.linkStyles["base"];
-      this.linkSettings(
-        linkStyleDiv,
-        ls.style,
-        ls.allowOverride,
-        this.inheritedLinkStyle(ls)
-      )
-      this.demoLinkStyle = ls;
-      void this.updateLinkDemoImg();
+    linkDropdownOnChange("base");
 
     onHierarchyChange = () => {
       unassingedFieldsTextArea.setValue(this.getUnusedFieldNames());
       const hierarchyLinkStyles = this.plugin.settings.hierarchyLinkStyles
+      this.ensureAxisLinkStyles();
       const linkStyles = this.plugin.linkStyles;
+      const styleList = this.hierarchyStyleList;
 
       Object.keys(linkStyles).forEach(key => {
         if(PREDEFINED_LINK_STYLES.contains(key) || AXIS_LINK_STYLE_KEYS.contains(key)) {
           return;
         }
-        if(!this.hierarchyStyleList.contains(key)) {
+        if(!styleList.contains(key)) {
           delete linkStyles[key];
           delete hierarchyLinkStyles[key];
         }
       });
-      this.hierarchyStyleList.forEach(dataviewfield => {
+      styleList.forEach(dataviewfield => {
         if(
           !(Object.keys(hierarchyLinkStyles).contains(dataviewfield) ||
           PREDEFINED_LINK_STYLES.contains(dataviewfield) ||
@@ -2520,8 +2523,8 @@ private normalizeSettings() {
         linkStylesDropdown.selectEl.remove(i);
       }
       const h = this.plugin.settings.hierarchy;
-      // Dropdown order: predefined, the two region entries (Up first), then the fields by region
-      // in the order of the Ontology section (Up, Parents, Down, Children, the rest), each group A-Z.
+      // Dropdown order: predefined, the two region entries (Up first), then the fields by region,
+      // north before south (Up, Parents, Down, Children) and the rest last; each group A-Z.
       const sortGroup = (key:string):string => {
         if(PREDEFINED_LINK_STYLES.includes(key)) return "0";
         if(AXIS_LINK_STYLE_KEYS.includes(key)) return "1" + AXIS_LINK_STYLE_KEYS.indexOf(key).toString();
@@ -2550,6 +2553,10 @@ private normalizeSettings() {
       })
       if(linkStyles[selectedItem]) {
         linkStylesDropdown.setValue(selectedItem);
+        // A field typed into or out of Up / Down inherits a different style: rebuild its pickers and the demo.
+        if(this.axisOfLinkStyle(linkStyles[selectedItem]) !== this.demoLinkAxis) {
+          linkDropdownOnChange(selectedItem);
+        }
       } else {
         linkStylesDropdown.setValue("base");
         linkDropdownOnChange("base");
