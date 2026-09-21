@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, levelOf, project, verticalRow } from "./graph/Projection";
+import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, levelOf, project, verticalRow } from "./graph/Projection";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
@@ -32,6 +32,14 @@ const VIEW_3D = {
   crossWidth: 2,
   /** 十字の両端の N／S／W／E */
   compassAlpha: 0.6,
+  /**
+   * 方角ラベルを床の外周から離す量（画面 px。ラベルは中央合わせなので、縁から文字の中心までの距離）。本人が実機を
+   * 見ながら決めた（LEV-130:「もっと床に近づける」→「気持ち、もう少しだけ」→「S だけもうほんの少し」→「W と E は
+   * 気持ちちょっと縮めて」）。N／S は方角ラベルのフォントサイズ（`compassFontSize`）に対する比、W／E は床の余白に対する比。
+   */
+  compassGapNorthInFont: 0.9,
+  compassGapSouthInFont: 1.2,
+  compassGapEastWestInMargin: 0.4,
 } as const;
 
 /** `#rrggbb`／`#rrggbbaa` の色に不透明度（0〜1）を付け直す。 */
@@ -1073,8 +1081,8 @@ export class Scene {
    * 3D でも合う。床は箱の位置（足元の横幅）が要るのでノードのあとに描くが、戻り値の要素を `render()` がリンクとノードの
    * 後ろに置く（§6-2 の重ね順。z 順は `ea.elementsDict` の並びだけで決まる）。link は付けず、ノードのグループにも
    * 入れない。床が変えた `ea.style` は元に戻すので、続く `links.render()` が受け取るスタイルは 2D と同じ（最後のノードが
-   * 残したもの）。Node には `render({floor})`（`floorOf`: 画面内の最下段を L1 とする基準）で 3D を伝える
-   * （§6-3: ゲート・数字なし、level 別の色、L ラベル。`Node.render()`）。
+   * 残したもの）。Node には `render({floor})`（`floorOf`: 画面内の最下段。`levelColors` の添字の基準）で 3D を伝える
+   * （§6-3: ゲート・数字なし、level 別の色。肩の L ラベルは LEV-130 でやめた。`Node.render()`）。
    */
   private async render3D(bands: {friends: Layout[]; parents: Layout; children: Layout}): Promise<ExcalidrawElement[]> {
     const ea = this.ea;
@@ -1129,7 +1137,7 @@ export class Scene {
     const placed: PlacedNode[] = laid.map(({node}, i) => ({ node, center: centres[i], projected: project(centres[i], node.level, params) }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
-    // 奥（north 大）から手前へ逐次描く（§6-1）。`floor` は色とラベルの基準（最下段＝L1、§6-3）で、床の平面（`FLOOR_LEVEL`）とは別
+    // 奥（north 大）から手前へ逐次描く（§6-1）。`floor` は level 別の色の基準（最下段、§6-3）で、床の平面（`FLOOR_LEVEL`）とは別
     const floor = floorOf(placed.map(p => p.node.level));
     placed.sort((a, b) => compareDrawOrder(a.projected, b.projected));
     for (const p of placed) {
@@ -1152,14 +1160,22 @@ export class Scene {
 
     // 床（§6-6）: 足元と箱の横幅をすべて囲む最小の範囲に `floorMarginFactor` の余白。ただし中心から奥へ `floorNorthFactor`、
     // 手前へ `floorSouthFactor` は必ず広げる（Up／Down が帯を離れたので、足元だけでは南に奥行きが出ない）。
-    // グリッドは nodeHeight 間隔、十字は中心ノートの足元。方角は外周から画面で余白の半分（南北は投影で northRise 倍に縮むので割る）
+    // グリッドは nodeHeight 間隔、十字は中心ノートの足元
     const margin = view3D.floorMarginFactor * this.nodeHeight;
+    // 方角の置き場所（どれも画面で決めた距離。ラベルは中央合わせなので縁から文字の中心まで）: W／E は床の余白の
+    // 0.4 倍、N／S は床に寄せて（LEV-130）フォントサイズの 0.9／1.2 倍。南北は `groundGapNorthSouth` で 2D の距離に戻す
+    const compassFont = this.compassFontSize();
+    const compassGap = {
+      x: margin * VIEW_3D.compassGapEastWestInMargin,
+      north: groundGapNorthSouth(compassFont * VIEW_3D.compassGapNorthInFont, params),
+      south: groundGapNorthSouth(compassFont * VIEW_3D.compassGapSouthInFont, params),
+    };
     const plan = floorPlan(
       boxed.map(p => ({...p.center, width: p.box.width})),
       rootCenter,
       this.nodeHeight,
       margin,
-      {x: margin / 2, y: margin / 2 / params.northRise},
+      compassGap,
       {north: view3D.floorNorthFactor * this.nodeHeight, south: view3D.floorSouthFactor * this.nodeHeight},
     );
     const floorIds = this.keepingStyle(() => this.renderFloor(plan, plane));
@@ -1175,6 +1191,14 @@ export class Scene {
     } finally {
       applyEAStyle(this.ea, saved);
     }
+  }
+
+  /**
+   * 方角ラベル（N／S／W／E）の文字の大きさ。`renderFloor` の描画と、`render3D` が床の外周からの隙間を決めるのに
+   * 使う値を 1 つにしておく（別々に読むと、片方を変えたときに隙間の比だけ黙ってずれる）。
+   */
+  private compassFontSize(): number {
+    return this.plugin.settings.baseNodeStyle.fontSize;
   }
 
   /** 3D の床の線のスタイル（角を立て、手描き風を切る）。色と太さは呼び出し側が重ねる。 */
@@ -1224,11 +1248,11 @@ export class Scene {
       ea.addLine([at(plan.origin.x, minY), at(plan.origin.x, maxY)]),
     );
 
-    // 方角: 十字の両端
+    // 方角: 十字の両端。フォントサイズは `compassFontSize()`（外周からの隙間もこの値を基準にする）
     applyEAStyle(ea, {
       strokeColor: withAlpha(textColor, VIEW_3D.compassAlpha),
       fontFamily: settings.baseLinkStyle.fontFamily,
-      fontSize: settings.baseNodeStyle.fontSize,
+      fontSize: this.compassFontSize(),
     });
     const label = (text: string, {x, y}: Point): string => {
       const [px, py] = at(x, y);

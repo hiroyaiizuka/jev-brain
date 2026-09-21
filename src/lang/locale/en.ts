@@ -257,5 +257,5 @@ export default {
   VIEW3D_FLOOR_MARGIN_FACTOR_NAME: "Floor margin",
   VIEW3D_FLOOR_MARGIN_FACTOR_DESC: "Margin left around the feet at the edge of the floor, as a multiple of the node height.",
   VIEW3D_LEVEL_COLOR_NAME: "Level {n} color",
-  VIEW3D_LEVEL_COLOR_DESC: "Background of the nodes on each level while the 3D view is on. Level 1 is the floor; the level of each node is shown at its top right corner.",
+  VIEW3D_LEVEL_COLOR_DESC: "Background of the nodes on each level while the 3D view is on. Level 1 is the lowest level on screen; the colour is the only marker of the level, together with the height.",
 }

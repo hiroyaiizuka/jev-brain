@@ -60,7 +60,7 @@ export const levelOf = (
 
 /**
  * 画面内の最下段: 中心ノードは常に 0 なので 0 から始め、Down の子（−1）があれば −1。空でも 0。
- * L ラベルと level 別の色（§6-3、LEV-121）が L1 として数える基準。描く床（§6-2）はこれではなく常に中心の段 0
+ * level 別の色（§6-3）の添字の基準（`levelColors[level − floor]`。肩の L ラベルは LEV-130 でやめた）。描く床（§6-2）はこれではなく常に中心の段 0
  * （`FLOOR_LEVEL`）で、最下段が −1 のときそのノードは床の下に吊る。
  */
 export const floorOf = (levels: readonly Level[]): Level => levels.reduce<Level>((floor, level) => (level < floor ? level : floor), 0);
@@ -93,6 +93,13 @@ export type FloorPlan = {
   compass: { north: Point; south: Point; west: Point; east: Point };
 };
 
+/**
+ * 方角ラベルを床の外周から離す量（2D の距離）。東西と南北を分け、さらに南北も別々に持つ: N は床のすぐ外、
+ * S はもう少しだけ外（本人のフィードバック 4、LEV-130）。南北は投影で `northRise` 倍に縮むので、Scene は
+ * 画面で欲しい量を割って渡す。
+ */
+export type CompassGap = { x: number; north: number; south: number };
+
 /** `floorPlan` の足元: ノードの 2D の中心と、その箱の幅（東西は画面で水平なので床は箱の横幅も覆う。省略は 0）。 */
 export type Foot = Point & { width?: number };
 
@@ -121,7 +128,7 @@ const gridPositions = (min: number, max: number, origin: number, spacing: number
  * 箱の幅（幅の広い箱が床の東西の縁や W／E を隠さないよう、東西は箱の横幅も覆う。南北は足元だけ）、`origin` は中心ノートの
  * 足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので十字は必ず床の内側にある。
  * 余白 `margin` は既定で `spacing`（Scene は spacing に nodeHeight、margin に `floorMarginFactor × nodeHeight` を渡す）。`compassGap` は方角ラベルを外周から離す量で、
- * 南北は投影で `northRise` 倍に縮むので Scene は y を `northRise` で割って渡す（画面でどの方角も同じ間隔）。
+ * 東西・北・南を別々に持つ（南北は投影で `northRise` 倍に縮むので Scene は割って渡す）。
  * 足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
  */
 export const floorPlan = (
@@ -129,7 +136,7 @@ export const floorPlan = (
   origin: Point,
   spacing: number,
   margin = spacing,
-  compassGap: Point = { x: margin / 2, y: margin / 2 },
+  compassGap: CompassGap = { x: margin / 2, north: margin / 2, south: margin / 2 },
   reach: FloorReach = { north: 0, south: 0 },
 ): FloorPlan => {
   const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
@@ -153,8 +160,8 @@ export const floorPlan = (
     columnXs: gridPositions(bounds.minX, bounds.maxX, origin.x, spacing),
     rowYs: gridPositions(bounds.minY, bounds.maxY, origin.y, spacing),
     compass: {
-      north: { x: origin.x, y: bounds.minY - compassGap.y },
-      south: { x: origin.x, y: bounds.maxY + compassGap.y },
+      north: { x: origin.x, y: bounds.minY - compassGap.north },
+      south: { x: origin.x, y: bounds.maxY + compassGap.south },
       west: { x: bounds.minX - compassGap.x, y: origin.y },
       east: { x: bounds.maxX + compassGap.x, y: origin.y },
     },
@@ -308,3 +315,12 @@ export const project = (center: Point, level: Level, params: ProjectionParams): 
  * `Array.prototype.sort` の比較関数として `project` の結果を渡す。
  */
 export const compareDrawOrder = (a: Projected, b: Projected): number => b.depth - a.depth || a.x - b.x;
+
+/**
+ * 画面で `screen` px ぶんの南北の隙間に当たる 2D の地面距離（LEV-130）。投影は南北を `northRise` 倍に縮めるので
+ * （`project` の `y = −north · northRise`）、画面で欲しい量から地面の距離を戻すのは割り算になる。方角ラベルのように
+ * 「画面で決めた距離」を 2D の座標に置きたいところで使う。`northRise` が 0 以下（設定を手で壊した場合）なら
+ * 縮まないものとして `screen` をそのまま返す。
+ */
+export const groundGapNorthSouth = (screen: number, params: ProjectionParams): number =>
+  params.northRise > 0 ? screen / params.northRise : screen;
