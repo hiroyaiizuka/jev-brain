@@ -16,7 +16,7 @@ H0 ハーネス ──┬── ONT-1 Up/Down 領域（2D の色）──── 
 | 0 | H0 ハーネス | `npm run check`、test-vault、CI、docs。エージェントと人が同じ条件で検証できる | `docs/harness.md` | 完了（実機 E01〜E11 は未実施） |
 | 1 | ONT-1 Up/Down 領域 | 設定に Up（抽象）／Down（具体）の領域。入れたフィールドの関係は 2D で専用の色になる | `docs/ontology-axis-design.md` | 未着手 |
 | 2 | 3D-1 固定視点トグル | ツールパネルの 3D で、Up の親が上、Down の子が下、由来の親は地面に出る。柱・影・地面。起動時は 2D | `docs/3d-design.md` | 着手（フェーズ 0 調査完了、`Projection.ts` と単体テストは LEV-110 で main へ。Scene 以降は未着手） |
-| 3 | R1 ベータ配布 | tag → GitHub Release → BRAT。本人と数名が日常で使う | `docs/harness.md`「リリース手順」 | 未着手（plugin ID の決定が要る） |
+| 3 | R1 ベータ配布 | tag → GitHub Release → BRAT。本人と数名が日常で使う | `docs/harness.md`「リリース手順」 | ID を jevbrain に変更中（LEV-99 の子）。release.yml の dry-run は成功。BRAT 配布は Jev の実装後まで保留 |
 | 3 | 3D-2 見た目の作り直し | 斜投影（キャビネット図法）、床のグリッドと十字、目立つ柱と目盛り、接地影、3D では細いリンクと level 別の色・ラベル。本人のフィードバック（2026-09-21）を反映 | `docs/3d-design.md` §6、`docs/3d-feedback-2026-09-21.md` | 着手 |
 | 4 | 3D-3 実測と重なり | 親 20・子 30 での要素数・描画時間と重なりの追加対策 | 同上 | 未着手 |
 | 4 | H1 整地 | strict 化、lint ベースラインの解消、設定画面の見出し | `docs/harness.md`「lint のベースライン」 | 未着手（3D-1 の merge 後） |
