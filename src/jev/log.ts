@@ -55,11 +55,12 @@ export const undo = async (app: App, manifestDir: string, id: string): Promise<J
     const entries = await readLog(app, manifestDir);
     const entry = entries.find((candidate) => candidate.id === id);
     if (!entry) return "not-found";
-    const result = await revert(app, entry);
-    if (result === "undone") {
-      await writeLog(app, manifestDir, entries.filter((candidate) => candidate !== entry));
+    const reverted = await revert(app, entry);
+    if (reverted.outcome === "undone") {
+      const rest = entries.filter((candidate) => candidate !== entry);
+      await writeLog(app, manifestDir, shifted(rest, entry.file, reverted));
     }
-    return result;
+    return reverted.outcome;
   });
   noticeSkipped(outcome === "line-changed" ? 1 : 0, outcome === "file-missing" ? 1 : 0);
   return outcome;
@@ -73,34 +74,52 @@ export const undoBatch = async (
 ): Promise<JevUndoBatchResult> => {
   const result = await queued(async () => {
     const entries = await readLog(app, manifestDir);
-    const batch = entries.filter((entry) => entry.batchId === batchId);
-    const undone = new Set<JevLogEntry>();
+    // 一括の書き込みは並列に走る（設計 §4-3）ので、記録の順は行の順とは限らない。同じノートの下の行から
+    // 戻せば、まだ戻していない上の行の位置が動かない。
+    const batch = entries
+      .filter((entry) => entry.batchId === batchId)
+      .sort((a, b) => (a.file === b.file ? b.line - a.line : a.file.localeCompare(b.file)));
+    let rest = entries;
+    let undone = 0;
     let lineChanged = 0;
     let fileMissing = 0;
-    // 同じノートに足した行は後の記録ほど下にあるので、後ろから戻せば残りの行番号がずれない。
-    for (const entry of [...batch].reverse()) {
-      const outcome = await revert(app, entry);
-      if (outcome === "undone") undone.add(entry);
-      else if (outcome === "line-changed") lineChanged++;
+    for (const entry of batch) {
+      const reverted = await revert(app, entry);
+      if (reverted.outcome === "undone") {
+        undone++;
+        rest = shifted(rest.filter((candidate) => candidate !== entry), entry.file, reverted);
+      } else if (reverted.outcome === "line-changed") lineChanged++;
       else fileMissing++;
     }
-    if (undone.size > 0) {
-      await writeLog(app, manifestDir, entries.filter((entry) => !undone.has(entry)));
-    }
-    return { undone: undone.size, skipped: batch.length - undone.size, lineChanged, fileMissing };
+    if (undone > 0) await writeLog(app, manifestDir, rest);
+    return { undone, skipped: batch.length - undone, lineChanged, fileMissing };
   });
   noticeSkipped(result.lineChanged, result.fileMissing);
   return { undone: result.undone, skipped: result.skipped };
 };
 
-/** 書いた塊がそのまま残っていれば、もとの塊（空なら行ごと）に戻す。 */
-const revert = async (app: App, entry: JevLogEntry): Promise<JevUndoOutcome> => {
-  const file = app.vault.getAbstractFileByPath(entry.file);
-  if (!(file instanceof TFile)) return "file-missing";
+/** 戻したときの、行が消えた（足りた）場所と増減。同じノートのこれより下の記録は行番号がずれる。 */
+type Reverted = { outcome: JevUndoOutcome; at: number; delta: number };
 
-  const state: { outcome: JevUndoOutcome } = { outcome: "undone" };
+/** 取り消しで動いたぶん、同じノートの下にある記録の行番号を直す。 */
+const shifted = (entries: JevLogEntry[], file: string, reverted: Reverted): JevLogEntry[] =>
+  reverted.delta === 0
+    ? entries
+    : entries.map((entry) =>
+      entry.file === file && entry.line > reverted.at
+        ? { ...entry, line: entry.line + reverted.delta }
+        : entry);
+
+/** 書いた塊がそのまま残っていれば、もとの塊（空なら行ごと）に戻す。 */
+const revert = async (app: App, entry: JevLogEntry): Promise<Reverted> => {
+  const file = app.vault.getAbstractFileByPath(entry.file);
+  if (!(file instanceof TFile)) return { outcome: "file-missing", at: entry.line, delta: 0 };
+
+  const state: Reverted = { outcome: "undone", at: entry.line, delta: 0 };
   await app.vault.process(file, (data) => {
-    const lines = data.split("\n");
+    // 記録の改行は常に `\n`。ノート自身の改行（CRLF もありうる）はそのまま書き戻す。
+    const eol = data.includes("\r\n") ? "\r\n" : "\n";
+    const lines = data.split(/\r?\n/u);
     const written = entry.after.split("\n");
     if (lines.slice(entry.line, entry.line + written.length).join("\n") !== entry.after) {
       state.outcome = "line-changed";
@@ -108,12 +127,14 @@ const revert = async (app: App, entry: JevLogEntry): Promise<JevUndoOutcome> => 
     }
     // 見出しごと足した記録でも、そのあと同じ節に別の行が入っていれば、足した行だけ消して見出しは残す。
     const keepHeading = written.length > 1 && hasContent(lines, entry.line + written.length);
-    const from = keepHeading ? entry.line + written.length - 1 : entry.line;
     const count = keepHeading ? 1 : written.length;
-    lines.splice(from, count, ...(entry.before === "" ? [] : entry.before.split("\n")));
-    return lines.join("\n");
+    const restored = entry.before === "" ? [] : entry.before.split("\n");
+    state.at = keepHeading ? entry.line + written.length - 1 : entry.line;
+    state.delta = restored.length - count;
+    lines.splice(state.at, count, ...restored);
+    return lines.join(eol);
   });
-  return state.outcome;
+  return state;
 };
 
 /** `from` から次の見出しまでに、空行でない行があるか。 */

@@ -17,6 +17,7 @@ test-vault/
 
 # Obsidian plugin data written by a running vault
 data.json
+jev-log.json
 
 # scripts/generate-repository-zip.mjs
 repository.zip

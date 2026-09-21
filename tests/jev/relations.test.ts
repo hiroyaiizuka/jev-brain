@@ -77,13 +77,36 @@ describe('appendRelation into the Relations section', () => {
     expect(vault.notes.get('Note.md')).toBe('# Note\n\n## 関係\nup:: [[A]]\norigin:: [[B]]\n');
   });
 
-  it('does nothing when the same line is already in the section', async () => {
-    const note = '## Relations\nup:: [[A]]\norigin:: [[B]]\n';
+  it('does nothing when the same relation is already in the section, however it is written', async () => {
+    const note = '## Relations\nup::[[A]]\nOrigin:: [[B|ビー]]\n';
     const { app, file, vault } = setup({ 'Note.md': note });
+
+    expect(await appendRelation(app, file('Note.md'), 'up', 'A', HEADING)).toBeNull();
+    expect(await appendRelation(app, file('Note.md'), 'origin', 'B', HEADING)).toBeNull();
+    expect(vault.notes.get('Note.md')).toBe(note);
+  });
+
+  it('ignores a heading quoted inside a code block and creates a real section', async () => {
+    const { app, file, vault } = setup({ 'Note.md': '# Note\n\n```md\n## Relations\nup:: [[Z]]\n```\n' });
+    await appendRelation(app, file('Note.md'), 'up', 'A', HEADING);
+
+    expect(vault.notes.get('Note.md')).toBe('# Note\n\n```md\n## Relations\nup:: [[Z]]\n```\n\n## Relations\nup:: [[A]]');
+  });
+
+  it('keeps the line endings of a note written on Windows', async () => {
+    const { app, file, vault } = setup({ 'Note.md': '# Note\r\n\r\n## Relations\r\nup:: [[A]]\r\n' });
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'B', HEADING);
+
+    expect(vault.notes.get('Note.md')).toBe('# Note\r\n\r\n## Relations\r\nup:: [[A]]\r\norigin:: [[B]]\r\n');
+    expect(edit).toEqual<RelationEdit>({ line: 4, before: '', after: 'origin:: [[B]]' });
+  });
+
+  it('keeps the blank lines of a note that holds nothing else', async () => {
+    const { app, file, vault } = setup({ 'Note.md': '\n\n\n' });
     const edit = await appendRelation(app, file('Note.md'), 'up', 'A', HEADING);
 
-    expect(edit).toBeNull();
-    expect(vault.notes.get('Note.md')).toBe(note);
+    expect(vault.notes.get('Note.md')).toBe('\n\n\n\n## Relations\nup:: [[A]]');
+    expect(edit).toEqual<RelationEdit>({ line: 4, before: '', after: '## Relations\nup:: [[A]]' });
   });
 });
 
@@ -116,6 +139,25 @@ describe('appendRelation with writeMode inline', () => {
     expect(await appendRelation(app, file('Note.md'), 'up', 'C', { ...HEADING, mode: 'inline' })).toBeNull();
     expect(vault.notes.get('Note.md')).toBe(note);
   });
+
+  it('types a link written with an alias or a heading, keeping how it was written', async () => {
+    const { app, file, vault } = setup({ 'Note.md': 'see [[A|エー]] today\n' });
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...HEADING, mode: 'inline' });
+
+    expect(vault.notes.get('Note.md')).toBe('see (origin:: [[A|エー]]) today\n');
+    expect(edit?.after).toBe('see (origin:: [[A|エー]]) today');
+  });
+
+  it('leaves frontmatter, code blocks and embeds alone, and types the link in the prose', async () => {
+    const note = '---\nrelated: "[[A]]"\n---\n\n```md\nsample [[A]]\n```\n\n![[A]]\nabout [[A]] here\n';
+    const { app, file, vault } = setup({ 'Note.md': note });
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...HEADING, mode: 'inline' });
+
+    expect(vault.notes.get('Note.md')).toBe(
+      '---\nrelated: "[[A]]"\n---\n\n```md\nsample [[A]]\n```\n\n![[A]]\nabout (origin:: [[A]]) here\n',
+    );
+    expect(edit?.line).toBe(9);
+  });
 });
 
 describe('replaceRelation', () => {
@@ -134,6 +176,19 @@ describe('replaceRelation', () => {
       line: 0, before: 'about (up:: [[A]]) today', after: 'about (origin:: [[A]]) today',
     });
     expect(vault.notes.get('Inline.md')).toBe('about (origin:: [[A]]) today\n');
+  });
+
+  it('keeps the indentation, the rest of the line, and note names that look like replacement patterns', async () => {
+    const { app, file, vault } = setup({
+      'List.md': '- list\n  up:: [[A]] <- note\n',
+      'Dollar.md': 'about (up:: [[A$&B]]) today\n',
+    });
+
+    await replaceRelation(app, file('List.md'), 'up', 'origin', 'A');
+    expect(vault.notes.get('List.md')).toBe('- list\n  origin:: [[A]] <- note\n');
+
+    await replaceRelation(app, file('Dollar.md'), 'up', 'origin', 'A$&B');
+    expect(vault.notes.get('Dollar.md')).toBe('about (origin:: [[A$&B]]) today\n');
   });
 
   it('does nothing when the note has no such field for the target', async () => {
@@ -211,7 +266,8 @@ describe('jev-log.json and undo', () => {
 
     expect(await undoBatch(app, MANIFEST_DIR, 'bulk')).toEqual({ undone: 2, skipped: 0 });
     expect(vault.notes.get('Note.md')).toBe('# Note\n\nabout [[A]] and [[B]]\n\n## Relations\nsimilar:: [[C]]');
-    expect(log()).toEqual([kept]);
+    // 上の 2 行が消えたぶん、残った記録の行番号も動く。
+    expect(log()).toEqual([{ ...kept, line: 5 }]);
     expect(Notice.messages).toEqual([]);
   });
 
@@ -226,6 +282,36 @@ describe('jev-log.json and undo', () => {
     expect(vault.notes.get('B.md')).toBe('## Relations\n');
     expect(log()).toEqual([changed]);
     expect(Notice.messages).toHaveLength(1);
+  });
+
+  it('moves the lines of the entries below the one it undid, so the next undo still finds its line', async () => {
+    const { app, file, vault, log } = setup({ 'Note.md': '## Relations\n' });
+    const first = await writeAndLog(app, file('Note.md'), 'up', 'A', HEADING, { batchId: 'b1', source: 'suggester' });
+    const second = await writeAndLog(app, file('Note.md'), 'origin', 'B', HEADING, { batchId: 'b2', source: 'queue' });
+
+    expect(await undo(app, MANIFEST_DIR, first.id)).toBe('undone');
+    expect(vault.notes.get('Note.md')).toBe('## Relations\norigin:: [[B]]\n');
+    expect(log()).toEqual([{ ...second, line: 1 }]);
+
+    expect(await undo(app, MANIFEST_DIR, second.id)).toBe('undone');
+    expect(vault.notes.get('Note.md')).toBe('## Relations\n');
+    expect(Notice.messages).toEqual([]);
+  });
+
+  it('undoes a batch by line, not by the order the parallel writes were recorded in', async () => {
+    const { app, file, vault, log } = setup({ 'Note.md': '## Relations\n' });
+    const meta = { batchId: 'bulk', source: 'bulk' };
+    // 一括は判定を並列に走らせるので、書いた順と記録の順は入れ替わりうる（設計 §4-3）。
+    const upper = await appendRelation(app, file('Note.md'), 'up', 'A', HEADING);
+    const lower = await appendRelation(app, file('Note.md'), 'origin', 'B', HEADING);
+    if (!upper || !lower) throw new Error('nothing was written');
+    await appendLogEntry(app, MANIFEST_DIR, { ...lower, file: 'Note.md', ...meta });
+    await appendLogEntry(app, MANIFEST_DIR, { ...upper, file: 'Note.md', ...meta });
+
+    expect(await undoBatch(app, MANIFEST_DIR, 'bulk')).toEqual({ undone: 2, skipped: 0 });
+    expect(vault.notes.get('Note.md')).toBe('## Relations\n');
+    expect(log()).toEqual([]);
+    expect(Notice.messages).toEqual([]);
   });
 
   it('answers not-found for an id that is not in the log', async () => {
