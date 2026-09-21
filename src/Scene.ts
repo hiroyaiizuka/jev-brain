@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, compareDrawOrder, floorDrop, floorPlan, friendBandShift, levelOf, pillarTickLevels, project } from "./graph/Projection";
+import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, levelOf, pillarTickLevels, project } from "./graph/Projection";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
@@ -1085,15 +1085,8 @@ export class Scene {
    * 3D でだけ戻す）。床・影・柱は箱の位置が要るのでノードのあとに描くが、戻り値は床 → 影 → 柱の順に並べた要素で、
    * `render()` がこの順のままリンクとノードの後ろに置く（§6-2 の重ね順。z 順は `ea.elementsDict` の並びだけで決まる）。
    * link は付けず、ノードのグループにも入れない。床・影・柱が変えた `ea.style` は元に戻すので、続く `links.render()` が
-   * 受け取るスタイルは 2D と同じ（最後のノードが残したもの）。
-   * 3D の描画（docs/3d-design.md §6-1、柱・影・地面は §3-4 のまま）。配置 → 友の帯を中心の y に揃える → 床 → 投影 →
-   * 地面 → north 降順にノード（床にいないノードには影と柱）。2D と同じ `place()` の中心を投影で置き換え、Node には
-   * `render({floor})` で 3D を伝える（§6-3: ゲート・数字なし、level 別の色、L ラベル。`Node.render()`）。
-   * 埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は
-   * 中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は 3D でも合う（床のほうが `floor` のぶん下がる）。
-   * `friendLayouts`（左右の友）だけ `friendBandShift` で 2D の y を動かす（上流の Layout の半行のずれを 3D でだけ戻す）。
-   * 戻り値は地面・影・柱の要素。`render()` がリンクの後ろに並べる。link は付けず、ノードのグループにも入れない。
-   * 柱・影・地面が変えた `ea.style` は元に戻すので、続く `links.render()` が受け取るスタイルは 2D と同じ（最後のノードが残したもの）。
+   * 受け取るスタイルは 2D と同じ（最後のノードが残したもの）。Node には `render({floor})`（`floorOf`: 画面内の最下段を
+   * L1 とする基準）で 3D を伝える（§6-3: ゲート・数字なし、level 別の色、L ラベル。`Node.render()`）。
    */
   private async render3D(friendLayouts: Layout[]): Promise<ExcalidrawElement[]> {
     const ea = this.ea;
@@ -1119,14 +1112,11 @@ export class Scene {
     }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
-    // 奥（north 大）から手前へ逐次描く（§6-1）
+    // 奥（north 大）から手前へ逐次描く（§6-1）。`floor` は色とラベルの基準（最下段＝L1、§6-3）で、床の平面（`FLOOR_LEVEL`）とは別
+    const floor = floorOf(placed.map(p => p.node.level));
     placed.sort((a, b) => compareDrawOrder(a.projected, b.projected));
     for (const p of placed) {
-      await p.node.render();
       await p.node.render({floor});
-      if(p.node.level !== floor) {
-        sceneryIds.push(...this.keepingStyle(() => this.renderShadowAndPillar(p.node, project(p.center, floor, params))));
-      }
     }
 
     // 描画済みの箱（`node.id`: テキストなら枠、埋め込みなら iframe／画像。保持した埋め込みでも `Node.render()` が `id` を付け直す）。
