@@ -141,23 +141,29 @@ describe('3D: the projected centres pick the parent/child gates', () => {
     expect(gatesOf(centre(), below(), Role.RIGHT, true)).toEqual(['c-next', 's-next']);
   });
 
-  it('an origin parent on the ground far to the east of a yawed centre is projected below it and gets the swap; the same parent on +1 does not', () => {
-    // 3D-1 constants (Scene.ts VIEW_3D) with a nodeHeight of 60. A north-band parent one row up and three columns east.
-    const params: ProjectionParams = { yawDegrees: 20, widthScale: 0.8, levelHeight: 1.5 * 60 };
-    const parentAt = (level: Level) => {
-      const p = project({ x: 600, y: -150 }, level, params);
-      return makeNode('origin', { x: p.x, y: p.y });
+  it('with the cabinet projection a parent north of the centre never swaps, but a parent displayed south of a friend does', () => {
+    // 3D-2 defaults (Projection.DEFAULT_VIEW_3D_SETTINGS) with a nodeHeight of 60 and the floor at -1 (a Down child on screen).
+    const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * 60 };
+    const at = (prefix: string, center: { x: number; y: number }, level: Level) => {
+      const p = project(center, level, params);
+      return makeNode(prefix, { x: p.x, y: p.y });
     };
-    const c = project({ x: 0, y: 0 }, 0, params);
-    expect(c).toMatchObject({ x: 0, y: 0 });
+    const c = at('c', { x: 0, y: 0 }, 0);
+    expect(c.getCenter()).toEqual({ x: 0, y: 0 });
 
-    const onGround = parentAt(0);
-    expect(onGround.getCenter().y).toBeGreaterThan(0);
-    expect(gatesOf(makeNode('c', c), onGround, Role.PARENT, true)).toEqual(['c-child', 'origin-parent']);
+    // The origin parent (level 0) in the north band, and the same parent raised to +1: both stay above the centre.
+    for (const level of [0, 1] as const) {
+      const origin = at('origin', { x: 600, y: -150 }, level);
+      expect(origin.getCenter().y, String(level)).toBeLessThan(0);
+      expect(gatesOf(c, origin, Role.PARENT, true)).toEqual(['c-parent', 'origin-child']);
+    }
 
-    const raised = parentAt(1);
-    expect(raised.getCenter().y).toBeLessThan(0);
-    expect(gatesOf(makeNode('c', c), raised, Role.PARENT, true)).toEqual(['c-parent', 'origin-child']);
+    // A friend (level 0, centre band) whose parent is a Down child of the centre (level -1, south band): the parent is
+    // projected below the friend, so the link leaves the bottom of the friend and enters the top of the parent.
+    const friend = at('friend', { x: 300, y: 0 }, 0);
+    const downChild = at('down', { x: 0, y: 200 }, -1);
+    expect(downChild.getCenter().y).toBeGreaterThan(friend.getCenter().y);
+    expect(gatesOf(friend, downChild, Role.PARENT, true)).toEqual(['friend-child', 'down-parent']);
   });
 });
 

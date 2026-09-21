@@ -835,6 +835,11 @@ export default class ExcaliBrain extends Plugin {
       ...DEFAULT_NODE_STYLE,
       ...this.settings.baseNodeStyle,
     };
+    // Nested like the styles: a saved object from an older version keeps the defaults of the keys it lacks.
+    this.settings.view3D = {
+      ...DEFAULT_SETTINGS.view3D,
+      ...this.settings.view3D,
+    };
 
     // Defaults, the Up-over-Parents exclusivity and the sort live in src/utils/hierarchy.ts (unit-tested).
     const { hierarchy, hierarchyLowerCase } = buildHierarchyLowerCase(this.settings.hierarchy);

@@ -12,21 +12,15 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { Level, Point, Projected, ProjectionParams, boundsOf, compressBands, extentOf, groundLevelOf, levelOf, project } from "./graph/Projection";
+import { Level, Point, Projected, ProjectionParams, boundsOf, compareDrawOrder, floorOf, levelOf, project } from "./graph/Projection";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
 /**
- * 3D 表示の固定値（docs/3d-design.md §3-2〜§3-4）。3D-1 は既定値のままで、3D-2 で設定に移す。
- * 柱・影・地面の色は設定のリンク色・ノード色から不透明度だけ落として作る。
+ * 柱・影・地面の固定値（docs/3d-design.md §3-4。§6-2 の作り直しは LEV-120）。投影の係数は設定 `view3D`。
+ * 色は設定のリンク色・ノード色から不透明度だけ落として作る。
  */
 const VIEW_3D = {
-  yawDegrees: 20,
-  widthScale: 0.8,
-  /** 1 段の高さ = nodeHeight × この倍率 */
-  levelHeightFactor: 1.5,
-  /** 帯と帯の隙間に掛ける倍率（帯の中は潰さない） */
-  depthScale: 0.38,
   pillarAlpha: 0.5,
   shadowAlpha: 0.4,
   /** 影の幅 = 箱の幅 × この比率。高さは幅 × shadowAspect */
@@ -37,14 +31,11 @@ const VIEW_3D = {
   compassAlpha: 0.6,
 } as const;
 
-/** 帯の名前。`render()` が各 Layout をどの帯に入れるかを決め、`render3D()` がずれ量を引く。 */
-type Band = "north" | "center" | "south" | "siblings";
-
 /** `#rrggbb`／`#rrggbbaa` の色に不透明度（0〜1）を付け直す。 */
 const withAlpha = (color: string, alpha: number): string =>
   `${color.substring(0, 7)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
 
-/** `Layout.place()` が決めた中心（帯のずれ適用後）、その箱の大きさ（Layout の列幅・行高）、投影。 */
+/** `Layout.place()` が決めた 2D の中心、その箱の大きさ（Layout の列幅・行高）、投影。 */
 type PlacedNode = { node: Node; center: Point; size: {width: number; height: number}; projected: Projected };
 
 export class Scene {
@@ -1030,12 +1021,7 @@ export class Scene {
     applyEAStyle(ea, { opacity: 100 });
     let sceneryElements: ExcalidrawElement[] = [];
     if(this.view3D) {
-      sceneryElements = await this.render3D(new Map<Layout, Band>([
-        [lCenter, "center"], [lFriends, "center"], [lNextFriends, "center"],
-        [lParents, "north"],
-        [lChildren, "south"],
-        [lSiblings, "siblings"],
-      ]));
+      sceneryElements = await this.render3D();
     } else {
       await Promise.all(this.layouts.map(async (layout) => await layout.render()));
     }
@@ -1076,37 +1062,31 @@ export class Scene {
   }
 
   /**
-   * 3D の描画（docs/3d-design.md §3-3〜§3-5）。配置 → 帯の圧縮 → 投影 → 地面 → depth 昇順にノード（地面にいない
-   * ノードには影と柱）。2D と同じ `place()` の中心を投影で置き換えるだけで、Node の描画は無改造。
-   * 埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は level 0 の投影の不動点で
-   * 中心の帯はずれないので、保持した要素の位置は 3D でも合う。
+   * 3D の描画（docs/3d-design.md §6-1、柱・影・地面は §3-4 のまま）。配置 → 床 → 投影 → 地面 → north 降順にノード
+   * （床にいないノードには影と柱）。2D と同じ `place()` の中心を投影で置き換えるだけで、Node の描画は無改造。
+   * 埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は中心ノート（north 0・level 0）の
+   * 投影の不動点なので、保持した要素の位置は 3D でも合う（床のほうが `floor` のぶん下がる）。
    * 戻り値は地面・影・柱の要素。`render()` がリンクの後ろに並べる。link は付けず、ノードのグループにも入れない。
    * 柱・影・地面が変えた `ea.style` は元に戻すので、続く `links.render()` が受け取るスタイルは 2D と同じ（最後のノードが残したもの）。
    */
-  private async render3D(bands: Map<Layout, Band>): Promise<ExcalidrawElement[]> {
+  private async render3D(): Promise<ExcalidrawElement[]> {
     const ea = this.ea;
+    const view3D = this.plugin.settings.view3D;
     const params: ProjectionParams = {
-      yawDegrees: VIEW_3D.yawDegrees,
-      widthScale: VIEW_3D.widthScale,
-      levelHeight: VIEW_3D.levelHeightFactor * this.nodeHeight,
+      northShearX: view3D.northShearX,
+      northRise: view3D.northRise,
+      levelHeight: view3D.levelHeightFactor * this.nodeHeight,
     };
-    const layouts = [...bands.keys()];
-    const inBand = (band: Band) => layouts.filter(layout => bands.get(layout) === band);
 
     // 配置: 2D と同じ中心
-    layouts.forEach(layout => layout.place());
+    this.layouts.forEach(layout => layout.place());
 
-    // 帯の間だけ潰す（§4-1）。帯の範囲は Layout の rowHeight から取る。兄弟は北の帯に入れず、北と同じ量だけ動かす
-    const extent = (band: Band) => extentOf(
-      inBand(band).flatMap(layout => layout.nodes.map(node => ({y: node.getCenter().y, height: layout.spec.rowHeight})))
-    );
-    const shifts = compressBands({north: extent("north"), center: extent("center"), south: extent("south")}, VIEW_3D.depthScale);
-    const shiftOf: Record<Band, number> = {north: shifts.north, siblings: shifts.north, center: 0, south: shifts.south};
+    // 床は画面内の最小 level（§6-1）
+    const floor = floorOf(this.layouts.flatMap(layout => layout.nodes.map(node => node.level)));
 
-    // 投影（§3-2）
-    const placed: PlacedNode[] = layouts.flatMap(layout => layout.nodes.map(node => {
-      const c = node.getCenter();
-      const center = {x: c.x, y: c.y + shiftOf[bands.get(layout)]};
+    // 投影（§6-1）
+    const placed: PlacedNode[] = this.layouts.flatMap(layout => layout.nodes.map(node => {
+      const center = node.getCenter();
       return {
         node,
         center,
@@ -1114,17 +1094,16 @@ export class Scene {
         projected: project(center, node.level, params),
       };
     }));
-    const groundLevel = groundLevelOf(placed.map(p => p.node.level));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
-    const sceneryIds = this.keepingStyle(() => this.renderGround(placed, groundLevel, params));
+    const sceneryIds = this.keepingStyle(() => this.renderGround(placed, floor, params));
 
-    // 奥（depth 小）から手前へ逐次描く（§3-5）。影と柱は箱の下端が要るのでノードの直後に描く
-    placed.sort((a, b) => a.projected.depth - b.projected.depth);
+    // 奥（north 大）から手前へ逐次描く（§6-1）。影と柱は箱の下端が要るのでノードの直後に描く
+    placed.sort((a, b) => compareDrawOrder(a.center, b.center));
     for (const p of placed) {
       await p.node.render();
-      if(p.node.level !== groundLevel) {
-        sceneryIds.push(...this.keepingStyle(() => this.renderShadowAndPillar(p.node, project(p.center, groundLevel, params))));
+      if(p.node.level !== floor) {
+        sceneryIds.push(...this.keepingStyle(() => this.renderShadowAndPillar(p.node, project(p.center, floor, params))));
       }
     }
     return sceneryIds.map(id => ea.getElement(id));
@@ -1141,15 +1120,15 @@ export class Scene {
   }
 
   /**
-   * 地面（§3-4）: 全ノードの 2D の範囲に余白を足した長方形を地面の高さに投影した平行四辺形と、各辺の外側の方角ラベル。
+   * 地面（§3-4）: 全ノードの 2D の範囲に余白を足した長方形を床の高さに投影した平行四辺形と、各辺の外側の方角ラベル。
    */
-  private renderGround(placed: PlacedNode[], groundLevel: Level, params: ProjectionParams): string[] {
+  private renderGround(placed: PlacedNode[], floor: Level, params: ProjectionParams): string[] {
     const ea = this.ea;
     const settings = this.plugin.settings;
     const margin = this.nodeHeight;
     const {minX, maxX, minY, maxY} = boundsOf(placed.map(p => ({...p.center, ...p.size})), margin);
     const at = (x: number, y: number): [number, number] => {
-      const p = project({x, y}, groundLevel, params);
+      const p = project({x, y}, floor, params);
       return [p.x, p.y];
     };
 
@@ -1185,13 +1164,15 @@ export class Scene {
   }
 
   /**
-   * 地面にいないノードの影（地面の位置の小さな楕円）と柱（箱の下端から地面へ、破線、リンクより薄い色）（§3-4）。
+   * 床にいないノードの影（床の位置の小さな楕円）と柱（箱の下端から床へ、破線、リンクより薄い色）（§3-4）。
    * 箱の位置は描画済みの要素（`node.id`: テキストなら枠、埋め込みなら iframe／画像）から読む。
+   * `retainCentralNode` で保持した埋め込みの中心は `render()` が `id` を付け直さないので、保持した要素の先頭
+   * （iframe、または画像の枠）を使う。
    */
   private renderShadowAndPillar(node: Node, ground: Projected): string[] {
     const ea = this.ea;
     const settings = this.plugin.settings;
-    const box = ea.getElement(node.id);
+    const box = ea.getElement(node.id ?? node.embeddedElementIds[0]);
     const shadowWidth = box.width * VIEW_3D.shadowWidthRatio;
     const shadowHeight = shadowWidth * VIEW_3D.shadowAspect;
     const shadowColor = withAlpha(settings.baseNodeStyle.backgroundColor, VIEW_3D.shadowAlpha);

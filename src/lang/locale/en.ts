@@ -235,4 +235,13 @@ export default {
   LINKSTYLE_UP: "Style of Up (abstract) links",
   LINKSTYLE_DOWN: "Style of Down (concrete) links",
   TOGGLE_3D_VIEW: "Toggle 3D view. Up parents are raised, Down children lowered, everything else stays on the ground. Not saved: ExcaliBrain always starts in 2D.",
+
+  //3D view settings (docs/3d-design.md §6-1): cabinet projection. Other locales fall back to these.
+  VIEW3D_HEAD: "3D view",
+  VIEW3D_NORTH_SHEAR_X_NAME: "North shear (x)",
+  VIEW3D_NORTH_SHEAR_X_DESC: "How far a node shifts right on screen for every unit it lies north of the central node in the 2D layout. 0 keeps north straight up, 0.4 is the cabinet-drawing default.",
+  VIEW3D_NORTH_RISE_NAME: "North rise (y)",
+  VIEW3D_NORTH_RISE_DESC: "How far a node shifts up on screen for every unit it lies north of the central node. Smaller values flatten the floor.",
+  VIEW3D_LEVEL_HEIGHT_FACTOR_NAME: "Level height",
+  VIEW3D_LEVEL_HEIGHT_FACTOR_DESC: "Height of one level (Up parents raised, Down children lowered) as a multiple of the node height. Around 2 keeps the levels from overlapping.",
 }

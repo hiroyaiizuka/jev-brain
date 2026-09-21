@@ -19,6 +19,7 @@ import { Link } from "./graph/Link";
 import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, PREDEFINED_LINK_STYLES } from "./constants/constants";
 import { ExcalidrawAutomate, getEA } from "./utils/ExcalidrawAutomateCompatibility";
 import { axisOf, compareFieldsIgnoringCase, toHierarchyKey, type HierarchyAxis } from "./utils/hierarchy";
+import { DEFAULT_VIEW_3D_SETTINGS, type View3DSettings } from "./graph/Projection";
 
 export interface ExcaliBrainSettings {
   compactView: boolean;
@@ -48,6 +49,11 @@ export interface ExcaliBrainSettings {
   maxItemCount: number;
   /** Per-area node cap while the 3D view is on (docs/3d-design.md §4-1). The 2D view keeps `maxItemCount`. */
   maxItemCount3D: number;
+  /**
+   * Cabinet projection of the 3D view (docs/3d-design.md §6-1): `northShearX`, `northRise`, `levelHeightFactor`.
+   * The 3D toggle itself (`Scene.view3D`) is not saved. `loadSettings()` merges the defaults into a saved object.
+   */
+  view3D: View3DSettings;
   renderSiblings: boolean;
   applyPowerFilter: boolean;
   baseNodeStyle: NodeStyle;
@@ -120,6 +126,7 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   showFullTagName: false,
   maxItemCount: 30,
   maxItemCount3D: 12,
+  view3D: { ...DEFAULT_VIEW_3D_SETTINGS },
   renderSiblings: false,
   applyPowerFilter: false,
   baseNodeStyle: DEFAULT_NODE_STYLE,
@@ -2246,6 +2253,50 @@ private normalizeSettings() {
         false,
         this.plugin.settings.centerEmbedHeight
       )
+
+    // ------------------------------
+    // 3D view (docs/3d-design.md §6-1). The toggle lives in the tools panel and is not saved.
+    // ------------------------------
+    containerEl.createEl("h1", {
+      cls: "excalibrain-settings-h1",
+      text: t("VIEW3D_HEAD")
+    });
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_NORTH_SHEAR_X_NAME"),
+      t("VIEW3D_NORTH_SHEAR_X_DESC"),
+      {min:0,max:1,step:0.05},
+      ()=>this.plugin.settings.view3D.northShearX,
+      (val)=>this.plugin.settings.view3D.northShearX = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.northShearX
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_NORTH_RISE_NAME"),
+      t("VIEW3D_NORTH_RISE_DESC"),
+      {min:0,max:1,step:0.05},
+      ()=>this.plugin.settings.view3D.northRise,
+      (val)=>this.plugin.settings.view3D.northRise = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.northRise
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_LEVEL_HEIGHT_FACTOR_NAME"),
+      t("VIEW3D_LEVEL_HEIGHT_FACTOR_DESC"),
+      {min:1,max:4,step:0.1},
+      ()=>this.plugin.settings.view3D.levelHeightFactor,
+      (val)=>this.plugin.settings.view3D.levelHeightFactor = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.levelHeightFactor
+    )
 
     // ------------------------------
     // Style

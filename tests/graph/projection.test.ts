@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { Role } from 'src/Types';
 import {
-  BandExtents,
+  DEFAULT_VIEW_3D_SETTINGS,
   Level,
   LevelHierarchy,
   Point,
+  ProjectionParams,
   boundsOf,
-  compressBands,
-  extentOf,
-  groundLevelOf,
+  compareDrawOrder,
+  floorOf,
   levelOf,
   project,
 } from 'src/graph/Projection';
@@ -93,125 +93,179 @@ describe('levelOf', () => {
   });
 });
 
+/** 8 ノートの中心を、fixture の levelOf の結果と一緒に引く。 */
+const byTitle = (title: string): Neighbour => {
+  const n = neighbours.find((x) => x.title === title);
+  if (!n) throw new Error(title);
+  return n;
+};
+
 describe('project', () => {
-  const params = { yawDegrees: 20, widthScale: 0.8, levelHeight: 60 };
-
-  it('leaves x untouched at yaw 0° and widthScale 1, and lifts y by level · levelHeight', () => {
-    const flat = { yawDegrees: 0, widthScale: 1, levelHeight: 60 };
-    expect(project({ x: -120, y: -200 }, 0, flat)).toEqual({ x: -120, y: -200, depth: -200 });
-    expect(project({ x: -120, y: -200 }, 1, flat)).toEqual({ x: -120, y: -260, depth: -200 });
-    expect(project({ x: 150, y: 200 }, -1, flat)).toEqual({ x: 150, y: 260, depth: 200 });
-  });
-
-  it('scales only x with widthScale', () => {
-    const flat = { yawDegrees: 0, widthScale: 0.8, levelHeight: 60 };
-    const wide = project({ x: 300, y: 0 }, 0, flat);
-    expect(wide.x).toBeCloseTo(240, 9);
-    expect(wide.y).toBe(0);
-    expect(wide.depth).toBe(0);
-    expect(project({ x: 0, y: 200 }, 0, flat)).toEqual({ x: 0, y: 200, depth: 200 });
-  });
-
-  it('rotates by the yaw before scaling and lifting (north point at 20°)', () => {
-    const rotated = project({ x: 0, y: -100 }, 0, { ...params, widthScale: 1 });
-    expect(rotated.x).toBeCloseTo(34.2, 1);
-    expect(rotated.y).toBeCloseTo(-93.97, 2);
-    expect(rotated.depth).toBeCloseTo(-93.97, 2);
-
-    const lifted = project({ x: 0, y: -100 }, 1, params);
-    expect(lifted.x).toBeCloseTo(34.2 * 0.8, 1);
-    expect(lifted.y).toBeCloseTo(-93.97 - 60, 2);
-    expect(lifted.depth).toBeCloseTo(-93.97, 2);
-  });
-
-  it('uses the rotated y as depth, so depth does not depend on level and follows y at yaw 0°', () => {
-    const sin = Math.sin((20 * Math.PI) / 180);
-    const cos = Math.cos((20 * Math.PI) / 180);
-    const points = [centralNote, ...neighbours.map((n) => n.center)];
-    for (const p of points) {
-      expect(project(p, 0, params).depth).toBeCloseTo(p.x * sin + p.y * cos, 9);
-      expect(project(p, 1, params).depth).toBe(project(p, -1, params).depth);
-    }
-    const flat = { ...params, yawDegrees: 0 };
-    const byDepth = [...points].sort((a, b) => project(a, 0, flat).depth - project(b, 0, flat).depth).map((p) => p.y);
-    expect(byDepth).toEqual([...points].map((p) => p.y).sort((a, b) => a - b));
-  });
-});
-
-describe('compressBands', () => {
-  const nodeHeight = 40;
-  // Layout の top と top + rows·rowHeight に相当する帯の範囲。
-  const extents: BandExtents = {
-    north: { top: -320, bottom: -200 }, // 親 3 行
-    center: { top: -60, bottom: 60 }, // 中心と左右の友（3 行）
-    south: { top: 180, bottom: 260 }, // 子 2 行
+  // 既定値（3d-design §6-1）と nodeHeight 60。levelHeight = 2.2 × 60 = 132。
+  const nodeHeight = 60;
+  const params: ProjectionParams = {
+    northShearX: DEFAULT_VIEW_3D_SETTINGS.northShearX,
+    northRise: DEFAULT_VIEW_3D_SETTINGS.northRise,
+    levelHeight: DEFAULT_VIEW_3D_SETTINGS.levelHeightFactor * nodeHeight,
   };
+  const levelHeight = params.levelHeight;
 
-  it('shrinks only the gap between bands to depthScale: north moves south, south moves north, centre stays', () => {
-    const shifts = compressBands(extents, 0.38);
-    // 北: 隙間 140 → 53.2 なので 86.8 南へ。南: 隙間 120 → 45.6 なので 74.4 北へ。
-    expect(shifts.north).toBeCloseTo(86.8, 9);
-    expect(shifts.south).toBeCloseTo(-74.4, 9);
-    expect(extents.north.bottom + shifts.north).toBeCloseTo(extents.center.top - 140 * 0.38, 9);
-    expect(extents.south.top + shifts.south).toBeCloseTo(extents.center.bottom + 120 * 0.38, 9);
+  it('ships the defaults of 3d-design §6-1 (northShearX 0.40, northRise 0.30, levelHeightFactor 2.2)', () => {
+    expect(DEFAULT_VIEW_3D_SETTINGS).toEqual({ northShearX: 0.4, northRise: 0.3, levelHeightFactor: 2.2 });
   });
 
-  it('keeps the row spacing of a 12-parent / 12-child fixture because a band moves as a whole', () => {
-    const rows = (origoY: number) => [0, 1, 2, 3].flatMap((row) => [0, 1, 2].map(() => ({ y: origoY + row * nodeHeight, height: nodeHeight })));
-    const parents = rows(-400);
-    const children = rows(300);
-    const shifts = compressBands({ north: extentOf(parents), center: { top: -20, bottom: 20 }, south: extentOf(children) }, 0.38);
-    const gaps = (ys: number[]) => ys.slice(1).map((y, i) => y - ys[i]);
-    const shiftedParents = parents.map((p) => p.y + shifts.north);
-    const shiftedChildren = children.map((c) => c.y + shifts.south);
-    expect(gaps(shiftedParents)).toEqual(gaps(parents.map((p) => p.y)));
-    expect(gaps(shiftedChildren)).toEqual(gaps(children.map((c) => c.y)));
-    // 潰したあとも帯は重ならない。
-    expect(Math.max(...shiftedParents) + nodeHeight / 2).toBeLessThan(-20);
-    expect(Math.min(...shiftedChildren) - nodeHeight / 2).toBeGreaterThan(20);
+  it('keeps if-then プラン, the centre and 意志力で続ける on one horizontal line (same north, same level)', () => {
+    const left = project(byTitle('if-then プラン').center, 0, params);
+    const centre = project(centralNote, 0, params);
+    const right = project(byTitle('意志力で続ける').center, 0, params);
+    expect(left.y).toBe(centre.y);
+    expect(right.y).toBe(centre.y);
+    // 東西は水平のまま: x は 2D の横並びそのもの。
+    expect([left.x, centre.x, right.x]).toEqual([-300, 0, 300]);
   });
 
-  it('measures the centre band with the extent the caller gives (embedded centre)', () => {
-    const shifts = compressBands({ north: { top: -120, bottom: -80 }, center: { top: 0, bottom: 300 }, south: { top: 380, bottom: 420 } }, 0.5);
-    expect(shifts).toEqual({ north: 40, south: -40 });
+  it('leaves the central note at the origin (the fixed point the retained embedded centre relies on)', () => {
+    expect(project(centralNote, 0, params)).toEqual({ x: 0, y: 0, depth: 0 });
+    expect(Object.is(project(centralNote, 0, params).depth, -0)).toBe(false);
   });
 
-  it('is the identity at depthScale 1 (and above, and NaN) and makes the bands touch at 0 (and below)', () => {
-    for (const s of [1, 1.5, Number.POSITIVE_INFINITY, Number.NaN]) {
-      expect(compressBands(extents, s), String(s)).toEqual({ north: 0, south: 0 });
+  it('sends north up-right and south down-left: a parent shears right and rises, a child shears left and sinks', () => {
+    // 行動デザイン: gy −200 → north 200 → x +80, y −60。level +1 でさらに levelHeight 上。
+    const parent = byTitle('行動デザイン');
+    expect(project(parent.center, 0, params)).toEqual({ x: -120 + 80, y: -60, depth: 200 });
+    expect(project(parent.center, 1, params)).toEqual({ x: -120 + 80, y: -60 - levelHeight, depth: 200 });
+    // 歯磨き後に腕立て: gy 200 → north −200 → x −80, y +60。level −1 でさらに levelHeight 下。
+    const child = byTitle('歯磨き後に腕立て');
+    expect(project(child.center, 0, params)).toEqual({ x: 0 - 80, y: 60, depth: -200 });
+    expect(project(child.center, -1, params)).toEqual({ x: 0 - 80, y: 60 + levelHeight, depth: -200 });
+  });
+
+  it("drops the shadows (the foot at the floor's level) of parents up-right and of children down-left of the centre's foot", () => {
+    const floor = floorOf(neighbours.map((n) => n.expectedLevel));
+    expect(floor).toBe(-1);
+    const centreFoot = project(centralNote, floor, params);
+    for (const n of neighbours) {
+      const foot = project(n.center, floor, params);
+      if (n.role === Role.PARENT) {
+        expect(foot.x, n.title).toBeGreaterThan(centreFoot.x + n.center.x);
+        expect(foot.y, n.title).toBeLessThan(centreFoot.y);
+      } else if (n.role === Role.CHILD) {
+        expect(foot.x, n.title).toBeLessThan(centreFoot.x + n.center.x);
+        expect(foot.y, n.title).toBeGreaterThan(centreFoot.y);
+      } else {
+        // フレンドの影は東西軸の上（中心の足元と同じ y）。
+        expect(foot.y, n.title).toBe(centreFoot.y);
+      }
     }
-    for (const s of [0, -1, Number.NEGATIVE_INFINITY]) {
-      const shifts = compressBands(extents, s);
-      expect(extents.north.bottom + shifts.north, String(s)).toBe(extents.center.top);
-      expect(extents.south.top + shifts.south, String(s)).toBe(extents.center.bottom);
+  });
+
+  it('separates adjacent levels by exactly levelHeight, straight up, whatever the floor', () => {
+    for (const n of [centralNote, ...neighbours.map((x) => x.center)]) {
+      const at = (level: Level) => project(n, level, params);
+      expect(at(1).x).toBe(at(0).x);
+      expect(at(-1).x).toBe(at(0).x);
+      expect(at(0).y - at(1).y).toBeCloseTo(levelHeight, 9);
+      expect(at(-1).y - at(0).y).toBeCloseTo(levelHeight, 9);
+      // 床（−1）に立つ箱の足元は箱の中心の levelHeight 下、+1 の箱は 2·levelHeight 上。
+      expect(at(-1).y - at(1).y).toBeCloseTo(2 * levelHeight, 9);
     }
   });
 
-  it('does not move bands that already touch or overlap, nor when a band is missing', () => {
-    const tight: BandExtents = { north: { top: -60, bottom: -20 }, center: { top: -20, bottom: 20 }, south: { top: 15, bottom: 55 } };
-    expect(compressBands(tight, 0.38)).toEqual({ north: 0, south: 0 });
-    expect(compressBands({ north: null, center: { top: -20, bottom: 20 }, south: { top: 180, bottom: 220 } }, 0.5)).toEqual({ north: 0, south: -80 });
-    expect(compressBands({ north: { top: -220, bottom: -180 }, center: null, south: { top: 180, bottom: 220 } }, 0.38)).toEqual({ north: 0, south: 0 });
+  it('uses north (−gy) as depth, independent of level, so 3D-1 fixture levels never reorder the bands', () => {
+    for (const n of neighbours) {
+      expect(project(n.center, n.expectedLevel, params).depth).toBe(0 - n.center.y);
+      expect(project(n.center, 1, params).depth).toBe(project(n.center, -1, params).depth);
+    }
   });
 
-  it('extentOf takes the outer box edges of a band and null for an empty band', () => {
-    expect(extentOf([])).toBeNull();
-    expect(extentOf([{ y: 0, height: 40 }])).toEqual({ top: -20, bottom: 20 });
-    expect(extentOf([{ y: -40, height: 40 }, { y: 0, height: 40 }, { y: 40, height: 40 }])).toEqual({ top: -60, bottom: 60 });
-    expect(extentOf([{ y: 150, height: 300 }, { y: 0, height: 40 }])).toEqual({ top: -20, bottom: 300 });
+  it('is the identity at zero shear, zero rise and level 0, and scales linearly with the coefficients', () => {
+    const flat: ProjectionParams = { northShearX: 0, northRise: 0, levelHeight: 100 };
+    expect(project({ x: -120, y: -200 }, 0, flat)).toEqual({ x: -120, y: 0, depth: 200 });
+    expect(project({ x: -120, y: -200 }, 1, flat)).toEqual({ x: -120, y: -100, depth: 200 });
+    const doubled: ProjectionParams = { ...params, northShearX: 0.8, northRise: 0.6 };
+    const once = project({ x: 50, y: -100 }, 0, params);
+    const twice = project({ x: 50, y: -100 }, 0, doubled);
+    expect(twice.x - 50).toBeCloseTo(2 * (once.x - 50), 9);
+    expect(twice.y).toBeCloseTo(2 * once.y, 9);
+  });
+
+  it('projects the real 2D coordinates of artifacts/3d1-e2e (nodeHeight 76) with the defaults as the design describes', () => {
+    // 2D の中心（b-2d.json）。中心の行は上流の Layout の癖で半行ぶん上にずれている（y −12 と −38）。
+    const real: ProjectionParams = { ...params, levelHeight: DEFAULT_VIEW_3D_SETTINGS.levelHeightFactor * 76 };
+    const centre = project({ x: 0, y: -12 }, 0, real);
+    const ifThen = project({ x: -454, y: -38 }, 0, real);
+    const willpower = project({ x: 425, y: -38 }, 0, real);
+    const behaviourDesign = project({ x: -118, y: -291 }, 1, real);
+    const readingNote = project({ x: 118, y: -291 }, 0, real);
+    const pushUps = project({ x: 280, y: 214 }, -1, real);
+    // 左右の友と中心は 3D でも 2D と同じ側にあり、y の差は 2D の 26 より小さい 7.8。
+    expect(ifThen.x).toBeLessThan(centre.x);
+    expect(willpower.x).toBeGreaterThan(centre.x);
+    expect(Math.abs(ifThen.y - centre.y)).toBeCloseTo(7.8, 9);
+    expect(ifThen.y).toBe(willpower.y);
+    // 行動デザインが一番高く、読書メモは北の床（level 0 = 床が −1 なら 1 段上）、歯磨きは南の床。
+    expect(behaviourDesign.y).toBeLessThan(readingNote.y);
+    expect(readingNote.y).toBeLessThan(centre.y);
+    expect(pushUps.y).toBeGreaterThan(centre.y);
+    expect(behaviourDesign).toEqual({ x: -118 + 291 * 0.4, y: -291 * 0.3 - 2.2 * 76, depth: 291 });
   });
 });
 
-describe('ground (Scene の 3D 分岐が使う純関数)', () => {
-  it('groundLevelOf puts the ground at -1 as soon as one node is at -1, else at 0 (never at +1)', () => {
-    expect(groundLevelOf([])).toBe(0);
-    expect(groundLevelOf([0, 0])).toBe(0);
-    expect(groundLevelOf([1, 0])).toBe(0);
-    expect(groundLevelOf([1, 0, -1])).toBe(-1);
-    expect(groundLevelOf([-1])).toBe(-1);
+describe('floorOf', () => {
+  it('is the lowest level on screen, starting from the centre (0) so it is never above 0 and is 0 when empty', () => {
+    expect(floorOf([])).toBe(0);
+    expect(floorOf([0, 0])).toBe(0);
+    expect(floorOf([1, 0])).toBe(0);
+    expect(floorOf([1])).toBe(0);
+    expect(floorOf([1, 0, -1])).toBe(-1);
+    expect(floorOf([-1])).toBe(-1);
+    expect(floorOf(neighbours.map((n) => n.expectedLevel))).toBe(-1);
+  });
+});
+
+describe('compareDrawOrder', () => {
+  it('sorts far (north large) to near, so the north band is drawn first and the south band last', () => {
+    const points = [centralNote, ...neighbours.map((n) => n.center)];
+    const ordered = [...points].sort(compareDrawOrder);
+    expect(ordered.map((p) => 0 - p.y)).toEqual([200, 200, 0, 0, 0, -200, -200, -200]);
+    // 描画順は level に依らない: north が同じなら 2D の x の小さい順（西から）。
+    expect(ordered).toEqual([
+      { x: -120, y: -200 }, { x: 120, y: -200 },
+      { x: -300, y: 0 }, { x: 0, y: 0 }, { x: 300, y: 0 },
+      { x: -150, y: 200 }, { x: 0, y: 200 }, { x: 150, y: 200 },
+    ]);
   });
 
-  it('boundsOf takes the outer edges of the boxes, adds the margin on all four sides, and is null when empty', () => {
+  it('orders the real 2D coordinates of artifacts/3d1-e2e parents → friends → centre → children', () => {
+    const real: [string, Point][] = [
+      ['習慣はトリガー固定で続く', { x: 0, y: -12 }],
+      ['行動デザイン', { x: -118, y: -291 }],
+      ['読書メモ：習慣の本', { x: 118, y: -291 }],
+      ['朝のルーティン手順', { x: 0, y: 214 }],
+      ['歯磨き後に腕立て', { x: 280, y: 214 }],
+      ['9月20日 朝ランの記録', { x: -280, y: 214 }],
+      ['if-then プラン', { x: -454, y: -38 }],
+      ['意志力で続ける', { x: 425, y: -38 }],
+    ];
+    const titles = [...real].sort(([, a], [, b]) => compareDrawOrder(a, b)).map(([title]) => title);
+    expect(titles).toEqual([
+      '行動デザイン', '読書メモ：習慣の本',
+      'if-then プラン', '意志力で続ける',
+      '習慣はトリガー固定で続く',
+      '9月20日 朝ランの記録', '朝のルーティン手順', '歯磨き後に腕立て',
+    ]);
+  });
+
+  it('returns 0 only for the same point, and is antisymmetric', () => {
+    expect(compareDrawOrder({ x: 1, y: 2 }, { x: 1, y: 2 })).toBe(0);
+    expect(Math.sign(compareDrawOrder({ x: 0, y: -10 }, { x: 0, y: 10 }))).toBe(-1);
+    expect(Math.sign(compareDrawOrder({ x: 0, y: 10 }, { x: 0, y: -10 }))).toBe(1);
+    expect(Math.sign(compareDrawOrder({ x: -5, y: 0 }, { x: 5, y: 0 }))).toBe(-1);
+  });
+});
+
+describe('boundsOf (Scene の地面が使う純関数)', () => {
+  it('takes the outer edges of the boxes, adds the margin on all four sides, and is null when empty', () => {
     expect(boundsOf([])).toBeNull();
     expect(boundsOf([{ x: 0, y: 0, width: 200, height: 40 }])).toEqual({ minX: -100, maxX: 100, minY: -20, maxY: 20 });
     expect(boundsOf([{ x: -120, y: -200, width: 200, height: 40 }, { x: 300, y: 0, width: 100, height: 40 }, { x: 0, y: 220, width: 200, height: 40 }], 75))
