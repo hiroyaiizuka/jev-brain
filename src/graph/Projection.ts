@@ -96,6 +96,12 @@ export type FloorPlan = {
 /** `floorPlan` の足元: 2D の中心と、その箱の幅（東西は画面で水平なので床は箱の横幅も覆う。省略は 0）。 */
 export type Foot = Point & { width?: number };
 
+/**
+ * 床が中心ノートの足元から最低限もつ奥行き（2D の距離、LEV-128 の本人の指定: 奥 7.1 段・手前 5.75 段）。
+ * Up／Down が帯を離れてからは南の帯に足元が無く、足元の最小外接だけでは床が北に偏って「傾いた紙」に見えるため。
+ */
+export type FloorReach = { north: number; south: number };
+
 /** `origin + k·spacing`（k ≠ 0）のうち `min` と `max` の間（両端を除く）にあるもの。`spacing` が正でなければ空。 */
 const gridPositions = (min: number, max: number, origin: number, spacing: number): number[] => {
   if (!(spacing > 0)) return [];
@@ -124,6 +130,7 @@ export const floorPlan = (
   spacing: number,
   margin = spacing,
   compassGap: Point = { x: margin / 2, y: margin / 2 },
+  reach: FloorReach = { north: 0, south: 0 },
 ): FloorPlan => {
   const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
   for (const foot of feet) {
@@ -137,6 +144,9 @@ export const floorPlan = (
   bounds.maxX += margin;
   bounds.minY -= margin;
   bounds.maxY += margin;
+  // 床の最低の広がり（LEV-128）: 足元が北に寄っていても手前に奥行きを出す。足元がこれより外なら足元が勝つ
+  bounds.minY = Math.min(bounds.minY, origin.y - reach.north);
+  bounds.maxY = Math.max(bounds.maxY, origin.y + reach.south);
   return {
     bounds,
     origin: { ...origin },
@@ -156,42 +166,38 @@ export type FloorBox = { level: Level; height: number };
 
 /**
  * 床の平面を、中心の段（`FLOOR_LEVEL`）の投影から画面で下げる量（px、§6-2「中心のメモのノードのちょい下」）。
- * 床の段にある箱のうち最も高いものの半分＋影の半分で、その箱の下端に影の上端が接し、低い箱はその少し上に乗る。
+ * 床の段にある箱のうち最も高いものの半分で、その箱の下端を平面が通り、低い箱はその少し上に乗る。
  * `nodeHeight` より高い箱（埋め込みの中心）は数えない（LEV-123）。床の下に吊る箱（level < 0）の上端より下には
- * 下げない（`levelHeight` が箱と同じくらい小さい設定でも柱が反転しない）。床の段の箱が無ければ nodeHeight を箱とみなす。
+ * 下げない（`downHeight` が箱と同じくらい小さい設定でも上下が反転しない）。床の段の箱が無ければ nodeHeight を箱とみなす。
  */
-export const floorDrop = (boxes: readonly FloorBox[], nodeHeight: number, levelHeight: number, shadowHeight: number): number => {
+export const floorDrop = (boxes: readonly FloorBox[], nodeHeight: number, downHeight: number): number => {
   const onFloor = boxes.filter((box) => box.level === FLOOR_LEVEL && box.height <= nodeHeight).map((box) => box.height);
   const tallest = onFloor.length > 0 ? Math.max(...onFloor) : nodeHeight;
   const below = boxes.filter((box) => box.level < FLOOR_LEVEL).map((box) => box.height / 2);
-  const ceiling = levelHeight - (below.length > 0 ? Math.max(...below) : 0) - shadowHeight / 2;
-  return Math.max(0, Math.min(tallest / 2 + shadowHeight / 2, ceiling));
-};
-
-/**
- * 柱の目盛りを置く段（§6-2「1 段ごとに短い横線」）: 床と箱の段の間の各段（床の上に立つ柱も床の下に吊る柱も同じ）。
- * 箱の段の高さは箱に隠れるので含めない。床にいる箱や床から 1 段の箱には目盛りが無く、柱そのものが 1 段を表す
- * （3 段のままでは常に空。§7 で段が増えたときに効く）。Scene は足元から `(tick − FLOOR_LEVEL) · levelHeight` 上（下）に置く。
- */
-export const pillarTickLevels = (level: Level, floor: Level): Level[] => {
-  const ticks: Level[] = [];
-  for (let tick = Math.min(level, floor) + 1; tick < Math.max(level, floor); tick++) ticks.push(tick as Level);
-  return ticks;
+  const ceiling = downHeight - (below.length > 0 ? Math.max(...below) : 0);
+  return Math.max(0, Math.min(tallest / 2, ceiling));
 };
 
 /**
  * 斜投影（キャビネット図法）の係数。`northShearX`／`northRise` は設定 `view3D`（`View3DSettings`、既定値は
- * `constants.ts` の `DEFAULT_VIEW_3D_SETTINGS`）そのもの、`levelHeight` は `levelHeightFactor × nodeHeight` を
- * 呼び出し側（Scene）が毎回計算して渡す（`nodeHeight` は `compactingFactor` とフォントから決まるので px 固定にしない）。
+ * `constants.ts` の `DEFAULT_VIEW_3D_SETTINGS`）そのもの、`upHeight`／`downHeight` は `upHeightFactor`／
+ * `downHeightFactor × nodeHeight` を呼び出し側（Scene）が毎回計算して渡す（`nodeHeight` は `compactingFactor` と
+ * フォントから決まるので px 固定にしない）。上と下で高さが違うのは本人の指定（LEV-128: Up 3.1 段・Down 3.6 段）。
  */
 export type ProjectionParams = {
   /** north 1 につき画面 x を右へ動かす量（既定 0.40）。 */
   northShearX: number;
   /** north 1 につき画面 y を上へ動かす量（既定 0.30）。 */
   northRise: number;
-  /** 1 段ぶんの高さ（px）。 */
-  levelHeight: number;
+  /** Up（level > 0）1 段ぶんの高さ（px）。 */
+  upHeight: number;
+  /** Down（level < 0）1 段ぶんの深さ（px）。 */
+  downHeight: number;
 };
+
+/** 段の高さ（px、上が正）。level 0 は 0、Up は `upHeight`、Down は `downHeight` を使う（LEV-128）。 */
+export const liftOf = (level: Level, params: ProjectionParams): number =>
+  level > 0 ? level * params.upHeight : level * params.downHeight;
 
 /**
  * 友の帯を中心ノートの y に揃えるための、2D の y に足す量（§6-1「フレンドと中心は同じ north」）。
@@ -208,17 +214,18 @@ export const friendBandShift = (centerY: number, friendRowHeight: number): numbe
 /**
  * Up／Down（level ≠ 0）を中心ノートの真上・真下に立てるための、東西のずらし量（§6-5、本人の追記 2）。
  *
- * 1 つなら `[0]`（中心の真上・真下）、n 個なら中心を挟んで `columnWidth` 間隔の中央揃え（`Layout.place()` が
- * 列を中央に揃えるのと同じ規則）。段の中で折り返さないので、`maxItemCount3D` いっぱいの Up は 1 行に伸びる
- * （§7 の論点）。整数でない `count` は切り捨ててから中央揃えする（長さと中心をずらさない）。
+ * 1 つなら `[0]`（中心の真上・真下）、n 個なら中心を挟んで `gap` 間隔の中央揃え（`Layout.place()` が列を中央に
+ * 揃えるのと同じ規則）。`gap` は設定 `verticalGapFactor × nodeHeight`（LEV-128 で帯の `columnWidth` から変えた:
+ * 垂直軸は帯を離れているので、帯の列幅ではなく 3D 専用の間隔で並べる）。段の中で折り返さないので、
+ * `maxItemCount3D` いっぱいの Up は 1 行に伸びる（§7 の論点）。整数でない `count` は切り捨ててから中央揃えする。
  */
-export const verticalSpread = (count: number, columnWidth: number): number[] => {
+export const verticalSpread = (count: number, gap: number): number[] => {
   const items = Math.max(0, Math.trunc(count));
-  return Array.from({ length: items }, (_, i) => (i - (items - 1) / 2) * columnWidth);
+  return Array.from({ length: items }, (_, i) => (i - (items - 1) / 2) * gap);
 };
 
-/** `verticalRow` の入力: `Layout.place()` が決めた 2D の中心（友の帯は `friendBandShift` 済み）と、その帯の列の間隔。 */
-export type VerticalEntry = { level: Level; center: Point; columnWidth: number };
+/** `verticalRow` の入力: `Layout.place()` が決めた 2D の中心（帯のシフト済み）と、そのノードの段。 */
+export type VerticalEntry = { level: Level; center: Point };
 
 /**
  * Up／Down を帯から外して中心ノートの真上・真下へ移した、各ノードの新しい 2D の中心（§6-5、本人の追記 2）。
@@ -228,10 +235,9 @@ export type VerticalEntry = { level: Level; center: Point; columnWidth: number }
  * - level ≠ 0 は中心ノートと同じ north の行（`rootCenter.y`。床の十字の東西の線であって、world の north 0 ではない）に、
  *   `verticalSpread` の間隔で東西に並べる。したがって 1 つなら中心の真上・真下、複数なら中心を挟んで等間隔。
  *
- * 同じ level の並び順は 2D の読み順（行＝北から南、同じ行は西から東）。列の間隔はその帯の `columnWidth` で、
- * level +1 は Parents、−1 は Children からしか来ない（兄弟は `levelOf` が 0 に固定する）ので段ごとに 1 つに決まる。
+ * 同じ level の並び順は 2D の読み順（行＝北から南、同じ行は西から東）。東西の間隔 `gap` は段によらず同じ。
  */
-export const verticalRow = (entries: readonly VerticalEntry[], rootCenter: Point): Point[] => {
+export const verticalRow = (entries: readonly VerticalEntry[], rootCenter: Point, gap: number): Point[] => {
   const centres = entries.map((entry) => ({ ...entry.center }));
   const levels = new Set(entries.map((entry) => entry.level).filter((level) => level !== 0));
   for (const level of levels) {
@@ -239,13 +245,23 @@ export const verticalRow = (entries: readonly VerticalEntry[], rootCenter: Point
       .map((entry, index) => ({ entry, index }))
       .filter(({ entry }) => entry.level === level)
       .sort((a, b) => a.entry.center.y - b.entry.center.y || a.entry.center.x - b.entry.center.x);
-    const offsets = verticalSpread(group.length, group[0].entry.columnWidth);
+    const offsets = verticalSpread(group.length, gap);
     group.forEach(({ index }, i) => {
       centres[index] = { x: rootCenter.x + offsets[i], y: rootCenter.y };
     });
   }
   return centres;
 };
+
+/**
+ * level 0 の帯（Parents／Children）を中心ノートから等距離に置くための、帯の 2D の y に足す量（LEV-128、本人の指定）。
+ *
+ * 3D では Up／Down が帯を離れて垂直軸に立つので、帯に残る level 0 が中心に近すぎると Up／Children と重なって読めない。
+ * 帯のうち中心にいちばん近い行（Parents なら最も南の行、Children なら最も北の行）が、中心から `distance` の位置に
+ * 来るよう帯ごと動かす。`side` は −1 が北（Parents）、+1 が南（Children）。2D は動かさない（`friendBandShift` と同じ）。
+ */
+export const bandShift = (centerY: number, innermostY: number, distance: number, side: -1 | 1): number =>
+  centerY + side * distance - innermostY;
 
 export type Projected = {
   x: number;
@@ -260,7 +276,7 @@ export type Projected = {
  * ```text
  * north = −gy
  * x     = gx + north · northShearX
- * y     = −north · northRise − level · levelHeight
+ * y     = −north · northRise − liftOf(level)
  * depth = north
  * ```
  *
@@ -275,7 +291,7 @@ export const project = (center: Point, level: Level, params: ProjectionParams): 
   const north = 0 - center.y;
   return {
     x: center.x + north * params.northShearX,
-    y: 0 - north * params.northRise - level * params.levelHeight,
+    y: 0 - north * params.northRise - liftOf(level, params),
     depth: north,
   };
 };

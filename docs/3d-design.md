@@ -142,7 +142,9 @@ depth = north                                   描画順は north の大きい�
 - 友の帯は投影の前に `friendBandShift`（LEV-119）で中心ノートの y に揃える。上流の `Layout.place()` は行の中心を `top + row·rowHeight` に置くので、どの帯も行の平均が origoY より rowHeight/2 北にあり、中心の帯（行高 = 中心の箱の高さ）と友の帯（行高 = nodeHeight）でその量が違う（実測: 中心 y −12、友 −38）。2D はそのまま、3D では友の帯だけ `centerY + rowHeight/2` 動かす。親・子・兄弟の帯は 2D の距離のまま。
 - 原点は中心ノートの箱に置く（LEV-119）。`reRender()` は `embedCentralNode` のとき埋め込みの中心の要素を前回の位置のまま保持する（`retainCentralNode`）ので、2D（Layout が原点に置く）と 3D で中心が同じ場所にある必要がある。「足元を原点」にすると中心が上にずれ、保持した埋め込みだけ取り残される。
 
-### 6-2. 床・柱・影
+### 6-2. 床・柱・影（柱と影は LEV-128 で廃止。§6-6）
+
+以下は LEV-120 の記録。柱（破線と目盛り）と影（楕円）は本人の追記 3 でやめ、床の高さ（`floorDrop`）だけが残っている（§6-6）。
 
 - 床は常に中心ノートの段（level 0、`Projection.FLOOR_LEVEL`）にあり、平面は中心の箱の下端（に影の上端が接する位置）を通る（本人の追記 2026-09-21: 「平行四辺形は中心のメモのノードのちょい下。down は平行四辺形の下、left／right はちょい上に乗っている」）。Up の親は床の上に柱で立ち、Down の子は床の下に柱で吊る。同じ段の友は床の少し上に乗る。「画面内の最小 level を床にする」（3D-1・LEV-119）はやめる。最下段（`floorOf`）は §6-3 の L ラベルの基準としてだけ残す。
 - 床は全ノードの影（足元）が収まる最小の平行四辺形（余白は nodeHeight 1 つ分）。東西・南北のグリッド線を薄く引き、中心ノートの足元を通る東西軸・南北軸だけ少し太くする（床の十字）。N／S／W／E のラベルは十字の両端。
@@ -175,6 +177,17 @@ depth = north                                   描画順は north の大きい�
 - level 0 のノードは §6-1 のまま（床の平行四辺形）。
 - `levelOf` は未解決ページにもフィールドの level を付ける。兄弟だけ 0 のまま。
 - 段が奇数個のときは真ん中のノードの足元が中心ノートの足元と重なる。影は同じ点に 1 つだけ描く（Scene）。
+
+### 6-6. 柱と影をやめ、上下と帯を離し、床を手前に伸ばす（追記 3、LEV-128）
+
+本人が壁打ちのページ（https://claude.ai/artifact/J4mSGQKyW4KLCGVhHX6AUF）でドラッグして決めた配置。狙いは「平行四辺形の上に乗っているのが従来の 2D、その上下に出るのが 3D」と一目で分かること。数値は nodeHeight（実測 77px）に対する倍率で設定 `view3D` に入れる。
+
+- **柱と影は描かない。** 上下は箱の高さだけで読む。`Scene.renderPillar`／`renderShadow`、`VIEW_3D` の柱・影の定数、`Projection.pillarTickLevels` を削除し、`floorDrop` から影の半分を外した（平面は床の段の最も高い箱の下端を通る）。
+- **段の高さは上下で違う**（`upHeightFactor` 3.1・`downHeightFactor` 3.6）。`ProjectionParams` は `levelHeight` 1 つをやめて `upHeight`／`downHeight` を持ち、`Projection.liftOf` が段の符号で選ぶ。
+- **Up／Down の東西の間隔は帯の `columnWidth` ではなく設定**（`verticalGapFactor` 3.8）。垂直軸は帯を離れているので、帯の列幅に合わせる理由がない。
+- **level 0 の Parents／Children の帯を中心から等距離に置く**（`bandDistanceFactor` 3.9）。帯のうち中心にいちばん近い行が中心から `bandDistance` に来るよう、帯ごと動かす（`Projection.bandShift`。友の `friendBandShift` と同じ当たり所）。これで Up と Parents、Down と Children が画面上で重ならない。
+- **床は最低の広がりを持つ**（`floorNorthFactor` 7.1・`floorSouthFactor` 5.75、余白は `floorMarginFactor` 1.5）。`Projection.floorPlan` は足元の最小外接＋余白に加えて、中心から奥・手前へこの距離までは必ず広げる。Up／Down が帯を離れてからは南に足元が無く、外接だけでは手前に奥行きが出ないため。
+- 友の帯は変更なし（2D の位置のまま `friendBandShift` だけ）。
 
 ## 7. 開いている論点（本人に確認）
 

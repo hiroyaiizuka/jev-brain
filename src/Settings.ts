@@ -2293,17 +2293,92 @@ private normalizeSettings() {
       DEFAULT_VIEW_3D_SETTINGS.northRise
     )
 
+    // 段の高さ・垂直軸の間隔・床の広がり（docs/3d-design.md §6-6）。どれも nodeHeight に対する倍率で、
+    // 既定値は本人が 2026-09-21 に決めた配置（LEV-128）
     this.numberslider(
       containerEl,
-      t("VIEW3D_LEVEL_HEIGHT_FACTOR_NAME"),
-      t("VIEW3D_LEVEL_HEIGHT_FACTOR_DESC"),
-      {min:1,max:4,step:0.1},
-      ()=>this.plugin.settings.view3D.levelHeightFactor,
-      (val)=>this.plugin.settings.view3D.levelHeightFactor = val,
+      t("VIEW3D_UP_HEIGHT_FACTOR_NAME"),
+      t("VIEW3D_UP_HEIGHT_FACTOR_DESC"),
+      {min:1,max:6,step:0.1},
+      ()=>this.plugin.settings.view3D.upHeightFactor,
+      (val)=>this.plugin.settings.view3D.upHeightFactor = val,
       ()=>{},
       false,
-      DEFAULT_VIEW_3D_SETTINGS.levelHeightFactor
+      DEFAULT_VIEW_3D_SETTINGS.upHeightFactor
     )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_DOWN_HEIGHT_FACTOR_NAME"),
+      t("VIEW3D_DOWN_HEIGHT_FACTOR_DESC"),
+      {min:1,max:6,step:0.1},
+      ()=>this.plugin.settings.view3D.downHeightFactor,
+      (val)=>this.plugin.settings.view3D.downHeightFactor = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.downHeightFactor
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_VERTICAL_GAP_FACTOR_NAME"),
+      t("VIEW3D_VERTICAL_GAP_FACTOR_DESC"),
+      {min:1,max:8,step:0.1},
+      ()=>this.plugin.settings.view3D.verticalGapFactor,
+      (val)=>this.plugin.settings.view3D.verticalGapFactor = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.verticalGapFactor
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_BAND_DISTANCE_FACTOR_NAME"),
+      t("VIEW3D_BAND_DISTANCE_FACTOR_DESC"),
+      {min:1,max:8,step:0.1},
+      ()=>this.plugin.settings.view3D.bandDistanceFactor,
+      (val)=>this.plugin.settings.view3D.bandDistanceFactor = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.bandDistanceFactor
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_FLOOR_NORTH_FACTOR_NAME"),
+      t("VIEW3D_FLOOR_NORTH_FACTOR_DESC"),
+      {min:1,max:12,step:0.25},
+      ()=>this.plugin.settings.view3D.floorNorthFactor,
+      (val)=>this.plugin.settings.view3D.floorNorthFactor = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.floorNorthFactor
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_FLOOR_SOUTH_FACTOR_NAME"),
+      t("VIEW3D_FLOOR_SOUTH_FACTOR_DESC"),
+      {min:1,max:12,step:0.25},
+      ()=>this.plugin.settings.view3D.floorSouthFactor,
+      (val)=>this.plugin.settings.view3D.floorSouthFactor = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.floorSouthFactor
+    )
+
+    this.numberslider(
+      containerEl,
+      t("VIEW3D_FLOOR_MARGIN_FACTOR_NAME"),
+      t("VIEW3D_FLOOR_MARGIN_FACTOR_DESC"),
+      {min:0.5,max:4,step:0.25},
+      ()=>this.plugin.settings.view3D.floorMarginFactor,
+      (val)=>this.plugin.settings.view3D.floorMarginFactor = val,
+      ()=>{},
+      false,
+      DEFAULT_VIEW_3D_SETTINGS.floorMarginFactor
+    )
+
 
     // Node colour per level (§6-3). One picker per default; the floor is L1.
     DEFAULT_LEVEL_COLORS.forEach((defaultColor, i) => {
