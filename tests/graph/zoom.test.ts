@@ -6,7 +6,7 @@ import { zoomTargets } from 'src/graph/zoom';
  * 純関数にしてある。要素は id しか見ないので、Excalidraw の要素の代わりに id と役割だけの形で並べる。
  * 並びは `Scene.render()` が `ea.elementsDict` に入れる順（床 → リンク → ノード）に合わせた。
  */
-const scene = [
+const scene = Object.freeze([
   { id: 'floor-outline' },
   { id: 'floor-grid-1' },
   { id: 'floor-cross-ew' },
@@ -14,7 +14,7 @@ const scene = [
   { id: 'link-1' },
   { id: 'node-centre' },
   { id: 'node-up' },
-];
+].map((element) => Object.freeze(element)));
 const sceneryIds = new Set(['floor-outline', 'floor-grid-1', 'floor-cross-ew', 'compass-n']);
 
 describe('zoomTargets', () => {
@@ -33,6 +33,7 @@ describe('zoomTargets', () => {
 
   it('床の id が画面に無ければ何も外さない（前回の描画の id が残っていても倍率は変わらない）', () => {
     const flat = [{ id: 'link-1' }, { id: 'node-centre' }];
+    //一致が 0 件でも filter は新しい配列を作るので、同じ参照ではなく同じ内容であることを見る
     expect(zoomTargets(flat, sceneryIds)).toEqual(flat);
   });
 
@@ -45,9 +46,11 @@ describe('zoomTargets', () => {
     expect(zoomTargets([], sceneryIds)).toEqual([]);
   });
 
-  it('入力を書き換えない', () => {
-    const before = [...scene];
-    zoomTargets(scene, sceneryIds);
-    expect(scene).toEqual(before);
+  it('入力の配列も要素も書き換えない（凍結した fixture で落ちないこと）', () => {
+    const before = scene.map((element) => element.id);
+    const targets = zoomTargets(scene, sceneryIds);
+    expect(scene.map((element) => element.id)).toEqual(before);
+    //返すのは入力の要素そのもの。Scene はこれを Excalidraw に渡すので、複製を作ってはいけない
+    targets.forEach((target) => expect(scene).toContain(target));
   });
 });
