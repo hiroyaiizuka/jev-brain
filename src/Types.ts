@@ -146,6 +146,13 @@ export type View3DSettings = {
   downHeightFactor: number;
   /** East-west gap between several Ups (or Downs) on the vertical axis = nodeHeight × this. */
   verticalGapFactor: number;
+  /** How many Ups (or Downs) stand side by side before the next row starts (LEV-127; the author's 5). */
+  verticalColumns: number;
+  /**
+   * Height of one wrapped row = nodeHeight × this. Kept between the box height (≈0.86 × nodeHeight, below which
+   * rows overlap) and the Up height (above which a wrapped row reads as another level). The slider enforces 0.9–2.5.
+   */
+  rowLiftFactor: number;
   /** Distance from the centre to the nearest row of the level-0 Parents/Children bands = nodeHeight × this. */
   bandDistanceFactor: number;
   /** Smallest floor reach north of the centre = nodeHeight × this (the feet widen it further). */

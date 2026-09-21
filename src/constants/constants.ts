@@ -42,6 +42,8 @@ export const DEFAULT_VIEW_3D_SETTINGS: Readonly<View3DSettings> = {
   upHeightFactor: 3.1,
   downHeightFactor: 3.67,
   verticalGapFactor: 3.8,
+  verticalColumns: 5,
+  rowLiftFactor: 1.2,
   bandDistanceFactor: 3.9,
   floorNorthFactor: 7.1,
   floorSouthFactor: 5.75,

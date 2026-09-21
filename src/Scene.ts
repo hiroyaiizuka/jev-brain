@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, levelOf, project, verticalRow } from "./graph/Projection";
+import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, isOnAxis, levelOf, limitByAxis, project, verticalRow } from "./graph/Projection";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
@@ -32,6 +32,11 @@ const VIEW_3D = {
   crossWidth: 2,
   /** 十字の両端の N／S／W／E */
   compassAlpha: 0.6,
+  /**
+   * 垂直軸（Up／Down）に置ける行数（§6-7、LEV-127）。上限は `verticalColumns × これ`。設定には出さない:
+   * 本人が触るのは 1 行の数（`verticalColumns`）で、行数は「これ以上は画面に入らない」という上限だから。
+   */
+  maxVerticalRows: 3,
   /**
    * 方角ラベルを床の外周から離す量（画面 px。ラベルは中央合わせなので、縁から文字の中心までの距離）。本人が実機を
    * 見ながら決めた（LEV-130:「もっと床に近づける」→「気持ち、もう少しだけ」→「S だけもうほんの少し」→「W と E は
@@ -478,6 +483,21 @@ export class Scene {
     });
   }
 
+  /**
+   * 上限の取り方（§6-7、LEV-127）。2D は今までどおり先頭から `bandMax` 件。3D は垂直軸（Up／Down）と床の帯で
+   * 別々に切る（`Projection.limitByAxis`）: 軸は折り返せるので `verticalColumns × VIEW_3D.maxVerticalRows` まで、
+   * 帯は今までの上限のまま。判定は `addNodes` と同じ `levelOf`（兄弟はここを通らないので `subject` は渡さない）。
+   */
+  private limited(neighbours: Neighbour[], role: Role, bandMax: number): Neighbour[] {
+    if(!this.view3D) return neighbours.slice(0, bandMax);
+    const view3D = this.plugin.settings.view3D;
+    return limitByAxis(
+      neighbours,
+      n => levelOf(n.typeDefinition, role, this.plugin.hierarchyLowerCase),
+      { axis: view3D.verticalColumns * VIEW_3D.maxVerticalRows, band: bandMax },
+    );
+  }
+
   private getNeighbors(centralPage: Page): {
     parents: Neighbour[],
     children: Neighbour[],
@@ -488,23 +508,23 @@ export class Scene {
     const settings = this.plugin.settings;
     // 3D は帯の中を潰さないぶん画面が高くなるので、領域ごとの上限を下げる（docs/3d-design.md §4-1）
     const maxItemCount = this.view3D ? settings.maxItemCount3D : settings.maxItemCount;
-    
+
     //List nodes for the graph
-    const parents = centralPage.getParents()
-      .filter(x => 
+    const parents = this.limited(centralPage.getParents()
+      .filter(x =>
         (x.page.path !== centralPage.path) &&
         !settings.excludeFilepaths.some(p => x.page.path.startsWith(p)) &&
         //tha node either has no primary tag or the tag is not filtered out
-        (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag)))
-      .slice(0,maxItemCount);
+        (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag))),
+      Role.PARENT, maxItemCount);
     const parentPaths = parents.map(x=>x.page.path);
 
-    const children =centralPage.getChildren()
-      .filter(x => 
+    const children = this.limited(centralPage.getChildren()
+      .filter(x =>
         (x.page.path !== centralPage.path) &&
         !settings.excludeFilepaths.some(p => x.page.path.startsWith(p)) &&
-        (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag)))
-      .slice(0,maxItemCount);
+        (!x.page.primaryStyleTag || !this.toolsPanel.linkTagFilter.selectedTags.has(x.page.primaryStyleTag))),
+      Role.CHILD, maxItemCount);
     
     const leftFriends = centralPage.getLeftFriends().concat(centralPage.getPreviousFriends())
       .filter(x => 
@@ -1094,6 +1114,7 @@ export class Scene {
       heightShearX: view3D.heightShearX,
       upHeight: view3D.upHeightFactor * this.nodeHeight,
       downHeight: view3D.downHeightFactor * this.nodeHeight,
+      rowLift: view3D.rowLiftFactor * this.nodeHeight,
     };
 
     // 配置: 2D と同じ中心
@@ -1107,7 +1128,7 @@ export class Scene {
     // Layout が箱の高さぶん押し出している）と、level 0 のノードが無い帯は動かさない
     const bandDistance = view3D.bandDistanceFactor * this.nodeHeight;
     const bandShiftOf = (layout: Layout, side: -1 | 1): number => {
-      const ys = layout.nodes.filter(node => node.level === FLOOR_LEVEL).map(node => node.getCenter().y);
+      const ys = layout.nodes.filter(node => !isOnAxis(node.level)).map(node => node.getCenter().y);
       if(ys.length === 0) return 0;
       return bandShift(rootCenter.y, side < 0 ? Math.max(...ys) : Math.min(...ys), bandDistance, side);
     };
@@ -1134,10 +1155,15 @@ export class Scene {
       bands.parents.spec.columnWidth,
       bands.children.spec.columnWidth,
     );
-    const centres = verticalRow(laid, rootCenter, verticalGap);
+    // `verticalColumns`（既定 5、本人の指定）で折り返し、あふれた行は `rowLift` ずつ Up は上・Down は下へ積む（LEV-127）
+    const placements = verticalRow(laid, rootCenter, verticalGap, view3D.verticalColumns);
 
     // 投影（§6-1）
-    const placed: PlacedNode[] = laid.map(({node}, i) => ({ node, center: centres[i], projected: project(centres[i], node.level, params) }));
+    const placed: PlacedNode[] = laid.map(({node}, i) => ({
+      node,
+      center: placements[i].center,
+      projected: project(placements[i].center, node.level, params, placements[i].row),
+    }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
 
     // 奥（north 大）から手前へ逐次描く（§6-1）。`floor` は level 別の色の基準（最下段、§6-3）で、床の平面（`FLOOR_LEVEL`）とは別
