@@ -243,7 +243,7 @@ export default {
   VIEW3D_NORTH_RISE_NAME: "North rise (y)",
   VIEW3D_NORTH_RISE_DESC: "How far a node shifts up on screen for every unit it lies north of the central node. Smaller values flatten the floor.",
   VIEW3D_HEIGHT_SHEAR_X_NAME: "Height shear (x)",
-  VIEW3D_HEIGHT_SHEAR_X_DESC: "How far a node shifts right on screen for every pixel it stands above the floor, so what stands on the floor leans the way the floor does. 0 keeps height straight up, which leaves the raised nodes looking too far west.",
+  VIEW3D_HEIGHT_SHEAR_X_DESC: "How far a node shifts east on screen for every pixel it stands above the floor, so what stands on the floor leans the way the floor does. Nodes below the floor (Down) shift west by the same amount. 0 keeps height straight up, which leaves the raised nodes looking too far west.",
   VIEW3D_UP_HEIGHT_FACTOR_NAME: "Up height",
   VIEW3D_UP_HEIGHT_FACTOR_DESC: "How far above the centre the Up parents stand, as a multiple of the node height. Keep it clear of the Parents that stay on the floor.",
   VIEW3D_DOWN_HEIGHT_FACTOR_NAME: "Down depth",

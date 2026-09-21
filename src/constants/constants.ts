@@ -32,14 +32,15 @@ export const DEFAULT_AXIS_LINK_STYLE:LinkStyle = {
 /**
  * 3D view (docs/3d-design.md §6-1, §6-6). `loadSettings()` merges these into a saved `view3D` object.
  * The factors are the layout the author dragged out on 2026-09-21 (LEV-128), in multiples of nodeHeight (77px):
- * Up 241, Down 274, vertical gap 293, bands 300, floor 546 north / 443 south / 115 margin.
+ * Up 241, Down 282 (274 + the 5px the author asked for in LEV-137), vertical gap 293, bands 300,
+ * floor 546 north / 443 south / 115 margin. The height shear 0.64 is from the same session.
  */
 export const DEFAULT_VIEW_3D_SETTINGS: Readonly<View3DSettings> = {
   northShearX: 0.4,
   northRise: 0.3,
   heightShearX: 0.64,
   upHeightFactor: 3.1,
-  downHeightFactor: 3.6,
+  downHeightFactor: 3.67,
   verticalGapFactor: 3.8,
   bandDistanceFactor: 3.9,
   floorNorthFactor: 7.1,

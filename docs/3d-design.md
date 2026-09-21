@@ -171,7 +171,7 @@ depth = north                                    描画順は north の大きい
 
 ### 6-5. Up／Down は垂直軸、床の帯は level 0 だけ（追記 2、LEV-124。間隔と影は §6-6 で変わった）
 
-- 3D の配置で level ≠ 0 のノードは 2D の帯の位置を使わず、中心ノートと同じ north の行（`rootCenter.y`。床の十字の東西の線であって world の north 0 ではない）・`x = 中心 + 東西の等間隔`（`Projection.verticalSpread`: 1 つなら 0、n 個なら中心を挟んで columnWidth 間隔）に置いてから投影する。したがって Up は中心の真上に立ち、Down は真下に吊られ、複数あれば東西に並ぶ。
+- 3D の配置で level ≠ 0 のノードは 2D の帯の位置を使わず、中心ノートと同じ north の行（`rootCenter.y`。床の十字の東西の線であって world の north 0 ではない）・`x = 中心 + 東西の等間隔`（`Projection.verticalSpread`: 1 つなら 0、n 個なら中心を挟んで `verticalGapFactor × nodeHeight` 間隔。LEV-128 で帯の columnWidth からこの設定に変えた）に置いてから投影する。**2D では** Up は中心の真上、Down は真下、複数なら東西に並ぶ。**画面では** 高さの傾き（`heightShearX`、§6-1・LEV-137）のぶん Up が東、Down が西へ倒れる。
 - 段の中の並び順は 2D の読み順（行＝北から南、同じ行は西から東）。間隔は LEV-128 で設定 `verticalGapFactor × nodeHeight` になった（§6-6。ラベルの長い Vault で箱が重ならないよう、帯の `columnWidth` を下限にする）。
 - 帯から抜くのは配置だけで、判定と置き直しは純関数 `Projection.verticalRow(entries, rootCenter, gap)`（level 0 はそのまま返す）。Scene は結果の中心を投影するだけ。
 - level 0 のノードは §6-1 のまま（床の平行四辺形）。

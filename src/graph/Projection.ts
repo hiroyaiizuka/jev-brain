@@ -84,7 +84,8 @@ export type FloorPlan = {
   /**
    * 床の外周の範囲。足元（`feet` と `origin`）と箱の横幅をすべて含む最小の長方形に四方 `margin` を足し、さらに
    * `reach`（中心からの最低の奥行き、LEV-128）と `balance`（左右の釣り合い、LEV-135）で広げたもの。
-   * 広げるだけなので、足元と箱は必ず内側にある。
+   * 広げるだけなので、足元と、床の上にいる箱（level 0）は必ず内側にある。浮いている箱（Up／Down）は
+   * 高さの傾き（`heightShearX`、LEV-137）で東／西へ動くので、床の縁より外に出ることがある（空中なので構わない）。
    */
   bounds: Bounds;
   /** 床の十字の交点 = 中心ノートの足元。 */
@@ -207,7 +208,9 @@ export const floorPlan = (feet: readonly Foot[], origin: Point, options: FloorPl
 export type FloorBox = { level: Level; height: number };
 
 /**
- * 床の平面を、中心の段（`FLOOR_LEVEL`）の投影から画面で下げる量（px、§6-2「中心のメモのノードのちょい下」）。
+ * 床の平面を、中心の段（`FLOOR_LEVEL`）の投影から**画面で**下げる量（px、§6-2「中心のメモのノードのちょい下」）。
+ * これは段（高さ）ではなく画面上のオフセットなので、高さの傾き（`heightShearX`、LEV-137）は掛けない: 床は
+ * 真下に沈むだけで、東西には動かない。
  * 床の段にある箱のうち最も高いものの半分で、その箱の下端を平面が通り、低い箱はその少し上に乗る。
  * `nodeHeight` より高い箱（埋め込みの中心）は数えない（LEV-123）。床の下に吊る箱（level < 0）の上端より下には
  * 下げない（`downHeight` が箱と同じくらい小さい設定でも上下が反転しない）。床の段の箱が無ければ nodeHeight を箱とみなす。
@@ -262,8 +265,9 @@ export const friendBandShift = (centerY: number, friendRowHeight: number): numbe
 
 /**
  * Up／Down（level ≠ 0）を中心ノートの真上・真下に立てるための、東西のずらし量（§6-5、本人の追記 2）。
+ * ここで決めるのは 2D の地面座標。画面では高さの傾き（`heightShearX`、LEV-137）のぶん Up は東、Down は西へ倒れる。
  *
- * 1 つなら `[0]`（中心の真上・真下）、n 個なら中心を挟んで `gap` 間隔の中央揃え（`Layout.place()` が列を中央に
+ * 1 つなら `[0]`（2D では中心の真上・真下）、n 個なら中心を挟んで `gap` 間隔の中央揃え（`Layout.place()` が列を中央に
  * 揃えるのと同じ規則）。`gap` は設定 `verticalGapFactor × nodeHeight`（LEV-128 で帯の `columnWidth` から変えた:
  * 垂直軸は帯を離れているので、帯の列幅ではなく 3D 専用の間隔で並べる）。段の中で折り返さないので、
  * `maxItemCount3D` いっぱいの Up は 1 行に伸びる（§7 の論点）。整数でない `count` は切り捨ててから中央揃えする。
@@ -282,7 +286,8 @@ export type VerticalEntry = { level: Level; center: Point };
  *
  * - level 0（Parents／Children／Left／Right／Previous／Next）は 2D の帯の中心のまま。床の平行四辺形に残るのはこれだけ。
  * - level ≠ 0 は中心ノートと同じ north の行（`rootCenter.y`。床の十字の東西の線であって、world の north 0 ではない）に、
- *   `verticalSpread` の間隔で東西に並べる。したがって 1 つなら中心の真上・真下、複数なら中心を挟んで等間隔。
+ *   `verticalSpread` の間隔で東西に並べる。2D では 1 つなら中心の真上・真下、複数なら中心を挟んで等間隔。
+ *   画面上の位置は `project` が決め、高さの傾き（LEV-137）のぶん Up は東、Down は西へずれる。
  *
  * 同じ level の並び順は 2D の読み順（行＝北から南、同じ行は西から東）。東西の間隔 `gap` は段によらず同じ。
  */

@@ -129,14 +129,14 @@ describe('project', () => {
   const downHeight = params.downHeight;
 
   it('ships the layout the author dragged out on 2026-09-21 (3d-design §6-6, LEV-128)', () => {
-    // nodeHeight 77 のとき: Up 239・Down 277・垂直軸の間隔 293・帯 300・床 547／443／116。
+    // nodeHeight 77 のとき: Up 239・Down 283（本人の指定で 5px 下げた）・垂直軸の間隔 293・帯 300・床 547／443／116。
     // 高さの傾き 0.64 は本人が実機で決めた（LEV-137。Up 239px なら東へ 153px）。
     expect(DEFAULT_VIEW_3D_SETTINGS).toEqual({
       northShearX: 0.4,
       northRise: 0.3,
       heightShearX: 0.64,
       upHeightFactor: 3.1,
-      downHeightFactor: 3.6,
+      downHeightFactor: 3.67,
       verticalGapFactor: 3.8,
       bandDistanceFactor: 3.9,
       floorNorthFactor: 7.1,
@@ -161,12 +161,12 @@ describe('project', () => {
   });
 
   it('sends north up-right and south down-left: a parent shears right and rises, a child shears left and sinks', () => {
-    // 行動デザイン: gy −200 → north 200 → x +80, y −60。level +1 でさらに upHeight 上、東へ upHeight × 0.4（LEV-137）。
+    // 行動デザイン: gy −200 → north 200 → x +80, y −60。level +1 でさらに upHeight 上、東へ upHeight × heightShearX（LEV-137）。
     const parent = byTitle('行動デザイン');
     const lean = DEFAULT_VIEW_3D_SETTINGS.heightShearX;
     expect(project(parent.center, 0, params)).toEqual({ x: -120 + 80, y: -60, depth: 200 });
     expect(project(parent.center, 1, params)).toEqual({ x: -120 + 80 + upHeight * lean, y: -60 - upHeight, depth: 200 });
-    // 歯磨き後に腕立て: gy 200 → north −200 → x −80, y +60。level −1 でさらに downHeight 下、西へ downHeight × 0.4。
+    // 歯磨き後に腕立て: gy 200 → north −200 → x −80, y +60。level −1 でさらに downHeight 下、西へ downHeight × heightShearX。
     const child = byTitle('歯磨き後に腕立て');
     expect(project(child.center, 0, params)).toEqual({ x: 0 - 80, y: 60, depth: -200 });
     expect(project(child.center, -1, params)).toEqual({ x: 0 - 80 - downHeight * lean, y: 60 + downHeight, depth: -200 });
@@ -215,15 +215,19 @@ describe('project', () => {
     }
   });
 
-  it('makes a pillar parallel to the floor\'s north-south lines when the two shears match', () => {
-    // 柱＝箱と足元を結ぶ線。床の南北の線は north 1 につき東へ northShearX、上へ northRise。
-    // 高さの傾きを northShearX に合わせると、柱の傾き（東へ heightShearX、上へ 1）は…床の線とは別の角度になる。
-    // 合わせるべきは「床の上に立つものが床と同じ向きに倒れる」ことなので、ここでは足元からのずれの向きだけを固定する。
-    const matched: ProjectionParams = { ...params, heightShearX: params.northShearX };
+  it('is parallel to the floor\'s north-south lines only when heightShearX = northShearX / northRise', () => {
+    // 床の南北の線は north 1 につき東へ northShearX・上へ northRise、つまり画面で (northShearX, −northRise) の向き。
+    // 箱と足元を結ぶ線は (heightShearX, −1)。平行になるのは heightShearX = northShearX / northRise のとき。
+    const parallel = params.northShearX / params.northRise;
+    const matched: ProjectionParams = { ...params, heightShearX: parallel };
     const foot = project(centralNote, 0, matched);
     const top = project(centralNote, 1, matched);
-    expect(top.x - foot.x).toBeCloseTo(upHeight * params.northShearX, 9);
-    expect(foot.y - top.y).toBeCloseTo(upHeight, 9);
+    const northLine = { x: params.northShearX, y: -params.northRise };
+    const upLine = { x: top.x - foot.x, y: top.y - foot.y };
+    // 外積 0 ＝ 平行。
+    expect(upLine.x * northLine.y - upLine.y * northLine.x).toBeCloseTo(0, 6);
+    // 既定の 0.64 はその手前（1.33）なので平行ではない。本人が画面で選んだ値（LEV-137）。
+    expect(DEFAULT_VIEW_3D_SETTINGS.heightShearX).toBeLessThan(parallel);
   });
 
   it('uses north (−gy) as depth, independent of level, so 3D-1 fixture levels never reorder the bands', () => {
@@ -274,6 +278,39 @@ describe('project', () => {
     expect(readingNote.y).toBeLessThan(centre.y);
     expect(pushUps.y).toBeGreaterThan(centre.y);
     expect(behaviourDesign).toEqual({ x: -118 + 291 * 0.4 + 3.1 * 76 * 0.64, y: -291 * 0.3 - 3.1 * 76, depth: 291 });
+  });
+});
+
+describe('compareDrawOrder と高さの傾き（LEV-137）', () => {
+  const nodeHeight = 77;
+  const params: ProjectionParams = {
+    northShearX: DEFAULT_VIEW_3D_SETTINGS.northShearX,
+    northRise: DEFAULT_VIEW_3D_SETTINGS.northRise,
+    heightShearX: DEFAULT_VIEW_3D_SETTINGS.heightShearX,
+    upHeight: DEFAULT_VIEW_3D_SETTINGS.upHeightFactor * nodeHeight,
+    downHeight: DEFAULT_VIEW_3D_SETTINGS.downHeightFactor * nodeHeight,
+  };
+  const centre: Point = { x: 0, y: -12 };
+
+  it('keeps depth on north only, so the lean never reorders the bands', () => {
+    // 高さの傾きは x にしか効かない。奥行き（depth）は north のままなので、帯の前後関係は変わらない。
+    for (const level of [-1, 0, 1] as const) {
+      expect(project(centre, level, params).depth).toBe(project(centre, 0, params).depth);
+    }
+    const north = project({ x: 0, y: -300 }, 0, params);
+    const south = project({ x: 0, y: 300 }, 1, params);
+    expect(compareDrawOrder(north, south)).toBeLessThan(0); // 北が先（奥）
+  });
+
+  it('orders the centre row by the projected x, which the lean changes (Up east, Down west)', () => {
+    // 中心の行に集まる中心・Up・Down は depth が同じなので、描画順は投影後の x で決まる。
+    const up = project(centre, 1, params);
+    const down = project(centre, -1, params);
+    const flat = project(centre, 0, params);
+    expect(down.x).toBeLessThan(flat.x);
+    expect(flat.x).toBeLessThan(up.x);
+    expect([up, flat, down].sort(compareDrawOrder).map((p) => Math.round(p.x)))
+      .toEqual([down, flat, up].map((p) => Math.round(p.x)));
   });
 });
 
