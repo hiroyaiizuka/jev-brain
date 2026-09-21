@@ -111,6 +111,8 @@
 - `src/jev/relations.ts`・`log.ts` が `## Relations` 節（無ければ末尾に作る）に `field:: [[X]]` を 1 行追記し（同じ行があれば何もしない、本文は触らない）、`jev-log.json` に記録して行単位・一括単位で取り消せる。手で変わった行は取り消さず Notice。vault スタブで単体テスト。
 - コマンド「Jev: カーソルのリンクに型を付ける（第一候補で確定）」が実機で 1 リンク動き、`## Relations` に行が入って JevBrain の次の描画に反映される（E18、`artifacts/jev-1-e2e/`）。
 
+現在の実装（LEV-165）: 設定の型 `Types.JevSettings`（`ExcaliBrainSettings.jev`）と既定値 `constants.DEFAULT_JEV_SETTINGS`（設計 §6 の表）、設定画面の「Jev」節（API キーは `type="password"`、有効化・`]]` 直後のサジェスト・前後の文字数・書き込み先の見出しと方式・しきい値 2 つ・endpoint／model と、送信する内容と `data.json` がプレーンテキストである旨の注意書き）、`loadSettings` の既定値マージ（`withJevDefaults`）、`excalibrain-main.ts` の `registerJev()`（キーと有効化が揃うときだけ呼ぶ＝`isJevActive`。中身は空で、コマンド・view・サジェスターは JEV-2／JEV-3 の子が足す。登録は読み込み時だけなので、設定タブを閉じるときに再読込を促す Notice）が入った。`tests/utils/settings.test.ts` が既定値・マージ・`isJevActive` を固定する。`src/jev/` はまだ無く、設定画面の目視は E18 にまとめる。
+
 ### JEV-2 エディタのサジェスター（JEV-1 の後）
 
 - `]]` を閉じた直後に `EditorSuggest` が候補（フィールド・確率・方向、自信なしなら設定順で確率なし）を出し、Enter で `## Relations` に追記、Esc で閉じる。同じノートの同じリンクはセッション中 1 回だけ聞く。設定でオフにできる。

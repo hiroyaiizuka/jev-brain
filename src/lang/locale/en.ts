@@ -264,4 +264,33 @@ export default {
   VIEW3D_FLOOR_MARGIN_FACTOR_DESC: "Margin left around the feet at the edge of the floor, as a multiple of the node height.",
   VIEW3D_LEVEL_COLOR_NAME: "Level {n} color",
   VIEW3D_LEVEL_COLOR_DESC: "Background of the nodes on each level while the 3D view is on. Level 1 is the lowest level on screen; the colour is the only marker of the level, together with the height.",
+
+  //Jev link typer settings (docs/jev-link-typer-design.md §6). Other locales fall back to these.
+  JEV_HEAD: "Jev",
+  JEV_DESC: "Jev (TypeSafe) ranks the fields of your ontology for a link and you confirm the winner; it never writes prose and never picks a field that is not in your ontology.<br>" +
+    "<b>What leaves your vault</b> on every judgement: the text around the link (see the context size below), the frontmatter of the note and of the linked note, the first few hundred characters of the linked note, and the names and descriptions of your ontology fields. Not the whole note, not other notes, not your vault paths.<br>" +
+    "<b>Where the key is kept</b>: this plugin's <code>data.json</code>, in plain text like every other setting. Anything that reads that file — a sync, a backup, a git repository — reads the key with it.",
+  JEV_APIKEY_NAME: "API key",
+  JEV_APIKEY_DESC: "Your TypeSafe key. While it is empty, Jev registers nothing at all: no command, no button, no suggester and no view.",
+  JEV_ENABLED_NAME: "Enable Jev",
+  JEV_ENABLED_DESC: "Turns Jev off without deleting the key. Both this and the key are read while the plugin loads, so a change takes effect on the next reload.",
+  JEV_SUGGEST_ON_LINK_CLOSE_NAME: "Suggest when a link is closed",
+  JEV_SUGGEST_ON_LINK_CLOSE_DESC: "Offer a field as soon as you type the closing ]] of a link. The command and the queue keep working with this off.",
+  JEV_CONTEXT_CHARS_NAME: "Context size",
+  JEV_CONTEXT_CHARS_DESC: "How many characters on either side of the link are sent as context. More context costs more per judgement.",
+  JEV_RELATIONS_HEADING_NAME: "Relations heading",
+  JEV_RELATIONS_HEADING_DESC: "Heading of the section a confirmed field:: [[link]] line is appended to. The section is added at the end of the note when it is missing. Write the text only: the # markers are added for you, and emptying this restores the default.",
+  JEV_WRITE_MODE_NAME: "Where the field is written",
+  JEV_WRITE_MODE_DESC: "A confirmed field goes into the Relations section, which leaves the body untouched and is easy to read in a diff, or into the link in the body itself.",
+  JEV_WRITE_MODE_RELATIONS: "Relations section",
+  JEV_WRITE_MODE_INLINE: "Inline, in the body",
+  JEV_AUTO_CONFIRM_THRESHOLD_NAME: "Bulk auto-confirm threshold",
+  JEV_AUTO_CONFIRM_THRESHOLD_DESC: "From this probability up — and only when the field and the direction agree — a bulk run writes the first candidate without asking. Everything below it waits in the queue.",
+  JEV_REVIEW_THRESHOLD_NAME: "Review threshold",
+  JEV_REVIEW_THRESHOLD_DESC: "An existing field is offered for review when Jev's first candidate differs from it and is at least this probable. A review is never applied on its own.",
+  JEV_ENDPOINT_NAME: "Endpoint",
+  JEV_ENDPOINT_DESC: "The URL every Jev request goes to. This is the only address this plugin talks to.",
+  JEV_MODEL_NAME: "Model",
+  JEV_MODEL_DESC: "The Jev model to ask.",
+  JEV_RELOAD_NOTICE: "Reload Obsidian for this to take effect: whether Jev is registered at all is decided while the plugin loads.",
 }

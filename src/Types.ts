@@ -163,6 +163,33 @@ export type View3DSettings = {
   floorMarginFactor: number;
 };
 
+/**
+ * Settings of the Jev link typer (docs/jev-link-typer-design.md §6). Defaults: `DEFAULT_JEV_SETTINGS`
+ * in constants.ts. Without a key and `enabled`, excalibrain-main.ts registers nothing of Jev.
+ */
+export type JevSettings = {
+  /** TypeSafe API key. data.json keeps it in plain text, which the settings tab says. */
+  apiKey: string;
+  /** Turns Jev off without deleting the key. */
+  enabled: boolean;
+  /** Suggest a field right after the closing `]]` of a link (JEV-2). */
+  suggestOnLinkClose: boolean;
+  /** Characters sent from either side of the link as context. */
+  contextChars: number;
+  /** Heading of the section a confirmed `field:: [[X]]` line is appended to. */
+  relationsHeading: string;
+  /** Where a confirmed field goes: the Relations section, or the inline link in the body. */
+  writeMode: "relations" | "inline";
+  /** Smallest probability at which a bulk run confirms the first candidate on its own (JEV-4). */
+  autoConfirmThreshold: number;
+  /** Smallest probability at which an existing field is offered for review (JEV-4). */
+  reviewThreshold: number;
+  /** Jev endpoint the client posts to. */
+  endpoint: string;
+  /** Jev model. */
+  model: string;
+};
+
 export type LayoutSpecification = {
   columns: number;
   origoX: number;
