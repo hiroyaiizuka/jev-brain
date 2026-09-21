@@ -83,7 +83,7 @@ export type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
 export type FloorPlan = {
   /**
    * 床の外周の範囲。足元（`feet` と `origin`）と箱の横幅をすべて含む最小の長方形に四方 `margin` を足し、さらに
-   * `reach`（中心からの最低の奥行き、LEV-128）と `balanceShear`（左右の釣り合い、LEV-135）で広げたもの。
+   * `reach`（中心からの最低の奥行き、LEV-128）と `balance`（左右の釣り合い、LEV-135）で広げたもの。
    * 広げるだけなので、足元と箱は必ず内側にある。
    */
   bounds: Bounds;
@@ -138,10 +138,18 @@ export type FloorPlanOptions = {
   /** 中心の足元から最低これだけは広げる奥行き（既定 0、LEV-128）。 */
   reach?: FloorReach;
   /**
-   * 投影の傾き（`northShearX`）。渡すと、投影後の床の左端（南西の角）と右端（北東の角）が中心ノートの足元から
-   * 等距離になるよう東西を広げる（LEV-135。省略すると足元を囲む最小の範囲のまま）。
+   * 床の左右を中心ノート（＝ Up／Down の垂直軸）に対して釣り合わせる（LEV-135）。省略すると足元を囲む最小の範囲のまま。
+   * どちらも足りない側へ広げるだけで、狭めない。
+   *
+   * - `at: "centre-line"`: 平行四辺形の中心線（北の辺の中点と南の辺の中点を結ぶ線。中心ノートの行で西端と東端が
+   *   等距離になるのと同じこと）が中心ノートを通るようにする。2D の東西を `origin.x` に対して対称にするだけで、
+   *   傾きは効かない。十字の東西の腕と W／E も軸に対して対称になる。
+   * - `at: "corners"`: 投影後の左端（南西の角）と右端（北東の角）が中心ノートの足元から等距離になるようにする。
+   *   平行四辺形の外接で見たときに釣り合うが、中心線は `(south − north) × shear` ぶん西へずれる。
+   *
+   * `shear` は投影の傾き（`northShearX`）。`"corners"` のときだけ使う。
    */
-  balanceShear?: number;
+  balance?: { shear: number; at: "centre-line" | "corners" };
 };
 
 /**
@@ -151,7 +159,7 @@ export type FloorPlanOptions = {
  * 寸法は `FloorPlanOptions`。足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
  */
 export const floorPlan = (feet: readonly Foot[], origin: Point, options: FloorPlanOptions): FloorPlan => {
-  const { spacing, margin = spacing, reach = { north: 0, south: 0 }, balanceShear } = options;
+  const { spacing, margin = spacing, reach = { north: 0, south: 0 }, balance } = options;
   const compassGap = options.compassGap ?? { x: margin / 2, north: margin / 2, south: margin / 2 };
   const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
   for (const foot of feet) {
@@ -168,16 +176,18 @@ export const floorPlan = (feet: readonly Foot[], origin: Point, options: FloorPl
   // 床の最低の広がり（LEV-128）: 足元が北に寄っていても手前に奥行きを出す。足元がこれより外なら足元が勝つ
   bounds.minY = Math.min(bounds.minY, origin.y - reach.north);
   bounds.maxY = Math.max(bounds.maxY, origin.y + reach.south);
-  // 左右の釣り合い（LEV-135）: 投影後の左端（南西の角 = minX − maxY·shear）と右端（北東の角 = maxX − minY·shear）が
-  // 中心ノートの足元（origin.x − origin.y·shear）から等距離になるよう、足りない側へ広げる（狭めない）。
-  // `project` の `x = gx − gy·shear` を展開した式で、次の 2 つをまとめて打ち消す:
-  //   - 投影の傾き（奥のほうが深い既定値では床が右に伸びる。足元が対称なら (south − north)·shear だけ西へ広がる）
-  //   - 足元や箱の幅の東西の偏り（西と東でラベルの長さが違う Vault）
-  // どちらも「垂直軸（中心ノート）が床の左右の真ん中に来る」ための調整で、そのぶん床は広くなる（§7 の論点）。
-  if (balanceShear !== undefined) {
-    const balance = 2 * origin.x + (bounds.minY + bounds.maxY - 2 * origin.y) * balanceShear - (bounds.minX + bounds.maxX);
-    if (balance < 0) bounds.minX += balance;
-    else bounds.maxX += balance;
+  // 左右の釣り合い（LEV-135）: 「垂直軸（中心ノート）が床の左右の真ん中に来る」よう、足りない側へ広げる（狭めない）。
+  // どちらの基準でも、足元や箱の幅の東西の偏り（西と東でラベルの長さが違う Vault）も一緒に打ち消すので床は広くなる（§7 の論点）。
+  //   - "centre-line": 平行四辺形の中心線を中心ノートに通す。2D の東西を origin.x 対称にするだけ（傾きは効かない）。
+  //   - "corners": 投影後の左端（南西の角 = minX − maxY·shear）と右端（北東の角 = maxX − minY·shear）を
+  //     中心ノートの足元（origin.x − origin.y·shear）から等距離にする。`project` の `x = gx − gy·shear` の展開。
+  if (balance) {
+    const target = balance.at === "corners"
+      ? 2 * origin.x + (bounds.minY + bounds.maxY - 2 * origin.y) * balance.shear
+      : 2 * origin.x;
+    const diff = target - (bounds.minX + bounds.maxX);
+    if (diff < 0) bounds.minX += diff;
+    else bounds.maxX += diff;
   }
   return {
     bounds,

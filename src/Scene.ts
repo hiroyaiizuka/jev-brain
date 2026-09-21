@@ -1160,7 +1160,8 @@ export class Scene {
 
     // 床（§6-6）: 足元と箱の横幅をすべて囲む最小の範囲に `floorMarginFactor` の余白。ただし中心から奥へ `floorNorthFactor`、
     // 手前へ `floorSouthFactor` は必ず広げる（Up／Down が帯を離れたので、足元だけでは南に奥行きが出ない）。
-    // `northShearX` を渡すと、投影後の左右の端が中心ノート（＝ Up／Down の垂直軸）から等距離になるよう東西を広げる（LEV-135）。
+    // `balance` は床の左右を中心ノート（＝ Up／Down の垂直軸）に釣り合わせる（LEV-135）。いまは平行四辺形の中心線を
+    // 軸に通す `"centre-line"`（十字の東西の腕と W／E も対称になる。外接で揃える `"corners"` も選べる）。
     // グリッドは nodeHeight 間隔、十字は中心ノートの足元
     const margin = view3D.floorMarginFactor * this.nodeHeight;
     // 方角の置き場所（どれも画面で決めた距離。ラベルは中央合わせなので縁から文字の中心まで）: W／E は床の余白の
@@ -1179,7 +1180,7 @@ export class Scene {
         margin,
         compassGap,
         reach: {north: view3D.floorNorthFactor * this.nodeHeight, south: view3D.floorSouthFactor * this.nodeHeight},
-        balanceShear: params.northShearX,
+        balance: {shear: params.northShearX, at: "centre-line"},
       },
     );
     const floorIds = this.keepingStyle(() => this.renderFloor(plan, plane));

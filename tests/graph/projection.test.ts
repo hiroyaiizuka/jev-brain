@@ -584,6 +584,9 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
   const reach = { north: 546, south: 443 };
   const gap = { x: 46, north: 60, south: 80 };
 
+  const corners = { shear, at: "corners" } as const;
+  const centreLine = { shear, at: "centre-line" } as const;
+
   /** 投影後の床の左端（南西の角）と右端（北東の角）。 */
   const edges = (plan: ReturnType<typeof floorPlan>) => ({
     left: project({ x: plan.bounds.minX, y: plan.bounds.maxY }, FLOOR_LEVEL, params).x,
@@ -598,7 +601,7 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
   });
 
   it('widens the floor so the projected left and right edges are the same distance from the centre note', () => {
-    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: corners });
     const { left, right } = edges(plan);
     const centre = project(origin, FLOOR_LEVEL, params).x;
     expect(centre - left).toBeCloseTo(right - centre, 9);
@@ -606,7 +609,7 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
 
   it('only ever widens: every foot and box stays inside the floor', () => {
     const before = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach });
-    const after = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+    const after = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: corners });
     expect(after.bounds.minX).toBeLessThanOrEqual(before.bounds.minX);
     expect(after.bounds.maxX).toBeGreaterThanOrEqual(before.bounds.maxX);
     for (const foot of feet) {
@@ -616,7 +619,7 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
   });
 
   it('widens to the east instead when the floor reaches further in front than behind', () => {
-    const deepFront = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach: { north: 300, south: 700 }, balanceShear: shear });
+    const deepFront = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach: { north: 300, south: 700 }, balance: corners });
     const plain = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach: { north: 300, south: 700 } });
     expect(deepFront.bounds.maxX).toBeGreaterThan(plain.bounds.maxX);
     expect(deepFront.bounds.minX).toBe(plain.bounds.minX);
@@ -624,7 +627,7 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
 
   it('widens by (south − north) × shear to the west when the feet are already centred', () => {
     const plain = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach });
-    const balanced = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+    const balanced = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: corners });
     // 奥 546・手前 443・傾き 0.4 → 西へ 41.2px（「中心が動く量」の 2 倍。docs の値もこれ）。
     expect(balanced.bounds.minX - plain.bounds.minX).toBeCloseTo((reach.south - reach.north) * shear, 9);
     expect(balanced.bounds.maxX).toBe(plain.bounds.maxX);
@@ -634,15 +637,15 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
     // 西のラベルが短く東が長い Vault: 足元の中心が東にずれるので、垂直軸を真ん中に置くには床が西へ大きく広がる。
     const lopsided = [{ x: -300, y: -12, width: 150 }, { x: 300, y: -12, width: 600 }];
     const plain = floorPlan(lopsided, origin, { spacing: 77, margin: 115, compassGap: gap, reach });
-    const balanced = floorPlan(lopsided, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+    const balanced = floorPlan(lopsided, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: corners });
     const { left, right } = edges(balanced);
     const centre = project(origin, FLOOR_LEVEL, params).x;
     expect(centre - left).toBeCloseTo(right - centre, 9);
     expect(balanced.bounds.maxX - balanced.bounds.minX).toBeGreaterThan(plain.bounds.maxX - plain.bounds.minX);
   });
 
-  it('keeps the grid, the cross and the compass tied to the centre note on the path Scene takes (with the shear)', () => {
-    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+  it('keeps the grid, the cross and the compass tied to the centre note when the floor is balanced', () => {
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: centreLine });
     // グリッドは中心の足元から 77 間隔のまま、外周に乗る線は含まない。
     for (const x of plan.columnXs) expect(Math.abs((x - origin.x) % 77)).toBeCloseTo(0, 9);
     expect(Math.min(...plan.columnXs)).toBeGreaterThan(plan.bounds.minX);
@@ -654,8 +657,42 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
     expect(plan.compass.south.y).toBe(plan.bounds.maxY + gap.south);
   });
 
+  it('puts the centre line of the parallelogram through the centre note with "centre-line" (the path Scene takes)', () => {
+    // 中心線 = 北の辺の中点と南の辺の中点を結ぶ線。中心ノートの行で西端と東端が等距離になるのと同じこと。
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: centreLine });
+    const midOf = (y: number) => project({ x: (plan.bounds.minX + plan.bounds.maxX) / 2, y }, FLOOR_LEVEL, params).x;
+    const axis = (y: number) => project({ x: origin.x, y }, FLOOR_LEVEL, params).x;
+    for (const y of [plan.bounds.minY, origin.y, plan.bounds.maxY]) expect(midOf(y)).toBeCloseTo(axis(y), 9);
+    // 中心ノートの行: 西端までと東端までが等距離。
+    const west = project({ x: plan.bounds.minX, y: origin.y }, FLOOR_LEVEL, params).x;
+    const east = project({ x: plan.bounds.maxX, y: origin.y }, FLOOR_LEVEL, params).x;
+    const centre = project(origin, FLOOR_LEVEL, params).x;
+    expect(centre - west).toBeCloseTo(east - centre, 9);
+  });
+
+  it('does not use the shear for "centre-line": it only makes the 2D range symmetric around the centre note', () => {
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: centreLine });
+    expect(plan.bounds.minX + plan.bounds.maxX).toBeCloseTo(2 * origin.x, 9);
+    const flat = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: { shear: 0, at: "centre-line" } });
+    expect(flat.bounds).toEqual(plan.bounds);
+    // 足元が対称なら広げない（"corners" は (south − north)·shear ぶん西へ広げる）。
+    const plain = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach });
+    expect(plan.bounds.minX).toBe(plain.bounds.minX);
+    expect(plan.bounds.maxX).toBe(plain.bounds.maxX);
+  });
+
+  it('still cancels an east-west imbalance with "centre-line"', () => {
+    const lopsided = [{ x: -300, y: -12, width: 150 }, { x: 300, y: -12, width: 600 }];
+    const plan = floorPlan(lopsided, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: centreLine });
+    expect(plan.bounds.minX + plan.bounds.maxX).toBeCloseTo(2 * origin.x, 9);
+    for (const foot of lopsided) {
+      expect(plan.bounds.minX).toBeLessThan(foot.x - foot.width / 2);
+      expect(plan.bounds.maxX).toBeGreaterThan(foot.x + foot.width / 2);
+    }
+  });
+
   it('keeps the cross and the compass on the centre note (only the outline moves)', () => {
-    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balance: corners });
     expect(plan.origin).toEqual(origin);
     expect(plan.compass.north.x).toBe(origin.x);
     expect(plan.compass.south.x).toBe(origin.x);
