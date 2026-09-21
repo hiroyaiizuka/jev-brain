@@ -22,6 +22,12 @@ export class Node {
   public isCentral: boolean = false;
   public isEmbedded: boolean = false;
   public embeddedElementIds: string[] = [];
+  /**
+   * Height band for the 3D view (docs/3d-design.md §3-1): +1 for a parent linked through an
+   * Up field, -1 for a child linked through a Down field, 0 for everything else. The 2D path
+   * never changes it; rendering does not read it yet (set and consumed by the Scene 3D branch).
+   */
+  public level: -1 | 0 | 1 = 0;
 
   constructor(x:{
     ea: ExcalidrawAutomate,
