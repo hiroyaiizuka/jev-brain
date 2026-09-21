@@ -5,6 +5,37 @@ import { getTagStyle } from "src/utils/dataview";
 import { Page } from "./Page";
 import { isEmbedFileType } from "src/utils/fileUtils";
 import { getEmbeddableDimensions } from "src/utils/embeddableHelper";
+import { Level } from "./Projection";
+
+/** 3D (docs/3d-design.md §6-3): the level label at the shoulder of the box, as a fraction of the node font size. */
+const LEVEL_LABEL_FONT_SCALE = 0.6;
+
+/** WCAG contrast a text colour must reach on the level colour before it is swapped for black or white (AA, large text). */
+const MIN_TEXT_CONTRAST = 3;
+
+/** Relative luminance (WCAG, 0 = black, 1 = white) of a `#rrggbb` or `#rrggbbaa` colour; alpha is ignored. NaN if unparsable. */
+const luminanceOf = (color: string): number => {
+  const channel = (at: number): number => {
+    const c = parseInt(color.substring(at, at + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+};
+
+const contrastOf = (l1: number, l2: number): number => (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+
+/**
+ * The text colour to use on `background`: `preferred` (the node's own text colour) while it reads on it
+ * (contrast ≥ `MIN_TEXT_CONTRAST`), otherwise black or white, whichever contrasts more. The default text is
+ * white and the default level colours are light, so without this the lower levels would be unreadable in 3D.
+ * A colour that does not parse keeps `preferred`.
+ */
+export const readableTextColor = (background: string, preferred: string): string => {
+  const bg = luminanceOf(background);
+  const text = luminanceOf(preferred);
+  if (Number.isNaN(bg) || Number.isNaN(text) || contrastOf(bg, text) >= MIN_TEXT_CONTRAST) return preferred;
+  return contrastOf(bg, 0) >= contrastOf(bg, 1) ? "#000000ff" : "#ffffffff";
+};
 
 export class Node {
   page: Page;
@@ -25,9 +56,17 @@ export class Node {
   /**
    * Height band for the 3D view (docs/3d-design.md §3-1): +1 for a parent linked through an
    * Up field, -1 for a child linked through a Down field, 0 for everything else. The 2D path
-   * never changes it; rendering does not read it yet (set and consumed by the Scene 3D branch).
+   * never changes it; `render()` reads it only in 3D (the level colour and label).
    */
-  public level: -1 | 0 | 1 = 0;
+  public level: Level = 0;
+  /**
+   * 3D (docs/3d-design.md §6-3). `Scene.render3D()` sets both before `render()`: no gates and no neighbour
+   * counts are drawn (the links join the boxes), the box takes `settings.levelColors[level − floor]` and
+   * gets an "L{level − floor + 1}" label at its top right corner. `floor` is the lowest level on screen
+   * (`Projection.floorOf`), shown as L1. Both stay at their defaults in 2D, which renders as upstream does.
+   */
+  public view3D: boolean = false;
+  public floor: Level = 0;
 
   constructor(x:{
     ea: ExcalidrawAutomate,
@@ -96,10 +135,7 @@ export class Node {
     this.center = center;
   }
 
-  /**
-   * The centre `setCenter()` stored, as a copy. The 3D branch of Scene reads it to project the node, and
-   * `Link` reads the projected centre in 3D to pick the parent/child gates.
-   */
+  /** The centre `setCenter()` stored, as a copy. The 3D branch of Scene reads it to project the node. */
   getCenter(): {x:number, y:number} {
     return {...this.center};
   }
@@ -225,11 +261,36 @@ export class Node {
       //so readers of `id` (the 3D pillar and shadow in Scene) find the box
       this.id = this.embeddedElementIds[this.embeddedElementIds.length-1];
     }
+
+    // 3D (§6-3): the box takes the colour of its level and the text a colour that reads on it. Not for an embedded
+    // node: its frame survives a re-render (retainCentralNode), so a level colour would stay on it back in 2D,
+    // and the frame's background is hidden by the embedded content anyway.
+    const levelColor = this.view3D && !this.isEmbedded ? this.levelColor() : undefined;
+    if(levelColor) {
+      applyEAStyle(ea, { strokeColor: readableTextColor(levelColor, this.style.textColor) });
+    }
+
     const labelSize = this.isEmbedded
       ? this.embeddedElementIds.length>0
         ? {width: this.style.embedWidth, height: this.style.embedHeight}
         : await this.renderEmbedded()
       : this.renderText();
+
+    if(levelColor) {
+      ea.getElement(this.id).backgroundColor = levelColor;
+    }
+
+    if(this.view3D) {
+      // No gates and no neighbour counts in 3D (§6-3): the links join the boxes (`Link.render()`), so the gate ids
+      // stay unset. The level label is the only extra element and moves with the box.
+      ea.addToGroup([
+        this.renderLevelLabel(),
+        ...this.isEmbedded
+          ? this.embeddedElementIds
+          : [this.id, ea.getElement(this.id).boundElements[0].id]
+      ]);
+      return;
+    }
 
     applyEAStyle(ea, { fillStyle: this.style.gateFillStyle });
     applyEAStyle(ea, { strokeColor: this.style.gateStrokeColor });
@@ -351,6 +412,34 @@ export class Node {
         ? this.embeddedElementIds
         : [this.id, ea.getElement(this.id).boundElements[0].id]
     ]);
+  }
+
+  /** Index of the node's level from the floor: 0 for the floor (L1). Only meaningful in 3D. */
+  private levelIndex(): number {
+    return this.level - this.floor;
+  }
+
+  /** `settings.levelColors[level − floor]`, or undefined when the array has no entry for it (the node keeps its own colour). */
+  private levelColor(): string | undefined {
+    return this.settings.levelColors[this.levelIndex()];
+  }
+
+  /**
+   * The "L{n}" label at the top right corner of the box, outside it (§6-3): right-aligned with the box, its bottom
+   * at the box's top, `LEVEL_LABEL_FONT_SCALE` of the node's font, in the node's text colour (it sits on the canvas,
+   * not on the level colour). The box is read back from the element `id` points at (text box, frame or image).
+   */
+  private renderLevelLabel(): string {
+    const ea = this.ea;
+    const box = ea.getElement(this.id);
+    const text = `L${this.levelIndex() + 1}`;
+    applyEAStyle(ea, {
+      fontSize: this.style.fontSize * LEVEL_LABEL_FONT_SCALE,
+      fontFamily: this.style.fontFamily,
+      strokeColor: this.style.textColor,
+    });
+    const size = ea.measureText(text);
+    return ea.addText(box.x + box.width - size.width, box.y - size.height, text);
   }
 
 }

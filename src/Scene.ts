@@ -1063,8 +1063,9 @@ export class Scene {
 
   /**
    * 3D の描画（docs/3d-design.md §6-1、柱・影・地面は §3-4 のまま）。配置 → 友の帯を中心の y に揃える → 床 → 投影 →
-   * 地面 → north 降順にノード（床にいないノードには影と柱）。2D と同じ `place()` の中心を投影で置き換えるだけで、
-   * Node の描画は無改造。埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は
+   * 地面 → north 降順にノード（床にいないノードには影と柱）。2D と同じ `place()` の中心を投影で置き換え、Node には
+   * `view3D` と `floor` を渡す（§6-3: ゲート・数字なし、level 別の色、L ラベル。`Node.render()`）。
+   * 埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は
    * 中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は 3D でも合う（床のほうが `floor` のぶん下がる）。
    * `friendLayouts`（左右の友）だけ `friendBandShift` で 2D の y を動かす（上流の Layout の半行のずれを 3D でだけ戻す）。
    * 戻り値は地面・影・柱の要素。`render()` がリンクの後ろに並べる。link は付けず、ノードのグループにも入れない。
@@ -1101,6 +1102,7 @@ export class Scene {
       };
     }));
     placed.forEach(p => p.node.setCenter({x: p.projected.x, y: p.projected.y}));
+    placed.forEach(p => { p.node.view3D = true; p.node.floor = floor; });
 
     const sceneryIds = this.keepingStyle(() => this.renderGround(placed, floor, params));
 

@@ -244,4 +244,6 @@ export default {
   VIEW3D_NORTH_RISE_DESC: "How far a node shifts up on screen for every unit it lies north of the central node. Smaller values flatten the floor.",
   VIEW3D_LEVEL_HEIGHT_FACTOR_NAME: "Level height",
   VIEW3D_LEVEL_HEIGHT_FACTOR_DESC: "Height of one level (Up parents raised, Down children lowered) as a multiple of the node height. Around 2 keeps the levels from overlapping.",
+  VIEW3D_LEVEL_COLOR_NAME: "Level {n} color",
+  VIEW3D_LEVEL_COLOR_DESC: "Background of the nodes on each level while the 3D view is on. Level 1 is the floor; the level of each node is shown at its top right corner.",
 }

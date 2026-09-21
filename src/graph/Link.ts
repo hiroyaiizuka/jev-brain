@@ -5,6 +5,12 @@ import { LinkStyle, RelationType, Role } from "src/Types";
 import { axisOf } from "src/utils/hierarchy";
 import { Node } from "./Node";
 
+/** 3D (docs/3d-design.md §6-3): links are drawn thin and faint so the pillars and shadows read first. */
+const LINK_3D = {
+  strokeWidth: 1,
+  opacity: 50,
+} as const;
+
 export class Link {
   style: LinkStyle;
   public isInferred: boolean = false;
@@ -67,9 +73,10 @@ export class Link {
   }
 
   /**
-   * `view3D`: pick the parent/child gates from the projected centres instead of the role (see
-   * `gateIds()`). Scene passes its `view3D`; while it is false (2D) the centres are not read and
-   * the gates are the upstream ones.
+   * `view3D` (docs/3d-design.md §6-3): the line joins the two boxes themselves (`Node.id`, whose centres
+   * `connectObjects` links and clips at the outlines), thin and faint; the colour, dash and arrowheads of the
+   * region and per-field style stay. Scene draws links behind the nodes, so the line ends under the boxes.
+   * In 2D (the default) nothing changes: the role picks the gates as upstream does (`gateIds()`).
    */
   render(hide: boolean, view3D: boolean = false) {
     const ea = this.ea;
@@ -78,14 +85,14 @@ export class Link {
       strokeStyle: style.strokeStyle,
       roughness: style.roughness,
       strokeColor: style.strokeColor,
-      strokeWidth: style.strokeWidth,
-      opacity: hide ? 10 : 100,
+      strokeWidth: view3D ? LINK_3D.strokeWidth : style.strokeWidth,
+      opacity: hide ? 10 : view3D ? LINK_3D.opacity : 100,
     });
-    const [gateAId, gateBId] = this.gateIds(view3D);
+    const [startId, endId] = view3D ? [this.nodeA.id, this.nodeB.id] : this.gateIds();
     const id = ea.connectObjects(
-      gateAId,
+      startId,
       null,
-      gateBId,
+      endId,
       null,
       {
         startArrowHead: style.startArrowHead === "none" ? null : style.startArrowHead,
@@ -103,26 +110,19 @@ export class Link {
   }
 
   /**
-   * The gates to connect, nodeA's first (the arrow keeps its nodeA → nodeB direction). A parent/child
-   * link joins the child gate (bottom) of the upper node to the parent gate (top) of the lower one.
-   * In 2D the role says which node is upper, since Layout puts parents north and children south. In 3D
-   * a parent on the ground can be projected below the centre (docs/3d-design.md §1 「ゲートの向きの問題」),
-   * so the projected centres `Scene.render3D()` stored with `setCenter()` decide, and the role only breaks
-   * a tie. Left/right links keep the friend gates.
+   * The gates to connect in 2D, nodeA's first (the arrow keeps its nodeA → nodeB direction), by role as
+   * upstream does: a parent/child link joins the child gate (bottom) of the upper node to the parent gate
+   * (top) of the lower one, since Layout puts parents north and children south; left/right links use the
+   * friend gates. Not read in 3D, where the gates are not drawn.
    */
-  private gateIds(view3D: boolean): [gateAId: string, gateBId: string] {
+  private gateIds(): [gateAId: string, gateBId: string] {
     const a = this.nodeA;
     const b = this.nodeB;
     switch(this.nodeBRole) {
       case Role.CHILD:
-      case Role.PARENT: {
-        // dy > 0: b is below a. 2D (dy stays 0), the same y and a NaN centre all leave it to the role.
-        const dy = view3D ? b.getCenter().y - a.getCenter().y : 0;
-        const bBelowA = dy > 0 ? true : dy < 0 ? false : this.nodeBRole === Role.CHILD;
-        return bBelowA
-          ? [a.childGateId, b.parentGateId]
-          : [a.parentGateId, b.childGateId];
-      }
+        return [a.childGateId, b.parentGateId];
+      case Role.PARENT:
+        return [a.parentGateId, b.childGateId];
       case Role.RIGHT:
         return [a.nextFriendGateId, b.nextFriendGateId];
       default:
