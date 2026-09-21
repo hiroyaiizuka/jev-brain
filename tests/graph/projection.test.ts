@@ -467,7 +467,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   ];
 
   it('is the smallest rectangle around the feet plus one nodeHeight on every side (the shadows all fit, nothing more)', () => {
-    const plan = floorPlan(feet, origin, nodeHeight);
+    const plan = floorPlan(feet, origin, { spacing: nodeHeight });
     expect(plan.bounds).toEqual({ minX: -454 - 76, maxX: 425 + 76, minY: -291 - 76, maxY: 214 + 76 });
     for (const foot of feet) {
       expect(foot.x).toBeGreaterThanOrEqual(plan.bounds.minX + nodeHeight);
@@ -478,7 +478,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   });
 
   it("puts the cross through the central note's foot, so on screen the friends' shadows sit on its east-west axis, parents' above-right, children's below-left", () => {
-    const plan = floorPlan(feet, origin, nodeHeight);
+    const plan = floorPlan(feet, origin, { spacing: nodeHeight });
     expect(plan.origin).toEqual(origin);
     expect(plan.origin).not.toBe(origin);
     // 東西軸 = origin.y の線（W から E まで）、南北軸 = origin.x の線（N から S まで）。
@@ -496,7 +496,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   });
 
   it('spaces the grid one nodeHeight apart from the cross, inside the floor, leaving out the two lines the cross already draws', () => {
-    const plan = floorPlan(feet, origin, nodeHeight);
+    const plan = floorPlan(feet, origin, { spacing: nodeHeight });
     expect(plan.columnXs).toEqual([-456, -380, -304, -228, -152, -76, 76, 152, 228, 304, 380, 456]);
     expect(plan.rowYs).toEqual([-316, -240, -164, -88, 64, 140, 216]);
     expect(plan.columnXs).not.toContain(origin.x);
@@ -514,7 +514,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   });
 
   it('puts N/S/W/E at the ends of the cross, half a margin outside the edge by default', () => {
-    const plan = floorPlan(feet, origin, nodeHeight);
+    const plan = floorPlan(feet, origin, { spacing: nodeHeight });
     expect(plan.compass).toEqual({
       north: { x: 0, y: -367 - 38 },
       south: { x: 0, y: 290 + 38 },
@@ -526,7 +526,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   it('takes the compass gap per side so Scene can undo the northRise foreshortening and set N and S apart (LEV-130)', () => {
     const northRise = 0.3;
     // Scene が渡す形: 画面で W／E 38px、N 18px、S 24px。南北は northRise で割って地面の距離にする。
-    const plan = floorPlan(feet, origin, nodeHeight, nodeHeight, { x: 38, north: 18 / northRise, south: 24 / northRise });
+    const plan = floorPlan(feet, origin, { spacing: nodeHeight, compassGap: { x: 38, north: 18 / northRise, south: 24 / northRise } });
     const params: ProjectionParams = { northShearX: 0.4, northRise, upHeight: 2.2 * nodeHeight, downHeight: 2.2 * nodeHeight };
     const screenGap = (edge: Point, label: Point) =>
       Math.abs(project(edge, FLOOR_LEVEL, params).y - project(label, FLOOR_LEVEL, params).y);
@@ -538,7 +538,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   });
 
   it('covers the width of the boxes east-west (a wide friend never hides the edge or W/E) but only the feet north-south', () => {
-    const wide = floorPlan([{ x: -454, y: -12, width: 300 }, { x: 0, y: 214, width: 300 }], origin, nodeHeight);
+    const wide = floorPlan([{ x: -454, y: -12, width: 300 }, { x: 0, y: 214, width: 300 }], origin, { spacing: nodeHeight });
     expect(wide.bounds.minX).toBe(-454 - 150 - 76);
     expect(wide.bounds.maxX).toBe(0 + 150 + 76);
     expect(wide.bounds.minY).toBe(-12 - 76);
@@ -548,11 +548,11 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
 
   it('leaves out grid lines that would lie on the outline, and draws none when the floor is only the margin around the origin', () => {
     // 足元が余白の端にちょうど乗る: x = 76 の線は内側、−76 と 152 は外周と重なるので描かない
-    const edge = floorPlan([{ x: 76, y: 0 }], { x: 0, y: 0 }, 76);
+    const edge = floorPlan([{ x: 76, y: 0 }], { x: 0, y: 0 }, { spacing: 76 });
     expect(edge.bounds).toEqual({ minX: -76, maxX: 152, minY: -76, maxY: 76 });
     expect(edge.columnXs).toEqual([76]);
     expect(edge.rowYs).toEqual([]);
-    const alone = floorPlan([], { x: 10, y: -20 }, 50);
+    const alone = floorPlan([], { x: 10, y: -20 }, { spacing: 50 });
     expect(alone.bounds).toEqual({ minX: -40, maxX: 60, minY: -70, maxY: 30 });
     expect(alone.columnXs).toEqual([]);
     expect(alone.rowYs).toEqual([]);
@@ -560,7 +560,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
   });
 
   it('keeps the cross inside the floor even when the origin is not among the feet, and takes a separate margin', () => {
-    const plan = floorPlan([{ x: 300, y: 300 }], { x: 0, y: 0 }, 100, 10);
+    const plan = floorPlan([{ x: 300, y: 300 }], { x: 0, y: 0 }, { spacing: 100, margin: 10 });
     expect(plan.bounds).toEqual({ minX: -10, maxX: 310, minY: -10, maxY: 310 });
     expect(plan.columnXs).toEqual([100, 200, 300]);
     expect(plan.compass.east).toEqual({ x: 315, y: 0 });
@@ -568,7 +568,7 @@ describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
 
   it('draws no grid for a non-positive spacing', () => {
     for (const spacing of [0, -76, Number.NaN]) {
-      const plan = floorPlan(feet, origin, spacing, 76);
+      const plan = floorPlan(feet, origin, { spacing, margin: 76 });
       expect(plan.columnXs).toEqual([]);
       expect(plan.rowYs).toEqual([]);
     }
@@ -591,22 +591,22 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
   });
 
   it('leaves the centre of the floor off to one side when the shear is not given (the old behaviour)', () => {
-    const plan = floorPlan(feet, origin, 77, 115, gap, reach);
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach });
     const { left, right } = edges(plan);
     const centre = project(origin, FLOOR_LEVEL, params).x;
     expect(centre - left).toBeLessThan(right - centre); // 床が右に伸びて中心が左寄りに見える
   });
 
   it('widens the floor so the projected left and right edges are the same distance from the centre note', () => {
-    const plan = floorPlan(feet, origin, 77, 115, gap, reach, shear);
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
     const { left, right } = edges(plan);
     const centre = project(origin, FLOOR_LEVEL, params).x;
     expect(centre - left).toBeCloseTo(right - centre, 9);
   });
 
   it('only ever widens: every foot and box stays inside the floor', () => {
-    const before = floorPlan(feet, origin, 77, 115, gap, reach);
-    const after = floorPlan(feet, origin, 77, 115, gap, reach, shear);
+    const before = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach });
+    const after = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
     expect(after.bounds.minX).toBeLessThanOrEqual(before.bounds.minX);
     expect(after.bounds.maxX).toBeGreaterThanOrEqual(before.bounds.maxX);
     for (const foot of feet) {
@@ -616,14 +616,46 @@ describe('floorPlan の左右の釣り合い (3d-design §6-2、LEV-135)', () =>
   });
 
   it('widens to the east instead when the floor reaches further in front than behind', () => {
-    const deepFront = floorPlan(feet, origin, 77, 115, gap, { north: 300, south: 700 }, shear);
-    const plain = floorPlan(feet, origin, 77, 115, gap, { north: 300, south: 700 });
+    const deepFront = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach: { north: 300, south: 700 }, balanceShear: shear });
+    const plain = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach: { north: 300, south: 700 } });
     expect(deepFront.bounds.maxX).toBeGreaterThan(plain.bounds.maxX);
     expect(deepFront.bounds.minX).toBe(plain.bounds.minX);
   });
 
+  it('widens by (south − north) × shear to the west when the feet are already centred', () => {
+    const plain = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach });
+    const balanced = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+    // 奥 546・手前 443・傾き 0.4 → 西へ 41.2px（「中心が動く量」の 2 倍。docs の値もこれ）。
+    expect(balanced.bounds.minX - plain.bounds.minX).toBeCloseTo((reach.south - reach.north) * shear, 9);
+    expect(balanced.bounds.maxX).toBe(plain.bounds.maxX);
+  });
+
+  it('also cancels an east-west imbalance in the feet, at the cost of a wider floor', () => {
+    // 西のラベルが短く東が長い Vault: 足元の中心が東にずれるので、垂直軸を真ん中に置くには床が西へ大きく広がる。
+    const lopsided = [{ x: -300, y: -12, width: 150 }, { x: 300, y: -12, width: 600 }];
+    const plain = floorPlan(lopsided, origin, { spacing: 77, margin: 115, compassGap: gap, reach });
+    const balanced = floorPlan(lopsided, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+    const { left, right } = edges(balanced);
+    const centre = project(origin, FLOOR_LEVEL, params).x;
+    expect(centre - left).toBeCloseTo(right - centre, 9);
+    expect(balanced.bounds.maxX - balanced.bounds.minX).toBeGreaterThan(plain.bounds.maxX - plain.bounds.minX);
+  });
+
+  it('keeps the grid, the cross and the compass tied to the centre note on the path Scene takes (with the shear)', () => {
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
+    // グリッドは中心の足元から 77 間隔のまま、外周に乗る線は含まない。
+    for (const x of plan.columnXs) expect(Math.abs((x - origin.x) % 77)).toBeCloseTo(0, 9);
+    expect(Math.min(...plan.columnXs)).toBeGreaterThan(plan.bounds.minX);
+    expect(Math.max(...plan.columnXs)).toBeLessThan(plan.bounds.maxX);
+    // 方角は外周から compassGap。西は広がったぶんだけ外に出る。
+    expect(plan.compass.west.x).toBe(plan.bounds.minX - gap.x);
+    expect(plan.compass.east.x).toBe(plan.bounds.maxX + gap.x);
+    expect(plan.compass.north.y).toBe(plan.bounds.minY - gap.north);
+    expect(plan.compass.south.y).toBe(plan.bounds.maxY + gap.south);
+  });
+
   it('keeps the cross and the compass on the centre note (only the outline moves)', () => {
-    const plan = floorPlan(feet, origin, 77, 115, gap, reach, shear);
+    const plan = floorPlan(feet, origin, { spacing: 77, margin: 115, compassGap: gap, reach, balanceShear: shear });
     expect(plan.origin).toEqual(origin);
     expect(plan.compass.north.x).toBe(origin.x);
     expect(plan.compass.south.x).toBe(origin.x);
@@ -654,25 +686,25 @@ describe('floorPlan の最低の広がり (3d-design §6-6、LEV-128)', () => {
 
   it('reaches at least `reach` north and south of the centre, so the floor is not all behind the notes', () => {
     // Up／Down が帯を離れると南に足元が無い: 足元の最小外接だけでは手前に奥行きが出ない。
-    const plan = floorPlan([{ x: 0, y: -100 }], origin, 50, 50, undefined, { north: 400, south: 300 });
+    const plan = floorPlan([{ x: 0, y: -100 }], origin, { spacing: 50, reach: { north: 400, south: 300 } });
     expect(plan.bounds.minY).toBe(-400);
     expect(plan.bounds.maxY).toBe(300);
   });
 
   it('lets the feet win when they are further out than the reach', () => {
-    const plan = floorPlan([{ x: 0, y: -900 }, { x: 0, y: 500 }], origin, 50, 50, undefined, { north: 400, south: 300 });
+    const plan = floorPlan([{ x: 0, y: -900 }, { x: 0, y: 500 }], origin, { spacing: 50, reach: { north: 400, south: 300 } });
     expect(plan.bounds.minY).toBe(-950);
     expect(plan.bounds.maxY).toBe(550);
   });
 
   it('is the old behaviour when no reach is given (the default is 0)', () => {
-    const plan = floorPlan([{ x: 0, y: -100 }], origin, 50);
+    const plan = floorPlan([{ x: 0, y: -100 }], origin, { spacing: 50 });
     expect(plan.bounds.minY).toBe(-150);
     expect(plan.bounds.maxY).toBe(50);
   });
 
   it('keeps the compass on the widened edges, not on the feet', () => {
-    const plan = floorPlan([{ x: 0, y: -100 }], origin, 50, 50, { x: 25, north: 25, south: 25 }, { north: 400, south: 300 });
+    const plan = floorPlan([{ x: 0, y: -100 }], origin, { spacing: 50, compassGap: { x: 25, north: 25, south: 25 }, reach: { north: 400, south: 300 } });
     expect(plan.compass.north.y).toBe(-425);
     expect(plan.compass.south.y).toBe(325);
   });

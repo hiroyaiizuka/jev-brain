@@ -81,7 +81,11 @@ export type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
  * （東西は水平のまま、南北は northShearX／northRise の向きに傾く平行四辺形になる）。
  */
 export type FloorPlan = {
-  /** 影の足元（`feet` と `origin`）と箱の横幅をすべて含む最小の長方形に、四方 `margin` の余白を足した範囲。 */
+  /**
+   * 床の外周の範囲。足元（`feet` と `origin`）と箱の横幅をすべて含む最小の長方形に四方 `margin` を足し、さらに
+   * `reach`（中心からの最低の奥行き、LEV-128）と `balanceShear`（左右の釣り合い、LEV-135）で広げたもの。
+   * 広げるだけなので、足元と箱は必ず内側にある。
+   */
   bounds: Bounds;
   /** 床の十字の交点 = 中心ノートの足元。 */
   origin: Point;
@@ -123,25 +127,32 @@ const gridPositions = (min: number, max: number, origin: number, spacing: number
   return positions;
 };
 
+/** `floorPlan` の寸法。どれも 2D の地面の距離で、Scene が nodeHeight と設定から作る。 */
+export type FloorPlanOptions = {
+  /** グリッドの間隔（Scene は nodeHeight）。 */
+  spacing: number;
+  /** 足元のまわりに残す余白（既定は `spacing`。Scene は `floorMarginFactor × nodeHeight`）。 */
+  margin?: number;
+  /** 方角ラベルを外周から離す量（既定は `margin` の半分）。南北は投影で縮むので Scene が `groundGapNorthSouth` で戻して渡す。 */
+  compassGap?: CompassGap;
+  /** 中心の足元から最低これだけは広げる奥行き（既定 0、LEV-128）。 */
+  reach?: FloorReach;
+  /**
+   * 投影の傾き（`northShearX`）。渡すと、投影後の床の左端（南西の角）と右端（北東の角）が中心ノートの足元から
+   * 等距離になるよう東西を広げる（LEV-135。省略すると足元を囲む最小の範囲のまま）。
+   */
+  balanceShear?: number;
+};
+
 /**
  * 床の範囲・グリッド・十字・方角の位置（§6-2）。`feet` は各ノードの影の足元（2D の中心。足元は影を描いていた頃と同じ点）と
  * 箱の幅（幅の広い箱が床の東西の縁や W／E を隠さないよう、東西は箱の横幅も覆う。南北は足元だけ）、`origin` は中心ノートの
  * 足元（十字はここを通り、グリッドはここを基準に `spacing` 間隔）。`origin` も範囲に含めるので十字は必ず床の内側にある。
- * 余白 `margin` は既定で `spacing`（Scene は spacing に nodeHeight、margin に `floorMarginFactor × nodeHeight` を渡す）。`compassGap` は方角ラベルを外周から離す量で、
- * 東西・北・南を別々に持つ（南北は投影で `northRise` 倍に縮むので Scene は割って渡す）。`balanceShear`（投影の傾き
- * `northShearX`）を渡すと、投影後の床の左右の端が中心ノートの足元から等距離になるよう東西を広げる（LEV-135。
- * 省略すると足元を囲む最小の範囲のまま）。
- * 足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
+ * 寸法は `FloorPlanOptions`。足元が 1 つも無ければ（`origin` だけでも）その点の周りに余白だけの床を返す。
  */
-export const floorPlan = (
-  feet: readonly Foot[],
-  origin: Point,
-  spacing: number,
-  margin = spacing,
-  compassGap: CompassGap = { x: margin / 2, north: margin / 2, south: margin / 2 },
-  reach: FloorReach = { north: 0, south: 0 },
-  balanceShear?: number,
-): FloorPlan => {
+export const floorPlan = (feet: readonly Foot[], origin: Point, options: FloorPlanOptions): FloorPlan => {
+  const { spacing, margin = spacing, reach = { north: 0, south: 0 }, balanceShear } = options;
+  const compassGap = options.compassGap ?? { x: margin / 2, north: margin / 2, south: margin / 2 };
   const bounds: Bounds = { minX: origin.x, maxX: origin.x, minY: origin.y, maxY: origin.y };
   for (const foot of feet) {
     const halfWidth = (foot.width ?? 0) / 2;
@@ -157,10 +168,12 @@ export const floorPlan = (
   // 床の最低の広がり（LEV-128）: 足元が北に寄っていても手前に奥行きを出す。足元がこれより外なら足元が勝つ
   bounds.minY = Math.min(bounds.minY, origin.y - reach.north);
   bounds.maxY = Math.max(bounds.maxY, origin.y + reach.south);
-  // 傾きぶんの釣り合い（LEV-135）: 投影は北の辺を右へ、南の辺を左へずらすので、東西の範囲をそのまま投影すると
-  // 左右の端が中心ノートの足元に対して非対称になる（奥のほうが深い既定値では床が右に伸びて見える）。
-  // `balanceShear`（= `northShearX`）を渡すと、投影後の左端（南西の角）と右端（北東の角）が中心から等距離に
-  // なるよう足りない側へ広げる（狭めない）。渡さなければ足元を囲む最小の範囲のまま。
+  // 左右の釣り合い（LEV-135）: 投影後の左端（南西の角 = minX − maxY·shear）と右端（北東の角 = maxX − minY·shear）が
+  // 中心ノートの足元（origin.x − origin.y·shear）から等距離になるよう、足りない側へ広げる（狭めない）。
+  // `project` の `x = gx − gy·shear` を展開した式で、次の 2 つをまとめて打ち消す:
+  //   - 投影の傾き（奥のほうが深い既定値では床が右に伸びる。足元が対称なら (south − north)·shear だけ西へ広がる）
+  //   - 足元や箱の幅の東西の偏り（西と東でラベルの長さが違う Vault）
+  // どちらも「垂直軸（中心ノート）が床の左右の真ん中に来る」ための調整で、そのぶん床は広くなる（§7 の論点）。
   if (balanceShear !== undefined) {
     const balance = 2 * origin.x + (bounds.minY + bounds.maxY - 2 * origin.y) * balanceShear - (bounds.minX + bounds.maxX);
     if (balance < 0) bounds.minX += balance;

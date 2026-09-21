@@ -1174,11 +1174,13 @@ export class Scene {
     const plan = floorPlan(
       boxed.map(p => ({...p.center, width: p.box.width})),
       rootCenter,
-      this.nodeHeight,
-      margin,
-      compassGap,
-      {north: view3D.floorNorthFactor * this.nodeHeight, south: view3D.floorSouthFactor * this.nodeHeight},
-      params.northShearX,
+      {
+        spacing: this.nodeHeight,
+        margin,
+        compassGap,
+        reach: {north: view3D.floorNorthFactor * this.nodeHeight, south: view3D.floorSouthFactor * this.nodeHeight},
+        balanceShear: params.northShearX,
+      },
     );
     const floorIds = this.keepingStyle(() => this.renderFloor(plan, plane));
 
