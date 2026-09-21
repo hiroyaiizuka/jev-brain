@@ -224,4 +224,5 @@ export default {
 
   //AddToOntologyModal
   ADD_TO_ONTOLOGY_MODAL_DESC: "Select the direction of the ontology. If one of the buttons is highlighted, then the field is already part of the ontology in that direction.",
+  TOGGLE_3D_VIEW: "Toggle 3D view. Up parents are raised, Down children lowered, everything else stays on the ground. Not saved: ExcaliBrain always starts in 2D.",
 }
