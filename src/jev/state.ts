@@ -9,15 +9,21 @@ export type StateFrontmatter = Record<string, unknown> | null | undefined;
 
 export type StateNote = {
   frontmatter: StateFrontmatter;
-  /** Body of the note the link sits in; only the window around the link is sent. */
+  /**
+   * The text {@link StateLink.offset} counts from, so the whole file when the offset comes
+   * from `metadataCache` (its link offsets include the frontmatter). Only the window around
+   * the link is sent.
+   */
   text: string;
 };
 
 export type StateLink = {
   /** The linked note's name as written in `[[X]]`, without alias or heading. */
   target: string;
-  /** Character offset of the link inside {@link StateNote.text}. */
+  /** Where the link starts in {@link StateNote.text}. */
   offset: number;
+  /** How many characters the link takes, `[[X|alias]]` whole; without it the window behind the link is that much shorter. */
+  length?: number;
 };
 
 /** The target note, or null for a link whose file does not exist (only its name is known). */
@@ -39,9 +45,19 @@ export type BuildStateInput = {
 /** How much of the target note is sent: its opening, fixed by §2-2. */
 export const TARGET_EXCERPT_CHARS = 300;
 
-/** The window around the link. Cutting mid-sentence is fine (§2-2). */
-const windowAround = (text: string, offset: number, chars: number): string =>
-  text.slice(Math.max(0, offset - chars), Math.max(0, offset + chars));
+/** The link and `chars` characters on each side of it. Cutting mid-sentence is fine (§2-2). */
+const windowAround = (text: string, link: StateLink, chars: number): string =>
+  text.slice(Math.max(0, link.offset - chars), Math.max(0, link.offset + (link.length ?? 0) + chars));
+
+/**
+ * The frontmatter as it goes out. Obsidian's `FrontMatterCache` carries a `position`
+ * of offsets inside the file, which is no business of the judgement (§2-2).
+ */
+const sendableFrontmatter = (frontmatter: StateFrontmatter): Record<string, unknown> | null => {
+  if (!frontmatter) return null;
+  const { position, ...rest } = frontmatter;
+  return rest;
+};
 
 /**
  * Builds the state of one link. Never carries the whole body, another note or a
@@ -52,13 +68,13 @@ export const buildState = (input: BuildStateInput): string => {
   const { note, link, targetNote, currentField, contextChars } = input;
   const state: Record<string, unknown> = {
     note: {
-      frontmatter: note.frontmatter ?? null,
-      context: windowAround(note.text, link.offset, contextChars),
+      frontmatter: sendableFrontmatter(note.frontmatter),
+      context: windowAround(note.text, link, contextChars),
     },
     target: targetNote
       ? {
           name: link.target,
-          frontmatter: targetNote.frontmatter ?? null,
+          frontmatter: sendableFrontmatter(targetNote.frontmatter),
           excerpt: (targetNote.text ?? "").slice(0, TARGET_EXCERPT_CHARS),
         }
       : { name: link.target },

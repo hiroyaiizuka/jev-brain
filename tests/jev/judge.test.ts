@@ -62,6 +62,13 @@ describe('buildQuestions', () => {
     expect(criteria['next']).toBe('次・方向: 次');
   });
 
+  it('carries what each question asks', () => {
+    const questions = buildQuestions(hierarchy);
+
+    expect(questions[FIELD_QUESTION].question).toBe('このリンクに付けるフィールド');
+    expect(questions[DIRECTION_QUESTION].question).toBe('このリンクの方向');
+  });
+
   it('asks for one of the six directions', () => {
     expect(buildQuestions(hierarchy)[DIRECTION_QUESTION].criteria).toEqual({
       parent: '親', child: '子', leftFriend: '左友', rightFriend: '右友', previous: '前', next: '次',
@@ -107,17 +114,54 @@ describe('judge', () => {
     expect(result.field).toBe('origin');
     expect(result.direction).toBe('parent');
     expect(result.directionProbability).toBe(0.95);
-    expect(result.ordered).toEqual([
+    expect(result.ordered.slice(0, 3)).toEqual([
       { field: 'origin', probability: 0.7 },
       { field: 'up', probability: 0.2 },
       { field: 'child', probability: 0.1 },
     ]);
   });
 
+  it('still offers the fields the answer left out, after the ranked ones', () => {
+    const result = judge(response('origin', 'parent', { origin: 0.7, up: 0.2, child: 0.1 }), hierarchy);
+
+    expect(result.ordered.map((candidate) => candidate.field)).toEqual(
+      ['origin', 'up', 'child', 'part of', 'down', 'example', 'jump', 'similar', 'previous', 'next'],
+    );
+    expect(result.ordered.slice(3).every((candidate) => candidate.probability === undefined)).toBe(true);
+  });
+
+  it('does not offer a label the ontology does not carry', () => {
+    const result = judge(response('origin', 'parent', { origin: 0.6, Origins: 0.4 }), hierarchy);
+
+    expect(result.ordered.map((candidate) => candidate.field)).not.toContain('Origins');
+    expect(result.ordered).toHaveLength(settingsOrder.length);
+  });
+
+  it('ignores a probability that is not a number', () => {
+    const result = judge(response('origin', 'parent', { origin: Number.NaN, up: 0.2 }), hierarchy);
+
+    expect(result.ordered[0]).toEqual({ field: 'up', probability: 0.2 });
+    expect(result.ordered.find((candidate) => candidate.field === 'origin')?.probability).toBeUndefined();
+  });
+
   it('breaks a tie with the settings’ order', () => {
     const result = judge(response('child', 'child', { child: 0.4, up: 0.4, 'part of': 0.2 }), hierarchy);
 
-    expect(result.ordered.map((candidate) => candidate.field)).toEqual(['up', 'child', 'part of']);
+    expect(result.ordered.slice(0, 3).map((candidate) => candidate.field)).toEqual(['up', 'child', 'part of']);
+  });
+
+  it('reads a direction whose case or spacing differs', () => {
+    const result = judge(response('jump', ' LeftFriend '), hierarchy);
+
+    expect(result.direction).toBe('leftFriend');
+    expect(result.confident).toBe(true);
+  });
+
+  it('has no direction when the answer is none of the six', () => {
+    const result = judge(response('origin', 'sideways'), hierarchy);
+
+    expect(result.direction).toBeNull();
+    expect(result.confident).toBe(false);
   });
 
   it('is confident for an Up field answered as a parent and a Down field as a child', () => {
@@ -141,18 +185,19 @@ describe('judge', () => {
     expect(judge(response('unknown', 'parent'), hierarchy).confident).toBe(false);
   });
 
-  it('puts the current field first, keeping its probability', () => {
+  it('puts the current field first, keeping its probability and Q1’s answer apart', () => {
     const result = judge(
       response('origin', 'parent', { origin: 0.7, up: 0.2, child: 0.1 }),
       hierarchy,
       'up',
     );
 
-    expect(result.ordered).toEqual([
+    expect(result.ordered.slice(0, 3)).toEqual([
       { field: 'up', probability: 0.2 },
       { field: 'origin', probability: 0.7 },
       { field: 'child', probability: 0.1 },
     ]);
+    expect(result.field).toBe('origin');
   });
 
   it('puts the current field first when it is not confident too', () => {

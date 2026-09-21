@@ -56,8 +56,13 @@ export const REGION_TO_DIRECTION: Record<FieldRegion, Direction> = {
 export const FIELD_QUESTION = "field";
 export const DIRECTION_QUESTION = "direction";
 
-/** A Jev Choice question: candidate label → description (§7, 255 candidates at most). */
+/**
+ * A Jev Choice question: what is asked and the candidate labels with their
+ * descriptions (§7, 255 candidates at most). `client.ts` wraps it in whatever
+ * envelope the endpoint takes.
+ */
 export type Choice = {
+  question: string;
   criteria: Record<string, string>;
 };
 
@@ -83,16 +88,23 @@ export type Candidate = {
 };
 
 export type Judgement = {
-  /** Q1's answer. */
+  /**
+   * Q1's answer: the 第一候補 the thresholds of §2-4 are read against. `ordered[0]` is
+   * not the same thing — a typed link puts its current field there.
+   */
   field: string;
-  /** Q1's probabilities, whatever the confidence; hiding them is the caller's call (§2-3). */
+  /** Q1's probabilities as they came back, for the thresholds and the log; they only mean something when `confident`. */
   probabilities: Record<string, number>;
-  /** Q2's answer. */
-  direction: string;
+  /** Q2's answer, or null when it is none of the six directions. */
+  direction: Direction | null;
   directionProbability: number;
   /** Q1's answer sits in a region whose direction is Q2's answer. */
   confident: boolean;
-  /** What to offer: by probability when confident, else the settings' order. */
+  /**
+   * What to offer, and the only list a UI should show: every field of the ontology, by
+   * probability when confident and in the settings' order without probabilities when not
+   * (§2-3, so nothing suggests a pick). A typed link's current field comes first.
+   */
   ordered: Candidate[];
 };
 
@@ -133,8 +145,8 @@ export const buildQuestions = (hierarchy: Hierarchy): Questions => {
     directionCriteria[direction] = DIRECTION_LABELS[direction];
   }
   return {
-    [FIELD_QUESTION]: { criteria: fieldCriteria },
-    [DIRECTION_QUESTION]: { criteria: directionCriteria },
+    [FIELD_QUESTION]: { question: "このリンクに付けるフィールド", criteria: fieldCriteria },
+    [DIRECTION_QUESTION]: { question: "このリンクの方向", criteria: directionCriteria },
   };
 };
 
@@ -143,6 +155,22 @@ export const directionOfField = (field: string, hierarchy: Hierarchy): Direction
   const key = toHierarchyKey(field ?? "");
   const entry = fieldEntries(hierarchy).find((candidate) => toHierarchyKey(candidate.field) === key);
   return entry ? REGION_TO_DIRECTION[entry.region] : null;
+};
+
+/** Q2's answer as one of the six directions, or null when it is none of them; case and spaces are forgiven, as they are for a field name. */
+const toDirection = (answer: string): Direction | null => {
+  const normalised = (answer ?? "").trim().toLowerCase();
+  return (Object.keys(DIRECTION_LABELS) as Direction[]).find(
+    (direction) => direction.toLowerCase() === normalised,
+  ) ?? null;
+};
+
+/** The probability of one label, matched the way a field name is; a missing or non-numeric value reads as none. */
+const probabilityOf = (probabilities: Record<string, number>, label: string): number | undefined => {
+  const key = toHierarchyKey(label ?? "");
+  if (!probabilities || key === "") return undefined;
+  const found = Object.entries(probabilities).find(([candidate]) => toHierarchyKey(candidate) === key);
+  return found && Number.isFinite(found[1]) ? found[1] : undefined;
 };
 
 /** Moves the link's current field to the front, keeping the probability it already had (§2-2). */
@@ -167,21 +195,21 @@ export const judge = (response: JevResponse, hierarchy: Hierarchy, currentField?
   const directionAnswer = questions[DIRECTION_QUESTION];
   const field = fieldAnswer?.choice ?? "";
   const probabilities = fieldAnswer?.probabilities ?? {};
-  const direction = directionAnswer?.choice ?? "";
-  const directionProbability = directionAnswer?.probabilities?.[direction] ?? 0;
+  const direction = toDirection(directionAnswer?.choice);
+  const directionProbability = probabilityOf(directionAnswer?.probabilities, directionAnswer?.choice) ?? 0;
 
-  const expected = directionOfField(field, hierarchy);
-  const confident = expected !== null && expected === direction;
+  const entries = fieldEntries(hierarchy);
+  const expected = entries.find((entry) => toHierarchyKey(entry.field) === toHierarchyKey(field));
+  const confident = expected ? REGION_TO_DIRECTION[expected.region] === direction : false;
 
-  const order = fieldEntries(hierarchy).map((entry) => entry.field);
-  const ranks = new Map(order.map((field, index) => [toHierarchyKey(field), index]));
-  const rank = (candidate: string): number => ranks.get(toHierarchyKey(candidate)) ?? order.length;
+  // Candidates always come from the ontology: a field the response leaves out stays offerable and a
+  // label the response invented never becomes a line to write. A stable sort keeps the settings'
+  // order for equal probabilities and for the fields the response said nothing about.
   const ordered: Candidate[] = confident
-    ? Object.entries(probabilities)
-        .sort(([leftField, left], [rightField, right]) =>
-          right - left || rank(leftField) - rank(rightField))
-        .map(([candidate, probability]) => ({ field: candidate, probability }))
-    : order.map((candidate) => ({ field: candidate }));
+    ? entries
+        .map((entry) => ({ field: entry.field, probability: probabilityOf(probabilities, entry.field) }))
+        .sort((left, right) => (right.probability ?? -1) - (left.probability ?? -1))
+    : entries.map((entry) => ({ field: entry.field }));
 
   return {
     field,
