@@ -56,7 +56,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 ### 自動テスト（Vitest、Node）
 
 - ツーリング: `validate-release`（manifest／package／lock／versions の整合、配布物一致）、`version-bump`（`npm version x.y.z` の流れ）、`release-workflow`（release.yml がタグ限定・read-only トークン・配布物 3 ファイルであること）、`preflight`／`prepare-test-vault`（生成 Vault のマーカー、symlink・hard link 拒否、有効プラグインの集合、fixture の配置）。
-- 純ロジック: `linkRegex`（Markdown リンクと生 URL の抽出。括弧付き URL が途中で切れる上流の挙動もそのまま固定）、`getFilenameFromPath`／`splitFolderAndFilename`、`Layout`（`title`／`setCenter()`／`render()` だけを持つ Node スタブで、`place()` が決める中心と `render()` の順序を固定。余りの行の置き方も上流のまま）。
+- 純ロジック: `linkRegex`（Markdown リンクと生 URL の抽出。括弧付き URL が途中で切れる上流の挙動もそのまま固定）、`getFilenameFromPath`／`splitFolderAndFilename`、`buildHierarchyLowerCase`／`axisOf`（Ontology の既定値・領域間の排他・正規化。上流 0.2.18 の `loadSettings` の写しをオラクルにして Up／Down の無い設定の回帰を固定）、`Layout`（`title`／`setCenter()`／`render()` だけを持つ Node スタブで、`place()` が決める中心と `render()` の順序を固定。余りの行の置き方も上流のまま）。
 - `obsidian` モジュールは `tests/mocks/obsidian.ts` に置き換える（`TFile`／`TFolder`／`normalizePath`／`Vault.recurseChildren`／`moment.locale`）。`import ... from "src/..."` は `vitest.config.ts` の alias で解決する。
 
 ### 未カバー（実機のみ）
