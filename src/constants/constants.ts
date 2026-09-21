@@ -1,4 +1,4 @@
-import { NodeStyle, LinkStyle, Hierarchy, View3DSettings } from "../Types";
+import { NodeStyle, LinkStyle, Hierarchy, JevSettings, View3DSettings } from "../Types";
 
 export const APPNAME = "ExcaliBrain";
 export const MINEXCALIDRAWVERSION = "2.27.3"
@@ -54,6 +54,23 @@ export const DEFAULT_VIEW_3D_SETTINGS: Readonly<View3DSettings> = {
  * feedback mock (docs/images/3d-feedback-mock-2026-09-21.png), light to dark. `settings.levelColors`.
  */
 export const DEFAULT_LEVEL_COLORS: readonly string[] = ["#eeedfdff", "#cecbf3ff", "#aea9e7ff", "#7e77d7ff"];
+
+/**
+ * Jev link typer (docs/jev-link-typer-design.md §6). `loadSettings()` merges these into a saved `jev` object.
+ * The two thresholds are provisional: JEV-0 measures them on a real vault before JEV-4 uses them.
+ */
+export const DEFAULT_JEV_SETTINGS: Readonly<JevSettings> = {
+  apiKey: "",
+  enabled: false,
+  suggestOnLinkClose: true,
+  contextChars: 500,
+  relationsHeading: "Relations",
+  writeMode: "relations",
+  autoConfirmThreshold: 0.8,
+  reviewThreshold: 0.9,
+  endpoint: "https://api.typesafe.ai/v1/systemone",
+  model: "jev-latest",
+};
 
 export const DEFAULT_NODE_STYLE:NodeStyle = {
   prefix: "",

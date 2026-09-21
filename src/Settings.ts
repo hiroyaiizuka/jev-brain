@@ -1,6 +1,7 @@
 import {
   App,
   DropdownComponent,
+  Notice,
   PluginSettingTab,
   Setting,
   SliderComponent,
@@ -11,12 +12,12 @@ import {
 import { Page } from "./graph/Page";
 import { t } from "./lang/helpers";
 import ExcaliBrain from "./excalibrain-main";
-import { Hierarchy, NodeStyle, LinkStyle, RelationType, NodeStyleData, LinkStyleData, LinkDirection, Role, View3DSettings } from "./Types";
+import { Hierarchy, NodeStyle, LinkStyle, RelationType, NodeStyleData, LinkStyleData, LinkDirection, Role, JevSettings, View3DSettings } from "./Types";
 import { WarningPrompt } from "./utils/Prompts";
 import { Node as GraphNode } from "./graph/Node";
 import { svgToBase64 } from "./utils/utils";
 import { Link } from "./graph/Link";
-import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LEVEL_COLORS, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, DEFAULT_VIEW_3D_SETTINGS, PREDEFINED_LINK_STYLES } from "./constants/constants";
+import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_JEV_SETTINGS, DEFAULT_LEVEL_COLORS, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, DEFAULT_VIEW_3D_SETTINGS, PREDEFINED_LINK_STYLES } from "./constants/constants";
 import { ExcalidrawAutomate, getEA } from "./utils/ExcalidrawAutomateCompatibility";
 import { axisOf, compareFieldsIgnoringCase, toHierarchyKey, type HierarchyAxis } from "./utils/hierarchy";
 
@@ -53,6 +54,11 @@ export interface ExcaliBrainSettings {
    * The 3D toggle itself (`Scene.view3D`) is not saved. `loadSettings()` merges the defaults into a saved object.
    */
   view3D: View3DSettings;
+  /**
+   * The Jev link typer (docs/jev-link-typer-design.md §6). `loadSettings()` merges the defaults into a
+   * saved object, and nothing of Jev is registered unless `isJevActive()` holds.
+   */
+  jev: JevSettings;
   /**
    * Node background per level while the 3D view is on (docs/3d-design.md §6-3), indexed by `level − floor`
    * (the floor is index 0, shown as L1). Defaults: `DEFAULT_LEVEL_COLORS`, the four steps of the feedback mock.
@@ -132,6 +138,7 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   maxItemCount: 30,
   maxItemCount3D: 12,
   view3D: { ...DEFAULT_VIEW_3D_SETTINGS },
+  jev: { ...DEFAULT_JEV_SETTINGS },
   levelColors: [...DEFAULT_LEVEL_COLORS],
   renderSiblings: false,
   applyPowerFilter: false,
@@ -211,6 +218,22 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   centerEmbedWidth: 550,
   centerEmbedHeight: 700,
 };
+
+/**
+ * The `jev` object of a saved data.json, with the defaults of the keys it lacks. `loadSettings()` runs
+ * it over every load, so a data.json written before a key existed still gets a complete object.
+ */
+export const withJevDefaults = (saved?: Partial<JevSettings>): JevSettings => ({
+  ...DEFAULT_JEV_SETTINGS,
+  ...saved,
+});
+
+/**
+ * Whether the Jev commands, view and suggester are registered at all (docs/jev-link-typer-design.md §9).
+ * Without a key nothing of Jev exists, and the switch turns it off without deleting the key.
+ */
+export const isJevActive = (settings: ExcaliBrainSettings): boolean =>
+  settings.jev.enabled && settings.jev.apiKey.trim() !== "";
 
 const HIDE_DISABLED_STYLE = "excalibrain-hide-disabled";
 const HIDE_DISABLED_CLASS = "excalibrain-settings-disabled";
@@ -523,6 +546,10 @@ private normalizeSettings() {
     if (this.plugin.settings.ontologySuggesterMidSentenceTrigger === "") {
       this.plugin.settings.ontologySuggesterMidSentenceTrigger = "(";
     }
+    // An empty heading would leave Jev without a section to append to (docs/jev-link-typer-design.md §3).
+    if (this.plugin.settings.jev.relationsHeading === "") {
+      this.plugin.settings.jev.relationsHeading = DEFAULT_JEV_SETTINGS.relationsHeading;
+    }
 
     this.plugin.settings.tagStyleList = Object.keys(this.plugin.settings.tagNodeStyles);
   }
@@ -609,6 +636,10 @@ private normalizeSettings() {
     this.detachSettingsFocusoutHandler();
     if (this.dirty) {
       void this.executeSaveAndApply();
+    }
+    // Jev is registered while the plugin loads, so turning it on or off here only lands on the next load.
+    if (isJevActive(this.plugin.settings) !== this.plugin.jevRegistered) {
+      new Notice(t("JEV_RELOAD_NOTICE"), 8000);
     }
   }
 
@@ -2436,6 +2467,138 @@ private normalizeSettings() {
         defaultColor
       )
     });
+
+    // ------------------------------
+    // Jev link typer (docs/jev-link-typer-design.md §6). Registration happens while the plugin loads,
+    // so hide() asks for a reload when the key or the switch changed.
+    // ------------------------------
+    new Setting(containerEl)
+      .setName(t("JEV_HEAD"))
+      .setHeading();
+
+    const jevDesc = this.containerEl.createEl("p", {});
+    jevDesc.appendChild(fragWithHTML(t("JEV_DESC")));
+
+    new Setting(containerEl)
+      .setName(t("JEV_APIKEY_NAME"))
+      .setDesc(fragWithHTML(t("JEV_APIKEY_DESC")))
+      .addText(text => {
+        text.inputEl.type = "password";
+        text
+          .setValue(this.plugin.settings.jev.apiKey)
+          .onChange(value => {
+            this.plugin.settings.jev.apiKey = value.trim();
+            this.dirty = true;
+          })
+      })
+
+    this.toggle(
+      containerEl,
+      t("JEV_ENABLED_NAME"),
+      t("JEV_ENABLED_DESC"),
+      ()=>this.plugin.settings.jev.enabled,
+      (val)=>this.plugin.settings.jev.enabled = val,
+      ()=>{},
+      false,
+      DEFAULT_JEV_SETTINGS.enabled
+    )
+
+    this.toggle(
+      containerEl,
+      t("JEV_SUGGEST_ON_LINK_CLOSE_NAME"),
+      t("JEV_SUGGEST_ON_LINK_CLOSE_DESC"),
+      ()=>this.plugin.settings.jev.suggestOnLinkClose,
+      (val)=>this.plugin.settings.jev.suggestOnLinkClose = val,
+      ()=>{},
+      false,
+      DEFAULT_JEV_SETTINGS.suggestOnLinkClose
+    )
+
+    this.numberslider(
+      containerEl,
+      t("JEV_CONTEXT_CHARS_NAME"),
+      t("JEV_CONTEXT_CHARS_DESC"),
+      {min:100,max:2000,step:50},
+      ()=>this.plugin.settings.jev.contextChars,
+      (val)=>this.plugin.settings.jev.contextChars = val,
+      ()=>{},
+      false,
+      DEFAULT_JEV_SETTINGS.contextChars
+    )
+
+    new Setting(containerEl)
+      .setName(t("JEV_RELATIONS_HEADING_NAME"))
+      .setDesc(fragWithHTML(t("JEV_RELATIONS_HEADING_DESC")))
+      .addText(text =>
+        text
+          .setValue(this.plugin.settings.jev.relationsHeading)
+          .onChange(value => {
+            this.plugin.settings.jev.relationsHeading = value.trim();
+            this.dirty = true;
+          })
+      )
+
+    this.dropdownpicker(
+      containerEl,
+      t("JEV_WRITE_MODE_NAME"),
+      t("JEV_WRITE_MODE_DESC"),
+      {"relations": t("JEV_WRITE_MODE_RELATIONS"), "inline": t("JEV_WRITE_MODE_INLINE")},
+      ()=>this.plugin.settings.jev.writeMode,
+      (val)=>{
+        this.plugin.settings.jev.writeMode = val === "inline" ? "inline" : "relations";
+      },
+      ()=>{},
+      false,
+      DEFAULT_JEV_SETTINGS.writeMode
+    )
+
+    this.numberslider(
+      containerEl,
+      t("JEV_AUTO_CONFIRM_THRESHOLD_NAME"),
+      t("JEV_AUTO_CONFIRM_THRESHOLD_DESC"),
+      {min:0.5,max:1,step:0.05},
+      ()=>this.plugin.settings.jev.autoConfirmThreshold,
+      (val)=>this.plugin.settings.jev.autoConfirmThreshold = val,
+      ()=>{},
+      false,
+      DEFAULT_JEV_SETTINGS.autoConfirmThreshold
+    )
+
+    this.numberslider(
+      containerEl,
+      t("JEV_REVIEW_THRESHOLD_NAME"),
+      t("JEV_REVIEW_THRESHOLD_DESC"),
+      {min:0.5,max:1,step:0.05},
+      ()=>this.plugin.settings.jev.reviewThreshold,
+      (val)=>this.plugin.settings.jev.reviewThreshold = val,
+      ()=>{},
+      false,
+      DEFAULT_JEV_SETTINGS.reviewThreshold
+    )
+
+    new Setting(containerEl)
+      .setName(t("JEV_ENDPOINT_NAME"))
+      .setDesc(fragWithHTML(t("JEV_ENDPOINT_DESC")))
+      .addText(text =>
+        text
+          .setValue(this.plugin.settings.jev.endpoint)
+          .onChange(value => {
+            this.plugin.settings.jev.endpoint = value.trim();
+            this.dirty = true;
+          })
+      )
+
+    new Setting(containerEl)
+      .setName(t("JEV_MODEL_NAME"))
+      .setDesc(fragWithHTML(t("JEV_MODEL_DESC")))
+      .addText(text =>
+        text
+          .setValue(this.plugin.settings.jev.model)
+          .onChange(value => {
+            this.plugin.settings.jev.model = value.trim();
+            this.dirty = true;
+          })
+      )
 
     // ------------------------------
     // Style
