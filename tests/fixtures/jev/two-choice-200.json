@@ -1,0 +1,19 @@
+{
+  "note": "2 問 Choice の応答。実物の Jev からの記録ではなく、公開情報（docs/jev-link-typer-design.md §7）から起こした形。キー発行後に実応答と照合し、違えば src/jev/client.ts とこのファイルを直す（設計 §11）。",
+  "status": 200,
+  "body": {
+    "questions": {
+      "field": {
+        "choice": "up",
+        "probabilities": { "up": 0.82, "origin": 0.11, "similar": 0.04, "down": 0.03 },
+        "confidence": 0.82
+      },
+      "direction": {
+        "choice": "parent",
+        "probabilities": { "parent": 0.88, "child": 0.06, "left": 0.03, "right": 0.03 },
+        "confidence": 0.88
+      }
+    },
+    "usage": { "inputTokens": 1873 }
+  }
+}

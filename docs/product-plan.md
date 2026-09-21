@@ -102,14 +102,18 @@
 - 同じスクリプトが正解ごとに設計 §2-2 の state と §2-3 の 2 問で Jev に聞き、フィールド一致率・方向一致率・しきい値（0.5〜0.9）ごとの適合率と対象率・混同の多い組・トークン数と費用の実績を `artifacts/jev-accuracy/record.md` に記録する（500 件以上）。
 - 結果から一括の自動確定（既定 0.8）と見直し（既定 0.9）のしきい値を本人が決め、設計 §2-4 と本書 §5 に記録する。一致率が 5 割未満なら JEV-4 の自動確定をやめる。
 
+現在の実装（LEV-162）: `node scripts/jev-accuracy.mjs extract --vault <path> --out artifacts/jev-accuracy/truth.json` が Vault の Markdown から型付きリンクを抜き出す（frontmatter の `field: [[X]]`、本文の `(field:: [[X]])`、行頭の `field:: [[X]]`＝`## Relations` の行を含む。埋め込みとフェンスの中は数えない）。1 件ごとにフィールド名（Dataview のキー）・領域と方向・相手・前後 500 字・相手の frontmatter と冒頭 300 字を `truth.json` に、フィールド別と方向別の件数とリンク総数に対する型付きの割合を stdout と `record.md` の表に出す。hierarchy は `<vault>/.obsidian/plugins/jevbrain/data.json` から読み、無ければ上流の既定値（Up／Down が空なので `up` は Parents、`down` は Children）。書き出し先は `artifacts/` の中だけを許す。`tests/tooling/jev-accuracy.test.mjs` が 3D 用の fixture（`docs/3d-brief.md` §7 の 8 ノート＋LEV-124／LEV-128 の 3 ノート）で件数を固定する（up 3・leads to 2・example 2・origin 1・similar 1・next 1・down 1 ＝ 親 4・子 3・左友 1・次 1・領域の外 2）。実行（2026-09-22、`tests/fixtures/` 全体 92 ノートを Vault に）: 正解 94 件、リンク 103 件、型付き 91.3%。Jev はまだ呼ばず、`judge` は名前だけで LEV-163 で実装する。
+
 ### JEV-1 判定の中核（UI なし）
 
 - 設定に「Jev」節（API キー、有効化、`]]` 直後のサジェスト、前後の文字数、書き込み先の見出しと方式、しきい値 2 つ、endpoint／model。設計 §6）。キーが空なら Jev のコマンド・ボタン・サジェスター・view を一切登録しない。`data.json` がプレーンテキストである旨と送信する内容を設定画面に書く。
-- `src/jev/client.ts` が Obsidian の `requestUrl` で `POST /v1/systemone` を呼ぶ。タイムアウト、429／5xx の 1 回再試行、失敗は Notice と `console.warn`。ネットワークはこのファイルだけ。単体テストは `tests/fixtures/jev/*.json` の記録した応答で行い、実際の Jev は呼ばない。
+- `src/jev/client.ts` が Obsidian の `requestUrl` で `POST /v1/systemone` を呼ぶ。タイムアウト、429／5xx の 1 回再試行、失敗は Notice と `console.warn`。ネットワークはこのファイルだけ。単体テストは `tests/fixtures/jev/*.json` の記録した応答で行い、実際の Jev は呼ばない。現在の実装（LEV-166）: 設定の型に依存しない `askJev(config, request)` が `requestUrl` で POST し、10 秒（`DEFAULT_JEV_TIMEOUT_MS`）で打ち切り、429／5xx だけ 1 秒後に 1 回再試行し、失敗は Notice 1 回と `console.warn` を出して `null` を返す（聞いた質問が全部揃わない応答も失敗。endpoint が https でなければキーを送らない）。応答に `usage` が無ければ送った本文の文字数から見積もる。`tests/fixtures/jev/` の 8 つは実物の応答の記録ではなく設計 §7 の公開情報から起こした形で、キー発行後に照合する。質問は Choice だけで、Score／Noul は答えの形が決まる JEV-5 で足す。
 - `src/jev/state.ts`・`judge.ts` が state（frontmatter＋リンク前後 N 字＋相手の frontmatter と冒頭＋hierarchy の全フィールドを説明付きの criteria に）を組み、Q1 フィールド・Q2 方向を 1 回で聞き、整合性チェック（設計 §2-3）で `confident` を決める。純関数で単体テスト。型付きのリンクは「現在のフィールド」を state に入れ、候補の先頭に置く。現在の実装（LEV-167）: `state.ts` の `buildState` がノートの frontmatter とリンク前後 `contextChars` 字・相手の frontmatter と冒頭 300 字（ファイルが無ければ名前だけ）・見直しの `currentField` だけを JSON 文字列にし（本文全文と Vault のパスは送らない）、`judge.ts` の `buildQuestions` が hidden と exclusions を除く全フィールドを「領域・方向」付きの criteria にした Q1 と 6 方向の Q2 を組み、`judge` が Q1 の答えの領域の方向（Up は親、Down は子。対応は `REGION_TO_DIRECTION` の 1 か所）と Q2 の答えが一致すれば `confident` で確率の降順、違えば確率を伏せて設定の順の `ordered`（候補は常にオントロジーの全フィールドで、応答が作った語は出さない）を返し、`currentField` は先頭に置く（`tests/jev/state.test.ts`・`tests/jev/judge.test.ts` が一致・不一致・Up／Down・`currentField`・空の hierarchy を固定。Jev の呼び出しと UI は別チケット）。
 - `src/jev/collect.ts` がノートの未型付けリンク（設計 §2-1）を `metadataCache` と Page の neighbours から求める。埋め込み・URL・除外パスは対象外。単体テスト。
 - `src/jev/relations.ts`・`log.ts` が `## Relations` 節（無ければ末尾に作る）に `field:: [[X]]` を 1 行追記し（同じ行があれば何もしない、本文は触らない）、`jev-log.json` に記録して行単位・一括単位で取り消せる。手で変わった行は取り消さず Notice。vault スタブで単体テスト。
 - コマンド「Jev: カーソルのリンクに型を付ける（第一候補で確定）」が実機で 1 リンク動き、`## Relations` に行が入って JevBrain の次の描画に反映される（E18、`artifacts/jev-1-e2e/`）。
+
+現在の実装（LEV-165）: 設定の型 `Types.JevSettings`（`ExcaliBrainSettings.jev`）と既定値 `constants.DEFAULT_JEV_SETTINGS`（設計 §6 の表）、設定画面の「Jev」節（API キーは `type="password"`、有効化・`]]` 直後のサジェスト・前後の文字数・書き込み先の見出しと方式・しきい値 2 つ・endpoint／model と、送信する内容と `data.json` がプレーンテキストである旨の注意書き）、`loadSettings` の既定値マージ（`withJevDefaults`）、`excalibrain-main.ts` の `registerJev()`（キーと有効化が揃うときだけ呼ぶ＝`isJevActive`。中身は空で、コマンド・view・サジェスターは JEV-2／JEV-3 の子が足す。登録は読み込み時だけなので、設定タブを閉じるときに再読込を促す Notice）が入った。`tests/utils/settings.test.ts` が既定値・マージ・`isJevActive` を固定する。`src/jev/` はまだ無く、設定画面の目視は E18 にまとめる。
 
 ### JEV-2 エディタのサジェスター（JEV-1 の後）
 
