@@ -9,8 +9,10 @@ import {
   boundsOf,
   compareDrawOrder,
   floorOf,
+  floorPlan,
   friendBandShift,
   levelOf,
+  pillarTickLevels,
   project,
 } from 'src/graph/Projection';
 
@@ -312,5 +314,120 @@ describe('boundsOf (Scene の地面が使う純関数)', () => {
     expect(boundsOf([{ x: 0, y: 0, width: 200, height: 40 }])).toEqual({ minX: -100, maxX: 100, minY: -20, maxY: 20 });
     expect(boundsOf([{ x: -120, y: -200, width: 200, height: 40 }, { x: 300, y: 0, width: 100, height: 40 }, { x: 0, y: 220, width: 200, height: 40 }], 75))
       .toEqual({ minX: -295, maxX: 425, minY: -295, maxY: 315 });
+  });
+});
+
+describe('floorPlan (Scene の床が使う純関数、3d-design §6-2)', () => {
+  // artifacts/3d1-e2e の 2D の中心（友は friendBandShift 後で中心と同じ y −12）。nodeHeight 76 が余白とグリッド間隔。
+  const nodeHeight = 76;
+  const origin: Point = { x: 0, y: -12 };
+  const feet: Point[] = [
+    origin,
+    { x: -118, y: -291 }, { x: 118, y: -291 }, // 親
+    { x: -454, y: -12 }, { x: 425, y: -12 }, // 友（東西軸の上）
+    { x: 0, y: 214 }, { x: 280, y: 214 }, { x: -280, y: 214 }, // 子
+  ];
+
+  it('is the smallest rectangle around the feet plus one nodeHeight on every side (the shadows all fit, nothing more)', () => {
+    const plan = floorPlan(feet, origin, nodeHeight);
+    expect(plan.bounds).toEqual({ minX: -454 - 76, maxX: 425 + 76, minY: -291 - 76, maxY: 214 + 76 });
+    for (const foot of feet) {
+      expect(foot.x).toBeGreaterThanOrEqual(plan.bounds.minX + nodeHeight);
+      expect(foot.x).toBeLessThanOrEqual(plan.bounds.maxX - nodeHeight);
+      expect(foot.y).toBeGreaterThanOrEqual(plan.bounds.minY + nodeHeight);
+      expect(foot.y).toBeLessThanOrEqual(plan.bounds.maxY - nodeHeight);
+    }
+  });
+
+  it("puts the cross through the central note's foot and the friends' feet on its east-west axis, parents north of it, children south", () => {
+    const plan = floorPlan(feet, origin, nodeHeight);
+    expect(plan.origin).toEqual(origin);
+    expect(plan.origin).not.toBe(origin);
+    const axisY = plan.origin.y;
+    expect(feet.filter((f) => f.y === axisY).map((f) => f.x)).toEqual([0, -454, 425]);
+    expect(feet.filter((f) => f.y < axisY)).toHaveLength(2);
+    expect(feet.filter((f) => f.y > axisY)).toHaveLength(3);
+  });
+
+  it('spaces the grid one nodeHeight apart from the cross, inside the floor, leaving out the two lines the cross already draws', () => {
+    const plan = floorPlan(feet, origin, nodeHeight);
+    expect(plan.columnXs).toEqual([-456, -380, -304, -228, -152, -76, 76, 152, 228, 304, 380, 456]);
+    expect(plan.rowYs).toEqual([-316, -240, -164, -88, 64, 140, 216]);
+    expect(plan.columnXs).not.toContain(origin.x);
+    expect(plan.rowYs).not.toContain(origin.y);
+    for (const x of plan.columnXs) {
+      expect(x).toBeGreaterThan(plan.bounds.minX);
+      expect(x).toBeLessThan(plan.bounds.maxX);
+      expect(Number.isInteger((x - origin.x) / nodeHeight)).toBe(true);
+    }
+    for (const y of plan.rowYs) {
+      expect(y).toBeGreaterThan(plan.bounds.minY);
+      expect(y).toBeLessThan(plan.bounds.maxY);
+      expect(Number.isInteger((y - origin.y) / nodeHeight)).toBe(true);
+    }
+  });
+
+  it('puts N/S/W/E at the ends of the cross, half a margin outside the edge', () => {
+    const plan = floorPlan(feet, origin, nodeHeight);
+    expect(plan.compass).toEqual({
+      north: { x: 0, y: -367 - 38 },
+      south: { x: 0, y: 290 + 38 },
+      west: { x: -530 - 38, y: -12 },
+      east: { x: 501 + 38, y: -12 },
+    });
+  });
+
+  it('leaves out grid lines that would lie on the outline, and draws none when the floor is only the margin around the origin', () => {
+    // 足元が余白の端にちょうど乗る: x = 76 の線は内側、−76 と 152 は外周と重なるので描かない
+    const edge = floorPlan([{ x: 76, y: 0 }], { x: 0, y: 0 }, 76);
+    expect(edge.bounds).toEqual({ minX: -76, maxX: 152, minY: -76, maxY: 76 });
+    expect(edge.columnXs).toEqual([76]);
+    expect(edge.rowYs).toEqual([]);
+    const alone = floorPlan([], { x: 10, y: -20 }, 50);
+    expect(alone.bounds).toEqual({ minX: -40, maxX: 60, minY: -70, maxY: 30 });
+    expect(alone.columnXs).toEqual([]);
+    expect(alone.rowYs).toEqual([]);
+    expect(alone.compass.north).toEqual({ x: 10, y: -95 });
+  });
+
+  it('keeps the cross inside the floor even when the origin is not among the feet, and takes a separate margin', () => {
+    const plan = floorPlan([{ x: 300, y: 300 }], { x: 0, y: 0 }, 100, 10);
+    expect(plan.bounds).toEqual({ minX: -10, maxX: 310, minY: -10, maxY: 310 });
+    expect(plan.columnXs).toEqual([100, 200, 300]);
+    expect(plan.compass.east).toEqual({ x: 315, y: 0 });
+  });
+
+  it('draws no grid for a non-positive spacing', () => {
+    for (const spacing of [0, -76, Number.NaN]) {
+      const plan = floorPlan(feet, origin, spacing, 76);
+      expect(plan.columnXs).toEqual([]);
+      expect(plan.rowYs).toEqual([]);
+    }
+  });
+});
+
+describe('pillarTickLevels (柱の目盛り、3d-design §6-2)', () => {
+  it('marks every level strictly between the floor and the box: one tick for an Up parent over a −1 floor, none for one level', () => {
+    expect(pillarTickLevels(1, -1)).toEqual([0]);
+    expect(pillarTickLevels(1, 0)).toEqual([]);
+    expect(pillarTickLevels(0, -1)).toEqual([]);
+  });
+
+  it('gives nodes on the floor (or below it) no ticks', () => {
+    expect(pillarTickLevels(-1, -1)).toEqual([]);
+    expect(pillarTickLevels(0, 0)).toEqual([]);
+    expect(pillarTickLevels(1, 1)).toEqual([]);
+    expect(pillarTickLevels(-1, 0)).toEqual([]);
+  });
+
+  it('counts one segment per level for the brief fixture over a −1 floor (行動デザイン 2 segments, 読書メモ 1, 歯磨き 0)', () => {
+    const floor = floorOf(neighbours.map((n) => n.expectedLevel));
+    const segments = (title: string) => {
+      const level = byTitle(title).expectedLevel;
+      return level === floor ? 0 : pillarTickLevels(level, floor).length + 1;
+    };
+    expect(segments('行動デザイン')).toBe(2);
+    expect(segments('読書メモ：習慣の本')).toBe(1);
+    expect(segments('歯磨き後に腕立て')).toBe(0);
   });
 });
