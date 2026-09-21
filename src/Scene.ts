@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, isOnAxis, levelOf, limitByAxis, project, verticalRow } from "./graph/Projection";
+import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, isOnAxis, levelOf, limitByAxis, project, regridBand, verticalRow } from "./graph/Projection";
 import { zoomTargets } from "./graph/zoom";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, ExcalidrawImperativeAPI, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
@@ -1125,9 +1125,9 @@ export class Scene {
   }
 
   /**
-   * 3D の描画（docs/3d-design.md §6-1・§6-2・§6-5・§6-6）。配置 → 帯を動かす（友は中心の y に、Parents／Children は
-   * 中心から `bandDistance`）→ Up／Down（level ≠ 0）を垂直軸へ移す（2D では中心の真上・真下。画面では高さの傾き
-   * `heightShearX` のぶん東／西へ倒れる、LEV-137）→ 投影 → north 降順にノード →
+   * 3D の描画（docs/3d-design.md §6-1・§6-2・§6-5・§6-6）。配置 → 帯に残る level 0 だけで列を組み直す（LEV-145）→
+   * 帯を動かす（友は中心の y に、Parents／Children は中心から `bandDistance`）→ Up／Down（level ≠ 0）を垂直軸へ移す
+   * （2D では中心の真上・真下。画面では高さの傾き `heightShearX` のぶん東／西へ倒れる、LEV-137）→ 投影 → north 降順にノード →
    * 床（外周・グリッド・十字・方角）。柱と影は LEV-128 で描くのをやめた（本人のフィードバック 3: 上下は箱の高さで読む）。
    * 2D と同じ `place()` の中心を投影で置き換えるだけで、Node の描画は無改造。埋め込みの中心（`retainCentralNode` で
    * 要素を保持する）は Layout が原点に置き、原点は中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は
@@ -1155,12 +1155,35 @@ export class Scene {
     // 友の帯を中心ノートの y に揃える（§6-1「フレンドと中心は同じ north」）。中心は動かさない
     const rootCenter = this.rootNode.getCenter();
 
+    // 帯に残る level 0 だけで列を組み直す（§6-8、LEV-145）: Up／Down を垂直軸へ抜いたあと、2D の格子は穴が開いた
+    // ままで、残ったノードが列の端に取り残されて中心の真北・真南からずれる。残った数で行を中心ノートの x に
+    // 中央揃えし、丸ごと空いた行は詰める（内側の縁は `place()` が置いた位置なので帯は中心から遠ざからない。
+    // 下の `bandShift` は詰めたあとの内側の行から測る）。軸へ抜けたノードが無い帯も同じ規則で揃える: 上流の
+    // 半端な行は中心に対して非対称（3 列に 2 つなら東へ columnWidth/2）で、Up／Down を使っていない Vault でも
+    // 床の十字から同じだけずれる。2D の経路はこの分岐の外なので変わらない
+    const regridded = new Map<Node, Point>();
+    const regridBandOf = (layout: Layout, side: -1 | 1): void => {
+      const band = layout.nodes.map(node => ({node, center: node.getCenter()}));
+      const onBand = band.filter(({node}) => !isOnAxis(node.level));
+      if(onBand.length === 0) return;
+      const ys = band.map(({center}) => center.y);
+      const centers = regridBand(
+        onBand.map(({center}) => center),
+        {x: rootCenter.x, y: side < 0 ? Math.max(...ys) : Math.min(...ys)},
+        {columns: layout.spec.columns, columnWidth: layout.spec.columnWidth, rowHeight: layout.spec.rowHeight, side},
+      );
+      onBand.forEach(({node}, i) => regridded.set(node, centers[i]));
+    };
+    regridBandOf(bands.parents, -1);
+    regridBandOf(bands.children, 1);
+    const centerOf = (node: Node): Point => regridded.get(node) ?? node.getCenter();
+
     // 床に残る Parents／Children の帯を中心から最低 `bandDistance`（2D の地面距離）離す（§6-6、LEV-128）。垂直軸に立つ
     // Up／Down と重ならないように、中心にいちばん近い行が届いていなければ帯ごと動かす。既に遠い帯（埋め込みの中心では
     // Layout が箱の高さぶん押し出している）と、level 0 のノードが無い帯は動かさない
     const bandDistance = view3D.bandDistanceFactor * this.nodeHeight;
     const bandShiftOf = (layout: Layout, side: -1 | 1): number => {
-      const ys = layout.nodes.filter(node => !isOnAxis(node.level)).map(node => node.getCenter().y);
+      const ys = layout.nodes.filter(node => !isOnAxis(node.level)).map(node => centerOf(node).y);
       if(ys.length === 0) return 0;
       return bandShift(rootCenter.y, side < 0 ? Math.max(...ys) : Math.min(...ys), bandDistance, side);
     };
@@ -1173,7 +1196,7 @@ export class Scene {
       : 0;
 
     const laid = this.layouts.flatMap(layout => layout.nodes.map(node => {
-      const c = node.getCenter();
+      const c = centerOf(node);
       return { node, level: node.level, center: {x: c.x, y: c.y + shiftOf(layout)} };
     }));
 

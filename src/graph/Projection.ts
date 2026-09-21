@@ -310,6 +310,9 @@ export const friendBandShift = (centerY: number, friendRowHeight: number): numbe
  * `columns` の数で折り返し、あふれた行は `row` 1, 2… になる（LEV-127、本人の指定で既定 5 列）。
  * 行は `liftOf` が `rowLift` ずつ Up は上へ、Down は下へ積む。整数でない `count` は切り捨ててから中央揃えし、
  * `columns` が数でなければ 1 列に落とす（設定が壊れていても描画を止めない）。
+ *
+ * 床の帯を組み直す `regridBand`（§6-8）も、東西の揃え方はこれをそのまま使う（間隔は帯の `columnWidth`、
+ * 行は高さではなく南北に積む）。半端な行の中央揃えの規則は 1 か所にしておく。
  */
 export const verticalSpread = (count: number, gap: number, columns: number): VerticalSlot[] => {
   const items = Math.max(0, Math.trunc(count));
@@ -382,6 +385,61 @@ export const verticalRow = (
 export const bandShift = (centerY: number, innermostY: number, distance: number, side: -1 | 1): number => {
   const reach = side * (innermostY - centerY);
   return reach >= distance ? 0 : side * (distance - reach);
+};
+
+/**
+ * `regridBand` が使う帯の形（`LayoutSpecification` のうち列の組み直しに要るものだけ）。
+ */
+export type BandGrid = {
+  /**
+   * 1 行に並べる数（帯の `columns`）。残った数から取り直さない: 列数は `Scene.calculateLayoutParams` が
+   * 帯の全件数から決めていて、帯の幅（`leftFriendOrigoX` などの東西の余白）もその数で計算済みなので、
+   * ここで狭めると友の帯との間だけが空く。
+   */
+  columns: number;
+  /** 列の間隔（帯の `columnWidth`。ラベルの長さとフォントから決まる箱の幅＋余白）。 */
+  columnWidth: number;
+  /** 行の間隔（帯の `rowHeight`）。 */
+  rowHeight: number;
+  /** 中心にいちばん近い行がどちらの端か: −1 = 北の帯（Parents なら最も南の行）、+1 = 南の帯（Children なら最も北の行）。 */
+  side: -1 | 1;
+};
+
+/**
+ * 床の帯（Parents／Children）に残った level 0 のノードだけで列を組み直す（§6-8、LEV-145）。
+ * 入力と同じ並びで新しい 2D の中心を返す。
+ *
+ * Up／Down を垂直軸へ抜く（`verticalRow`）と、帯は 2D の格子の穴が開いたままになる: 上流の `Layout.place()` は
+ * 帯の全件数で列を割り当てているので、残ったノードが列の端に取り残されて中心の真北・真南からずれる
+ * （実機では 4 つの親のうち `origin` の 1 つだけが残り、2 列の東側 ＝ 中心から columnWidth/2 東に立っていた）。
+ *
+ * - 東西は行ごとの中央揃えで、`verticalSpread` をそのまま使う（垂直軸と同じ規則。半端な行の揃え方と、列数が
+ *   壊れていたときの 1 列への落とし方を 1 か所にしておく）。間隔は帯の `columnWidth`、中心は `origin.x`
+ *   ＝ 中心ノートの x。1 行が満杯なら `Layout.place()` と同じ位置になる。上流の `Layout.layout()` の行ベクトル
+ *   （`getRowLayout`）は使わない: 半端な行を列に振り分ける作りが中心に対して非対称で、2 列に 1 つだと西、
+ *   3 列に 2 つだと東へずれる（この不揃いを直すのがこのチケット）。
+ * - 南北は読み順（北から南）のまま `rowHeight` 間隔で、中心にいちばん近い行を `origin.y` に置く。`origin.y` には
+ *   帯が `place()` で占めていた内側の縁を渡すので、帯は中心から遠ざからず、丸ごと空いた行があればそのぶん中心側へ
+ *   詰まる。続く `bandShift`（§6-6）は詰めたあとの内側の行から測る（それでも `bandDistance` より遠ければ動かさない）。
+ *
+ * 並べ替えの基準は入力の中心（行＝北から南、同じ行は西から東）なので、`Layout` が並べたタイトル順がそのまま残る。
+ */
+export const regridBand = (centers: readonly Point[], origin: Point, grid: BandGrid): Point[] => {
+  const order = centers
+    .map((center, index) => ({ center, index }))
+    .sort((a, b) => a.center.y - b.center.y || a.center.x - b.center.x);
+  const slots = verticalSpread(order.length, grid.columnWidth, grid.columns);
+  const rows = slots.length > 0 ? slots[slots.length - 1].row + 1 : 0;
+  const placed = new Array<Point>(centers.length);
+  order.forEach(({ index }, i) => {
+    // 読み順の行は北から南。北の帯（side −1）は最後の行が中心にいちばん近いので、そこを `origin.y` にする
+    const fromInner = grid.side < 0 ? rows - 1 - slots[i].row : slots[i].row;
+    placed[index] = {
+      x: origin.x + slots[i].dx,
+      y: origin.y + grid.side * fromInner * grid.rowHeight,
+    };
+  });
+  return placed;
 };
 
 export type Projected = {
