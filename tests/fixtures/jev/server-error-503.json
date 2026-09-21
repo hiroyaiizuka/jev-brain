@@ -1,0 +1,5 @@
+{
+  "note": "5xx。429 と同じく 1 回だけ再試行し、それでも 5xx なら失敗として扱う。実物の記録ではない。",
+  "status": 503,
+  "body": { "error": "service unavailable" }
+}
