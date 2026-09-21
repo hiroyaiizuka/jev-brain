@@ -11,15 +11,14 @@ import {
 import { Page } from "./graph/Page";
 import { t } from "./lang/helpers";
 import ExcaliBrain from "./excalibrain-main";
-import { Hierarchy, NodeStyle, LinkStyle, RelationType, NodeStyleData, LinkStyleData, LinkDirection, Role } from "./Types";
+import { Hierarchy, NodeStyle, LinkStyle, RelationType, NodeStyleData, LinkStyleData, LinkDirection, Role, View3DSettings } from "./Types";
 import { WarningPrompt } from "./utils/Prompts";
 import { Node as GraphNode } from "./graph/Node";
 import { svgToBase64 } from "./utils/utils";
 import { Link } from "./graph/Link";
-import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, PREDEFINED_LINK_STYLES } from "./constants/constants";
+import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, DEFAULT_VIEW_3D_SETTINGS, PREDEFINED_LINK_STYLES } from "./constants/constants";
 import { ExcalidrawAutomate, getEA } from "./utils/ExcalidrawAutomateCompatibility";
 import { axisOf, compareFieldsIgnoringCase, toHierarchyKey, type HierarchyAxis } from "./utils/hierarchy";
-import { DEFAULT_VIEW_3D_SETTINGS, type View3DSettings } from "./graph/Projection";
 
 export interface ExcaliBrainSettings {
   compactView: boolean;
@@ -2256,11 +2255,11 @@ private normalizeSettings() {
 
     // ------------------------------
     // 3D view (docs/3d-design.md §6-1). The toggle lives in the tools panel and is not saved.
+    // setHeading() rather than the h1 the older sections use: the lint baseline must not grow (AGENTS.md).
     // ------------------------------
-    containerEl.createEl("h1", {
-      cls: "excalibrain-settings-h1",
-      text: t("VIEW3D_HEAD")
-    });
+    new Setting(containerEl)
+      .setName(t("VIEW3D_HEAD"))
+      .setHeading();
 
     this.numberslider(
       containerEl,
@@ -2278,7 +2277,8 @@ private normalizeSettings() {
       containerEl,
       t("VIEW3D_NORTH_RISE_NAME"),
       t("VIEW3D_NORTH_RISE_DESC"),
-      {min:0,max:1,step:0.05},
+      // 0.2 keeps the lowest possible parent row (Layout bottom = -2·nodeHeight) clear of the friends at the defaults
+      {min:0.2,max:1,step:0.05},
       ()=>this.plugin.settings.view3D.northRise,
       (val)=>this.plugin.settings.view3D.northRise = val,
       ()=>{},

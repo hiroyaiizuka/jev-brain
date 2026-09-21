@@ -12,7 +12,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { errorlog, keepOnTop } from "./utils/utils";
 import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
-import { Level, Point, Projected, ProjectionParams, boundsOf, compareDrawOrder, floorOf, levelOf, project } from "./graph/Projection";
+import { Level, Point, Projected, ProjectionParams, boundsOf, compareDrawOrder, floorOf, friendBandShift, levelOf, project } from "./graph/Projection";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
@@ -35,7 +35,7 @@ const VIEW_3D = {
 const withAlpha = (color: string, alpha: number): string =>
   `${color.substring(0, 7)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
 
-/** `Layout.place()` が決めた 2D の中心、その箱の大きさ（Layout の列幅・行高）、投影。 */
+/** `Layout.place()` が決めた 2D の中心（友の帯は `friendBandShift` 適用後）、その箱の大きさ（Layout の列幅・行高）、投影。 */
 type PlacedNode = { node: Node; center: Point; size: {width: number; height: number}; projected: Projected };
 
 export class Scene {
@@ -1021,7 +1021,7 @@ export class Scene {
     applyEAStyle(ea, { opacity: 100 });
     let sceneryElements: ExcalidrawElement[] = [];
     if(this.view3D) {
-      sceneryElements = await this.render3D();
+      sceneryElements = await this.render3D([lFriends, lNextFriends]);
     } else {
       await Promise.all(this.layouts.map(async (layout) => await layout.render()));
     }
@@ -1062,14 +1062,15 @@ export class Scene {
   }
 
   /**
-   * 3D の描画（docs/3d-design.md §6-1、柱・影・地面は §3-4 のまま）。配置 → 床 → 投影 → 地面 → north 降順にノード
-   * （床にいないノードには影と柱）。2D と同じ `place()` の中心を投影で置き換えるだけで、Node の描画は無改造。
-   * 埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は中心ノート（north 0・level 0）の
-   * 投影の不動点なので、保持した要素の位置は 3D でも合う（床のほうが `floor` のぶん下がる）。
+   * 3D の描画（docs/3d-design.md §6-1、柱・影・地面は §3-4 のまま）。配置 → 友の帯を中心の y に揃える → 床 → 投影 →
+   * 地面 → north 降順にノード（床にいないノードには影と柱）。2D と同じ `place()` の中心を投影で置き換えるだけで、
+   * Node の描画は無改造。埋め込みの中心（`retainCentralNode` で要素を保持する）は Layout が原点に置き、原点は
+   * 中心ノート（north 0・level 0）の投影の不動点なので、保持した要素の位置は 3D でも合う（床のほうが `floor` のぶん下がる）。
+   * `friendLayouts`（左右の友）だけ `friendBandShift` で 2D の y を動かす（上流の Layout の半行のずれを 3D でだけ戻す）。
    * 戻り値は地面・影・柱の要素。`render()` がリンクの後ろに並べる。link は付けず、ノードのグループにも入れない。
    * 柱・影・地面が変えた `ea.style` は元に戻すので、続く `links.render()` が受け取るスタイルは 2D と同じ（最後のノードが残したもの）。
    */
-  private async render3D(): Promise<ExcalidrawElement[]> {
+  private async render3D(friendLayouts: Layout[]): Promise<ExcalidrawElement[]> {
     const ea = this.ea;
     const view3D = this.plugin.settings.view3D;
     const params: ProjectionParams = {
@@ -1081,12 +1082,17 @@ export class Scene {
     // 配置: 2D と同じ中心
     this.layouts.forEach(layout => layout.place());
 
+    // 友の帯を中心ノートの y に揃える（§6-1「フレンドと中心は同じ north」）。中心は動かさない
+    const centerY = this.rootNode.getCenter().y;
+    const shiftOf = (layout: Layout): number => friendLayouts.includes(layout) ? friendBandShift(centerY, layout.spec.rowHeight) : 0;
+
     // 床は画面内の最小 level（§6-1）
     const floor = floorOf(this.layouts.flatMap(layout => layout.nodes.map(node => node.level)));
 
     // 投影（§6-1）
     const placed: PlacedNode[] = this.layouts.flatMap(layout => layout.nodes.map(node => {
-      const center = node.getCenter();
+      const c = node.getCenter();
+      const center = {x: c.x, y: c.y + shiftOf(layout)};
       return {
         node,
         center,
@@ -1099,7 +1105,7 @@ export class Scene {
     const sceneryIds = this.keepingStyle(() => this.renderGround(placed, floor, params));
 
     // 奥（north 大）から手前へ逐次描く（§6-1）。影と柱は箱の下端が要るのでノードの直後に描く
-    placed.sort((a, b) => compareDrawOrder(a.center, b.center));
+    placed.sort((a, b) => compareDrawOrder(a.projected, b.projected));
     for (const p of placed) {
       await p.node.render();
       if(p.node.level !== floor) {
@@ -1165,14 +1171,13 @@ export class Scene {
 
   /**
    * 床にいないノードの影（床の位置の小さな楕円）と柱（箱の下端から床へ、破線、リンクより薄い色）（§3-4）。
-   * 箱の位置は描画済みの要素（`node.id`: テキストなら枠、埋め込みなら iframe／画像）から読む。
-   * `retainCentralNode` で保持した埋め込みの中心は `render()` が `id` を付け直さないので、保持した要素の先頭
-   * （iframe、または画像の枠）を使う。
+   * 箱の位置は描画済みの要素（`node.id`: テキストなら枠、埋め込みなら iframe／画像。保持した埋め込みでも
+   * `Node.render()` が `id` を付け直す）から読む。
    */
   private renderShadowAndPillar(node: Node, ground: Projected): string[] {
     const ea = this.ea;
     const settings = this.plugin.settings;
-    const box = ea.getElement(node.id ?? node.embeddedElementIds[0]);
+    const box = ea.getElement(node.id);
     const shadowWidth = box.width * VIEW_3D.shadowWidthRatio;
     const shadowHeight = shadowWidth * VIEW_3D.shadowAspect;
     const shadowColor = withAlpha(settings.baseNodeStyle.backgroundColor, VIEW_3D.shadowAlpha);

@@ -1,4 +1,4 @@
-import { NodeStyle, LinkStyle, Hierarchy } from "../Types";
+import { NodeStyle, LinkStyle, Hierarchy, View3DSettings } from "../Types";
 
 export const APPNAME = "ExcaliBrain";
 export const PLUGIN_NAME = "excalibrain"
@@ -28,6 +28,13 @@ export const DEFAULT_AXIS_LINK_STYLE:LinkStyle = {
   strokeColor: "#22ec23cc",
   strokeWidth: 4.5,
 }
+
+/** 3D view (docs/3d-design.md §6-1). `loadSettings()` merges these into a saved `view3D` object. */
+export const DEFAULT_VIEW_3D_SETTINGS: Readonly<View3DSettings> = {
+  northShearX: 0.4,
+  northRise: 0.3,
+  levelHeightFactor: 2.2,
+};
 
 export const DEFAULT_NODE_STYLE:NodeStyle = {
   prefix: "",

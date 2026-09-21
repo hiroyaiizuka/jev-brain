@@ -129,6 +129,19 @@ export type Neighbour = {
   linkDirection: LinkDirection;
 }
 
+/**
+ * Settings of the 3D view (docs/3d-design.md §6-1): the cabinet projection `Projection.project` uses.
+ * The toggle itself (`Scene.view3D`) is not saved. Defaults: `DEFAULT_VIEW_3D_SETTINGS` in constants.ts.
+ */
+export type View3DSettings = {
+  /** Screen x shift per unit of north (2D distance north of the central node). */
+  northShearX: number;
+  /** Screen y rise per unit of north. */
+  northRise: number;
+  /** Height of one level = nodeHeight × this. A bit over twice the node height (3d-feedback §1). */
+  levelHeightFactor: number;
+};
+
 export type LayoutSpecification = {
   columns: number;
   origoX: number;

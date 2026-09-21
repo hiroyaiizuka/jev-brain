@@ -72,7 +72,7 @@
 - northShearX（0.40）／northRise（0.30）／levelHeightFactor（2.2）は設定。
 - 3D をオフにすると元の 2D とまったく同じ表示。
 
-現在の実装（LEV-119）: `Projection.project` を斜投影（`x = gx + north·northShearX`、`y = −north·northRise − level·levelHeight`、`depth = north`。原点は中心ノートの箱で、床は `floorOf`＝画面内の最小 level の高さ。`3d-design.md` §6-1）に書き換え、yaw・`widthScale`・`compressBands`・`extentOf`・`groundLevelOf` を削除、`Scene.render3D()` は設定 `view3D`（`northShearX`／`northRise`／`levelHeightFactor`、`DEFAULT_VIEW_3D_SETTINGS` 0.40／0.30／2.2、`loadSettings` で既定値を merge、設定画面の「3D view」節にスライダー 3 つ）から係数を作って `compareDrawOrder`（north 降順、同値は x 昇順）で逐次描き、床・影・柱は今の関数のまま `floor` の高さに乗せ、保持した埋め込みの中心の柱は `embeddedElementIds[0]` を箱に使う（`tests/graph/projection.test.ts` を書き換え、`link-gates.test.ts` の投影の例を差し替え。実機は未実施で LEV-120 以降と合わせて確認）。
+現在の実装（LEV-119）: `Projection.project` を斜投影（`x = gx + north·northShearX`、`y = −north·northRise − level·levelHeight`、`depth = north`。原点は中心ノートの箱で、床は `floorOf`＝画面内の最小 level の高さ。`3d-design.md` §6-1）に書き換え、yaw・`widthScale`・`compressBands`・`extentOf`・`groundLevelOf` を削除、`Scene.render3D()` は設定 `view3D`（`Types.View3DSettings`: `northShearX`／`northRise`／`levelHeightFactor`、`constants.DEFAULT_VIEW_3D_SETTINGS` 0.40／0.30／2.2、`loadSettings` で既定値を merge、設定画面の「3D view」節（`setHeading()`）にスライダー 3 つ。northRise の下限 0.2 は親の最下行と友が重ならない値）から係数を作り、左右の友の帯だけ `friendBandShift`（上流 Layout の半行のずれを 3D でだけ戻し、中心と友を同じ north にする）で動かしてから投影し、`compareDrawOrder`（`depth` 降順、同値は画面 x 昇順）で逐次描き、床・影・柱は今の関数のまま `floor` の高さに乗せる。保持した埋め込みの中心は `Node.render()` が `id` を付け直すので柱・影の箱が取れる（`tests/graph/projection.test.ts` を書き換え、`link-gates.test.ts` の投影の例を差し替え。実機は未実施で LEV-120 以降と合わせて確認。埋め込みの中心（高さ 700）に Down の子が付くと床が箱の内側を通る件は LEV-120 向けの子チケットに切り出し）。
 
 ### 3D-3 実測と重なりの追加対策
 

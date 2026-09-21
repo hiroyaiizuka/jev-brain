@@ -5,6 +5,7 @@ import type { ExcaliBrainSettings } from 'src/Settings';
 import { Link } from 'src/graph/Link';
 import { Links } from 'src/graph/Links';
 import type { Node } from 'src/graph/Node';
+import { DEFAULT_VIEW_3D_SETTINGS } from 'src/constants/constants';
 import { type Level, project, type ProjectionParams } from 'src/graph/Projection';
 import { LinkDirection, RelationType, Role } from 'src/Types';
 import type { ExcalidrawAutomate } from 'src/utils/ExcalidrawAutomateCompatibility';
@@ -142,8 +143,12 @@ describe('3D: the projected centres pick the parent/child gates', () => {
   });
 
   it('with the cabinet projection a parent north of the centre never swaps, but a parent displayed south of a friend does', () => {
-    // 3D-2 defaults (Projection.DEFAULT_VIEW_3D_SETTINGS) with a nodeHeight of 60 and the floor at -1 (a Down child on screen).
-    const params: ProjectionParams = { northShearX: 0.4, northRise: 0.3, levelHeight: 2.2 * 60 };
+    // 3D-2 defaults with a nodeHeight of 60 and the floor at -1 (a Down child on screen).
+    const params: ProjectionParams = {
+      northShearX: DEFAULT_VIEW_3D_SETTINGS.northShearX,
+      northRise: DEFAULT_VIEW_3D_SETTINGS.northRise,
+      levelHeight: DEFAULT_VIEW_3D_SETTINGS.levelHeightFactor * 60,
+    };
     const at = (prefix: string, center: { x: number; y: number }, level: Level) => {
       const p = project(center, level, params);
       return makeNode(prefix, { x: p.x, y: p.y });

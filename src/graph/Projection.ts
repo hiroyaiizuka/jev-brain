@@ -61,7 +61,7 @@ export const levelOf = (
 
 /**
  * 床の高さ（§6-1）: 画面内の最小 level。中心ノードは常に 0 なので 0 から始め、Down の子（−1）があれば −1。
- * 空でも 0。床にいるノード（level === floor）には柱を引かず、接地影だけを描く。
+ * 空でも 0。床にいるノード（level === floor）には柱も影も描かない（接地影は §6-2、LEV-120）。
  */
 export const floorOf = (levels: readonly Level[]): Level => levels.reduce<Level>((floor, level) => (level < floor ? level : floor), 0);
 
@@ -90,9 +90,9 @@ export const boundsOf = (boxes: readonly Box[], margin = 0): Bounds | null => {
 };
 
 /**
- * 斜投影（キャビネット図法）の係数。`northShearX`／`northRise`／`levelHeightFactor` は設定 `view3D`（`Settings.ts`）に
- * 保存され、`levelHeight` は `levelHeightFactor × nodeHeight` を呼び出し側（Scene）が毎回計算して渡す
- * （`nodeHeight` は `compactingFactor` とフォントから決まるので px 固定にしない）。
+ * 斜投影（キャビネット図法）の係数。`northShearX`／`northRise` は設定 `view3D`（`View3DSettings`、既定値は
+ * `constants.ts` の `DEFAULT_VIEW_3D_SETTINGS`）そのもの、`levelHeight` は `levelHeightFactor × nodeHeight` を
+ * 呼び出し側（Scene）が毎回計算して渡す（`nodeHeight` は `compactingFactor` とフォントから決まるので px 固定にしない）。
  */
 export type ProjectionParams = {
   /** north 1 につき画面 x を右へ動かす量（既定 0.40）。 */
@@ -103,19 +103,17 @@ export type ProjectionParams = {
   levelHeight: number;
 };
 
-/** 設定 `view3D` の形と既定値（docs/3d-design.md §6-1）。`Settings.ts` の `DEFAULT_SETTINGS.view3D` はこれを使う。 */
-export type View3DSettings = {
-  northShearX: number;
-  northRise: number;
-  /** 1 段の高さ = nodeHeight × この倍率。ノードの高さの 2 倍強（フィードバック §1）。 */
-  levelHeightFactor: number;
-};
-
-export const DEFAULT_VIEW_3D_SETTINGS: Readonly<View3DSettings> = {
-  northShearX: 0.4,
-  northRise: 0.3,
-  levelHeightFactor: 2.2,
-};
+/**
+ * 友の帯を中心ノートの y に揃えるための、2D の y に足す量（§6-1「フレンドと中心は同じ north」）。
+ *
+ * 上流の `Layout.place()` は行の中心を `top + row·rowHeight`（`top = origoY − rows·rowHeight/2`）に置くので、
+ * どの帯も行の平均が origoY より rowHeight/2 だけ北にある。中心の帯（rowHeight = 中心の箱の高さ）と友の帯
+ * （rowHeight = nodeHeight）でこの量が違い、2D では中心と友の y が (nodeHeight − 中心の行高)/2 ずれる
+ * （`Scene` の `lCenter` の origoY のコメント「friends are just slightly off center」。実測 −12 と −38）。
+ * 2D はそのままにし、3D では友の帯の平均の行が中心ノートの y（`centerY`）に来るよう帯ごと動かしてから投影する。
+ * 中心は動かさない（原点は `retainCentralNode` の不動点）。
+ */
+export const friendBandShift = (centerY: number, friendRowHeight: number): number => centerY + friendRowHeight / 2;
 
 export type Projected = {
   x: number;
@@ -152,7 +150,7 @@ export const project = (center: Point, level: Level, params: ProjectionParams): 
 };
 
 /**
- * 描画順（§6-1）: north の大きい順（奥 → 手前）。同じ north（= 同じ 2D の y）なら x の小さい順（西から）で決定的にする。
- * `Array.prototype.sort` の比較関数として 2D の中心を渡す。
+ * 描画順（§6-1）: `depth`（north）の大きい順（奥 → 手前）。同じ north なら画面の x の小さい順（西から）で決定的にする。
+ * `Array.prototype.sort` の比較関数として `project` の結果を渡す。
  */
-export const compareDrawOrder = (a: Point, b: Point): number => a.y - b.y || a.x - b.x;
+export const compareDrawOrder = (a: Projected, b: Projected): number => b.depth - a.depth || a.x - b.x;

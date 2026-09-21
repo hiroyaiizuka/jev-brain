@@ -220,6 +220,11 @@ export class Node {
 
     //if this.embeddedElementIds.length>0 then we are retaining the embedded element (so it does not reload)
     //Scene.render: retainCentralNode
+    if(this.isEmbedded && this.embeddedElementIds.length>0) {
+      //the elements survive from the previous render; point `id` at the frame (or image) as renderEmbedded() left it,
+      //so readers of `id` (the 3D pillar and shadow in Scene) find the box
+      this.id = this.embeddedElementIds[this.embeddedElementIds.length-1];
+    }
     const labelSize = this.isEmbedded
       ? this.embeddedElementIds.length>0
         ? {width: this.style.embedWidth, height: this.style.embedHeight}
