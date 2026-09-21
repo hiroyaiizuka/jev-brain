@@ -55,7 +55,7 @@
 - 3D オフで変更前とまったく同じ配置。クリック・ホバー・フィルター・ピン留めが 2D と同じ。
 - `Projection.ts` の `levelOf` / `project` / `compressBands` に単体テスト。
 
-現在の実装（LEV-111）: `Layout.render()` を `place()`（中心を決める）と `renderNodes()`（配置済みノードを行順に描く）に分割し、`render()` は両方を順に呼ぶ。`Node.level`（−1 | 0 | 1、既定 0）を追加。描画は無改造で、2D は `render()` のまま、ノードの描画順も分割前と同じ（`tests/graph/layout.test.ts`）。`Projection.ts` は LEV-110 で並走中。Scene の 3D 分岐・柱・影・地面（LEV-112）、ゲート選び直し（LEV-113）、トグル（LEV-114）、実機（LEV-115、2D 回帰 E01〜E03 を含む）は未着手。
+現在の実装（LEV-110・LEV-111）: `src/graph/Projection.ts`（`levelOf` / `project` / `compressBands`）と `tests/graph/projection.test.ts` が LEV-110 で入った（規則は `docs/3d-design.md` §3-1・§3-2・§4-1）。`Layout.render()` を `place()`（中心を決める）と `renderNodes()`（配置済みノードを行順に描く）に分割し、`render()` は両方を順に呼ぶ。`Node.level`（−1 | 0 | 1、既定 0）を追加。描画は無改造で、2D は `render()` のまま、ノードの描画順も分割前と同じ（`tests/graph/layout.test.ts`）。Scene の 3D 分岐・柱・影・地面（LEV-112）、ゲート選び直し（LEV-113）、トグル（LEV-114）、実機（LEV-115、2D 回帰 E01〜E03 を含む）は未着手。
 
 ### R1 ベータ配布（3D-1 の後）
 

@@ -48,12 +48,11 @@ Evergreens の `hierarchyLinkStyles` で色・太さを変えているフィー�
 
 ### 3-1. 高さの決め方
 
-- 中心ノートは 0。隣接ノードの高さは、中心との関係のフィールド名が `hierarchy.abstract`（Up）／`hierarchy.concrete`（Down）のどちらに入るかで決める:
-  - Up のフィールドで結ばれた親 → +1
-  - Down のフィールドで結ばれた子 → −1
-  - それ以外（Parents／Children の親子、友、前後、推論リンク、フォルダ・タグ・URL・未解決）→ 0
-- 1 ノートが複数のフィールドで結ばれている場合（`typeDefinition` がカンマ区切り）は、+1 が 1 つでもあれば +1、無ければ −1 があれば −1。
-- 兄弟（siblings）は親を介した関係なので 0。
+- 中心ノートは 0。隣接ノードの高さは 1 つの規則で決める（`Projection.levelOf`、LEV-110）:
+  - 中心との関係が親（`Role.PARENT`）または子（`Role.CHILD`）で、`typeDefinition`（カンマ区切り）のフィールドのどれかが `hierarchy.abstract`（Up）か `hierarchy.concrete`（Down）に入っていれば、親は +1、子は −1。
+  - それ以外（Parents／Children の親子、友、前後、推論リンク、フォルダ・タグ・URL）は 0。
+  - 兄弟（親を介した関係）と未解決リンク（ゴースト）は、フィールドに関係なく 0。兄弟の `Neighbour` は親の `getChildren()` 由来で「兄弟→親」のフィールドを持ち、未解決ページも定義済みのフィールドで結ばれるので、`typeDefinition` では見分けられない。Scene が `isSibling` と `page.isVirtual` を `levelOf` の第 4 引数で渡す。
+- フィールドが Up と Down のどちらに入るかは問わず、符号は役割から取る。親子の向きは Page が解決済みで、親側のノートが `down: [[中心]]` と書いた関係も `typeDefinition` は `down` のまま親に付く（`Page.addParent`）ため。普通の使い方（中心が `up:` で親を、`down:`／`example:` で子を指す）では「Up の親 → +1、Down の子 → −1」と同じ結果になる。
 - 3D 固有の設定は追加しない。領域は ONT-1 の設定をそのまま使う。
 
 これで、モックの「行動デザイン（up → Up）」は +1、「読書メモ：習慣の本（origin → Parents）」は 0 で北の地面、子の「歯磨き後に腕立て（example → Down）」は −1 になる。
@@ -80,10 +79,10 @@ depth = ry
 src/graph/Projection.ts   新規。純関数。Obsidian・Excalidraw に依存しない → Vitest で単体テスト
   levelOf(typeDefinition, role, hierarchyLowerCase) → -1 | 0 | 1
   project(center, level, params) → { x, y, depth }
-  compressBands(centers, ...) → 帯の間だけ潰した中心（§4-1）
+  compressBands(extents, depthScale) → 北・南の帯の y のずれ量（帯の間の隙間だけ潰す。§4-1）
 src/graph/Layout.ts       render() を place()（中心を決める）と renderNodes() に分割。2D は今の順番のまま
 src/graph/Node.ts         level を 1 つ持つ（既定 0）。描画は無改造
-src/Scene.ts              render() に分岐 1 つ: 3D なら place → level → project → depth 順に render → 柱・影・地面
+src/Scene.ts              render() に分岐 1 つ: 3D なら place → compressBands（Layout の帯の範囲からずれ量。兄弟は親と同じ量）→ level → project → depth 順に render → 柱・影・地面
 src/graph/Link.ts         3D のときだけ、投影後の上下でゲートを選ぶ
 src/Components/ToolsPanel.ts  3D トグル（デスクトップのみ表示）。3D-2 でヨー角
 src/Settings.ts           yaw / levelHeight / depthScale / widthScale / maxItemCount3D / showPillars / showGround（3D-2 で画面に出す。3D-1 は既定値のまま）
@@ -104,7 +103,8 @@ src/Settings.ts           yaw / levelHeight / depthScale / widthScale / maxItemC
 
 ## 4. 残る論点
 
-1. **帯の間だけ潰す**の具体: 北の帯（親）・中心の帯（左右友と中心）・南の帯（子）の各帯の内部は 2D の行間のまま、帯と帯の隙間（`parentsOrigoY` と `childrenOrigoY` が作る余白）だけ `depthScale` を掛ける。帯の中の行間を潰さないので同じ段の箱は重ならない。その代わり画面は 2D より高くなる。3D 用 `maxItemCount3D`（既定 12）で行数を抑える。実機で見て決める。
+1. **帯の間だけ潰す**の具体: 北の帯（親）・中心の帯（左右友と中心）・南の帯（子）の各帯の内部は 2D の行間のまま、帯と帯の隙間（`parentsOrigoY` と `childrenOrigoY` が作る余白）だけ `depthScale` を掛ける。`compressBands` は各帯の範囲（Layout の `top` と `top + rows·rowHeight`）を受け取って北・南のずれ量を返し、Scene が帯の全ノードに同じ量を足す。兄弟は北の帯の範囲に入れず（親より中心に近い下端を持ちうる）、親と同じ量だけ動かす。帯の中の行間を潰さないので同じ段（同じ level）の箱は重ならない。その代わり画面は 2D より高くなる。3D 用 `maxItemCount3D`（既定 12）で行数を抑える。実機で見て決める。
+   - 未解決（LEV-110 のレビューで判明、3D-3 で扱う）: (a) 同じ帯の隣り合う行に level の違うノードがあると、段差 `levelHeight`（1.5·nodeHeight）が行ピッチ（nodeHeight·cos yaw）より大きいので箱が重なる。`Layout.place()` で行を level 順（持ち上げるノードを帯の外縁側）に並べるのが候補。(b) 帯の圧縮は回転前の y で行うため、ヨー角で x·sin(yaw) が depth に混ざり、x の遠い level 0 の親・子が中心の箱と重なりうる。親 12・子 12 の受入はこの 2 点を含めて実機で確かめる。
 2. リンクの見た目は 2D と同じ（色・太さは領域とフィールド別スタイルのまま）。高さの差はリンクの長さに出る。
 3. 逆転の強調（親なのに −1、子なのに +1）は領域で高さが決まるため起きない。外す。
 

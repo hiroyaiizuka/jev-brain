@@ -4,7 +4,7 @@
 
 ## 現在の範囲
 
-AI エージェントと人間が同じ条件で開発・検証するため、自動検査、テスト用 fixture、専用 Vault、配布物一致の確認、実装時の規約を用意している。製品コードは上流 ExcaliBrain 0.2.18 をそのまま引き継いでおり、自動テストがあるのはリリース用ツーリングと純ロジック（URL 正規表現、ファイル名ユーティリティ、Layout の配置）だけ。描画（Excalidraw）とインデックス（Dataview）を含む挙動は実機でしか確認できない。
+AI エージェントと人間が同じ条件で開発・検証するため、自動検査、テスト用 fixture、専用 Vault、配布物一致の確認、実装時の規約を用意している。製品コードは上流 ExcaliBrain 0.2.18 をそのまま引き継いでおり、自動テストがあるのはリリース用ツーリングと純ロジック（URL 正規表現、ファイル名ユーティリティ、Ontology の領域判定、Layout の配置、3D の投影）だけ。描画（Excalidraw）とインデックス（Dataview）を含む挙動は実機でしか確認できない。
 
 件数・バンドルサイズ・実機の PASS/FAIL をこの文書に固定せず、実行日時とビルドのハッシュを付けた `artifacts/` の記録で追う。GitHub 上の CI、モバイル、性能計測、長時間利用の検証は、個別の証跡が揃うまで未完了として扱う。
 
@@ -13,7 +13,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 | メタデータ | `npm run validate` | manifest/package/lock/versions の不整合、必須文書の欠落 |
 | lint | `npm run lint` | 製品ソースの公式 Obsidian 推奨ルール、型情報付き ESLint、JSON 構文、スクリプトの未使用変数 |
 | 型検査 | `npm run typecheck` | 上流設定＋`noImplicitAny`、switch の fallthrough、Bundler 解決。strict は未導入（下記） |
-| 単体テスト | `npm test` | リリース検証・バージョン更新・release.yml の形・preflight／Vault 準備の安全性、URL 抽出、ファイル名、Layout の配置（列・行・top/bottom）と描画順 |
+| 単体テスト | `npm test` | リリース検証・バージョン更新・release.yml の形・preflight／Vault 準備の安全性、URL 抽出、ファイル名、Ontology の領域判定、Layout の配置（列・行・top/bottom）と描画順、3D の投影（高さ・回転・帯の圧縮） |
 | production bundle | `npm run build` | ブラウザ互換 CJS バンドル（`main.js`）。Obsidian 提供 API は external |
 | 配布物 | `npm run package` | `dist/excalibrain/` の必要ファイルと元ビルドとの一致、`dist/build-info.json` に SHA256 |
 | Vault 初期準備 | `npm run harness:prepare` | `check` 後、生成専用 Vault に配布物・fixture を配置。有効プラグインは excalibrain と、すでに有効なら Dataview／Excalidraw だけを残す |
@@ -56,7 +56,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 ### 自動テスト（Vitest、Node）
 
 - ツーリング: `validate-release`（manifest／package／lock／versions の整合、配布物一致）、`version-bump`（`npm version x.y.z` の流れ）、`release-workflow`（release.yml がタグ限定・read-only トークン・配布物 3 ファイルであること）、`preflight`／`prepare-test-vault`（生成 Vault のマーカー、symlink・hard link 拒否、有効プラグインの集合、fixture の配置）。
-- 純ロジック: `linkRegex`（Markdown リンクと生 URL の抽出。括弧付き URL が途中で切れる上流の挙動もそのまま固定）、`getFilenameFromPath`／`splitFolderAndFilename`、`buildHierarchyLowerCase`／`axisOf`（Ontology の既定値・領域間の排他・正規化。上流 0.2.18 の `loadSettings` の写しをオラクルにして Up／Down の無い設定の回帰を固定）、`Layout`（`title`／`setCenter()`／`render()` だけを持つ Node スタブで、`place()` が決める中心と `render()` の順序を固定。余りの行の置き方も上流のまま）。
+- 純ロジック: `linkRegex`（Markdown リンクと生 URL の抽出。括弧付き URL が途中で切れる上流の挙動もそのまま固定）、`getFilenameFromPath`／`splitFolderAndFilename`、`buildHierarchyLowerCase`／`axisOf`（Ontology の既定値・領域間の排他・正規化。上流 0.2.18 の `loadSettings` の写しをオラクルにして Up／Down の無い設定の回帰を固定）、`Layout`（`title`／`setCenter()`／`render()` だけを持つ Node スタブで、`place()` が決める中心と `render()` の順序を固定。余りの行の置き方も上流のまま）、`Projection`（`levelOf` の領域判定と兄弟・未解決の除外、`project` の回転・段差・depth、`compressBands` の帯間のずれ量。3d-brief §7 の 8 ノートを fixture にしている）。
 - `obsidian` モジュールは `tests/mocks/obsidian.ts` に置き換える（`TFile`／`TFolder`／`normalizePath`／`Vault.recurseChildren`／`moment.locale`）。`import ... from "src/..."` は `vitest.config.ts` の alias で解決する。
 
 ### 未カバー（実機のみ）
