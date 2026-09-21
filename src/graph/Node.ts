@@ -96,7 +96,10 @@ export class Node {
     this.center = center;
   }
 
-  /** The centre `setCenter()` stored, as a copy. The 3D branch of Scene reads it to project the node. */
+  /**
+   * The centre `setCenter()` stored, as a copy. The 3D branch of Scene reads it to project the node, and
+   * `Link` reads the projected centre in 3D to pick the parent/child gates.
+   */
   getCenter(): {x:number, y:number} {
     return {...this.center};
   }

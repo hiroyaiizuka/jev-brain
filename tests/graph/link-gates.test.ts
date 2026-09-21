@@ -1,0 +1,174 @@
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_LINK_STYLE } from 'src/constants/constants';
+import type ExcaliBrain from 'src/excalibrain-main';
+import type { ExcaliBrainSettings } from 'src/Settings';
+import { Link } from 'src/graph/Link';
+import { Links } from 'src/graph/Links';
+import type { Node } from 'src/graph/Node';
+import { type Level, project, type ProjectionParams } from 'src/graph/Projection';
+import { LinkDirection, RelationType, Role } from 'src/Types';
+import type { ExcalidrawAutomate } from 'src/utils/ExcalidrawAutomateCompatibility';
+import { createEmptyHierarchyLowerCase } from 'src/utils/hierarchy';
+
+/**
+ * Which gates `Link.render()` connects (docs/3d-design.md §1 「ゲートの向きの問題」): by role in 2D, by the
+ * projected centres in 3D. The style layering is covered by link-style.test.ts; here the plugin and the
+ * settings carry the base style only.
+ */
+const settingsStub = {
+  baseLinkStyle: { ...DEFAULT_LINK_STYLE },
+  inferredLinkStyle: {},
+  folderLinkStyle: {},
+  tagLinkStyle: {},
+  upLinkStyle: {},
+  downLinkStyle: {},
+  inverseArrowDirection: false,
+} satisfies Partial<ExcaliBrainSettings> as unknown as ExcaliBrainSettings;
+
+const plugin = {
+  hierarchyLinkStylesExtended: {},
+  hierarchyLowerCase: createEmptyHierarchyLowerCase(),
+  settings: settingsStub,
+} as unknown as ExcaliBrain;
+
+type Center = { x: number; y: number };
+
+/**
+ * A Node as `Link` sees it: the four gate ids, the centre `Scene.render3D()` stored with `setCenter()`
+ * (after projection) and the page path `Links.addLink()` keys by. y grows downward as in Excalidraw.
+ */
+function makeNode(prefix: string, center: Center = { x: 0, y: 0 }): Node {
+  return {
+    page: { path: `${prefix}.md` },
+    parentGateId: `${prefix}-parent`,
+    childGateId: `${prefix}-child`,
+    friendGateId: `${prefix}-friend`,
+    nextFriendGateId: `${prefix}-next`,
+    getCenter: () => ({ ...center }),
+  } as unknown as Node;
+}
+
+/** Records the start and end gate `render()` hands to `connectObjects`. */
+function makeEA() {
+  const gates: [start: string, end: string][] = [];
+  const ea = {
+    style: {},
+    connectObjects(startId: string, _start: unknown, endId: string): string {
+      gates.push([startId, endId]);
+      return 'arrow';
+    },
+    addLabelToLine(): void {},
+  };
+  return { ea: ea as unknown as ExcalidrawAutomate, gates };
+}
+
+/** The gates of a link from `a` to `b` where `b` has `role` relative to `a`. */
+function gatesOf(a: Node, b: Node, role: Role, view3D?: boolean): [string, string] {
+  const { ea, gates } = makeEA();
+  const link = new Link(a, b, role, RelationType.DEFINED, 'origin', ea, settingsStub, plugin);
+  if (view3D === undefined) {
+    link.render(false);
+  } else {
+    link.render(false, view3D);
+  }
+  expect(gates).toHaveLength(1);
+  return gates[0];
+}
+
+const centre = () => makeNode('c', { x: 0, y: 0 });
+const above = () => makeNode('n', { x: 0, y: -200 });
+const below = () => makeNode('s', { x: 0, y: 200 });
+const beside = () => makeNode('e', { x: 300, y: 0 });
+
+describe('2D: the gates follow the role, whatever the centres say', () => {
+  it('Role.CHILD joins the child gate of nodeA to the parent gate of nodeB, even with nodeB above nodeA', () => {
+    expect(gatesOf(centre(), above(), Role.CHILD, false)).toEqual(['c-child', 'n-parent']);
+  });
+
+  it('Role.PARENT joins the parent gate of nodeA to the child gate of nodeB, even with nodeB below nodeA', () => {
+    expect(gatesOf(centre(), below(), Role.PARENT, false)).toEqual(['c-parent', 's-child']);
+  });
+
+  it('Role.LEFT joins the friend gates, Role.RIGHT the next-friend gates', () => {
+    expect(gatesOf(centre(), beside(), Role.LEFT, false)).toEqual(['c-friend', 'e-friend']);
+    expect(gatesOf(centre(), beside(), Role.RIGHT, false)).toEqual(['c-next', 'e-next']);
+  });
+
+  it('render(hide) without the flag is the 2D path and does not read the centre (the upstream call site)', () => {
+    const noCentre = (prefix: string) => {
+      const node = makeNode(prefix);
+      delete (node as unknown as { getCenter?: unknown }).getCenter;
+      return node;
+    };
+    expect(gatesOf(noCentre('c'), noCentre('s'), Role.PARENT)).toEqual(['c-parent', 's-child']);
+    expect(gatesOf(noCentre('c'), noCentre('s'), Role.CHILD)).toEqual(['c-child', 's-parent']);
+  });
+});
+
+describe('3D: the projected centres pick the parent/child gates', () => {
+  it('a parent projected above the centre keeps the 2D gates', () => {
+    expect(gatesOf(centre(), above(), Role.PARENT, true)).toEqual(['c-parent', 'n-child']);
+  });
+
+  it('a parent projected below the centre leaves the bottom of the centre and enters the top of the parent', () => {
+    expect(gatesOf(centre(), below(), Role.PARENT, true)).toEqual(['c-child', 's-parent']);
+  });
+
+  it('a child projected below the centre keeps the 2D gates', () => {
+    expect(gatesOf(centre(), below(), Role.CHILD, true)).toEqual(['c-child', 's-parent']);
+  });
+
+  it('a child projected above the centre leaves the top of the centre and enters the bottom of the child', () => {
+    expect(gatesOf(centre(), above(), Role.CHILD, true)).toEqual(['c-parent', 'n-child']);
+  });
+
+  it('the start gate stays on nodeA when the link is stored the other way round (nodeA the parent)', () => {
+    // Links.addLink() swaps nodeA/nodeB for LinkDirection.FROM; the arrow direction must survive the gate swap.
+    expect(gatesOf(below(), centre(), Role.CHILD, true)).toEqual(['s-parent', 'c-child']);
+  });
+
+  it('the same y falls back to the role', () => {
+    expect(gatesOf(centre(), beside(), Role.PARENT, true)).toEqual(['c-parent', 'e-child']);
+    expect(gatesOf(centre(), beside(), Role.CHILD, true)).toEqual(['c-child', 'e-parent']);
+  });
+
+  it('left/right links keep the friend gates whatever the centres', () => {
+    expect(gatesOf(centre(), above(), Role.LEFT, true)).toEqual(['c-friend', 'n-friend']);
+    expect(gatesOf(centre(), below(), Role.LEFT, true)).toEqual(['c-friend', 's-friend']);
+    expect(gatesOf(centre(), above(), Role.RIGHT, true)).toEqual(['c-next', 'n-next']);
+    expect(gatesOf(centre(), below(), Role.RIGHT, true)).toEqual(['c-next', 's-next']);
+  });
+
+  it('an origin parent on the ground far to the east of a yawed centre is projected below it and gets the swap; the same parent on +1 does not', () => {
+    // 3D-1 constants (Scene.ts VIEW_3D) with a nodeHeight of 60. A north-band parent one row up and three columns east.
+    const params: ProjectionParams = { yawDegrees: 20, widthScale: 0.8, levelHeight: 1.5 * 60 };
+    const parentAt = (level: Level) => {
+      const p = project({ x: 600, y: -150 }, level, params);
+      return makeNode('origin', { x: p.x, y: p.y });
+    };
+    const c = project({ x: 0, y: 0 }, 0, params);
+    expect(c).toMatchObject({ x: 0, y: 0 });
+
+    const onGround = parentAt(0);
+    expect(onGround.getCenter().y).toBeGreaterThan(0);
+    expect(gatesOf(makeNode('c', c), onGround, Role.PARENT, true)).toEqual(['c-child', 'origin-parent']);
+
+    const raised = parentAt(1);
+    expect(raised.getCenter().y).toBeLessThan(0);
+    expect(gatesOf(makeNode('c', c), raised, Role.PARENT, true)).toEqual(['c-parent', 'origin-child']);
+  });
+});
+
+describe('Links.render() hands view3D to every link', () => {
+  it('defaults to 2D and passes true through', () => {
+    const { ea, gates } = makeEA();
+    const links = new Links(plugin);
+    links.addLink(centre(), below(), Role.PARENT, RelationType.DEFINED, 'origin', LinkDirection.TO, ea, settingsStub);
+
+    links.render([]);
+    expect(gates).toEqual([['c-parent', 's-child']]);
+
+    links.render([], true);
+    expect(gates[1]).toEqual(['c-child', 's-parent']);
+  });
+});

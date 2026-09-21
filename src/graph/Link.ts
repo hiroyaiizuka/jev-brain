@@ -66,7 +66,11 @@ export class Link {
     };
   }
 
-  render(hide: boolean) {
+  /**
+   * `view3D`: pick the parent/child gates from the projected centres instead of the role
+   * (see `gateIds()`). The 2D path never passes it, so it keeps the upstream gates.
+   */
+  render(hide: boolean, view3D: boolean = false) {
     const ea = this.ea;
     const style = this.style;
     applyEAStyle(ea, {
@@ -76,26 +80,7 @@ export class Link {
       strokeWidth: style.strokeWidth,
       opacity: hide ? 10 : 100,
     });
-    let gateAId: string;
-    let gateBId: string;
-    switch(this.nodeBRole) {
-      case Role.CHILD: 
-        gateAId = this.nodeA.childGateId;
-        gateBId = this.nodeB.parentGateId; 
-        break;
-      case Role.PARENT:
-        gateAId = this.nodeA.parentGateId;
-        gateBId = this.nodeB.childGateId;
-        break;
-      case Role.RIGHT:
-          gateAId = this.nodeA.nextFriendGateId;
-          gateBId = this.nodeB.nextFriendGateId;
-          break;
-      default:
-        gateAId = this.nodeA.friendGateId;
-        gateBId = this.nodeB.friendGateId;
-        break;
-    }
+    const [gateAId, gateBId] = this.gateIds(view3D);
     const id = ea.connectObjects(
       gateAId,
       null,
@@ -113,6 +98,33 @@ export class Link {
         strokeColor: style.textColor,
       });
       ea.addLabelToLine(id,this.hierarchyDefinition);
-    }   
+    }
+  }
+
+  /**
+   * The gates to connect, nodeA's first (the arrow keeps its nodeA → nodeB direction). A parent/child
+   * link joins the child gate (bottom) of the upper node to the parent gate (top) of the lower one.
+   * In 2D the role says which node is upper, since Layout puts parents north and children south. In 3D
+   * a parent on the ground can be projected below the centre (docs/3d-design.md §1 「ゲートの向きの問題」),
+   * so the projected centres `Scene.render3D()` stored with `setCenter()` decide, and the role only breaks
+   * a tie. Left/right links keep the friend gates.
+   */
+  private gateIds(view3D: boolean): [gateAId: string, gateBId: string] {
+    const a = this.nodeA;
+    const b = this.nodeB;
+    switch(this.nodeBRole) {
+      case Role.CHILD:
+      case Role.PARENT: {
+        const dy = view3D ? b.getCenter().y - a.getCenter().y : 0;
+        const bBelowA = dy === 0 ? this.nodeBRole === Role.CHILD : dy > 0;
+        return bBelowA
+          ? [a.childGateId, b.parentGateId]
+          : [a.parentGateId, b.childGateId];
+      }
+      case Role.RIGHT:
+        return [a.nextFriendGateId, b.nextFriendGateId];
+      default:
+        return [a.friendGateId, b.friendGateId];
+    }
   }
 }

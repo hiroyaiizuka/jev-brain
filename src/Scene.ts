@@ -1042,7 +1042,7 @@ export class Scene {
     const sceneryIds = new Set(sceneryElements.map(el=>el.id));
     const nodeElements = ea.getElements().filter(el=>!sceneryIds.has(el.id));
     const nodeIds = new Set(nodeElements.map(el=>el.id));
-    this.links.render(Array.from(this.toolsPanel.linkTagFilter.selectedLinks));
+    this.links.render(Array.from(this.toolsPanel.linkTagFilter.selectedLinks), this.view3D);
     
     const linkElements = ea.getElements().filter(el=>!nodeIds.has(el.id) && !sceneryIds.has(el.id));
 
