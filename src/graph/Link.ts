@@ -2,6 +2,7 @@ import { ExcalidrawAutomate, applyEAStyle } from "src/utils/ExcalidrawAutomateCo
 import ExcaliBrain from "src/excalibrain-main";
 import { ExcaliBrainSettings } from "src/Settings";
 import { LinkStyle, RelationType, Role } from "src/Types";
+import { axisOf } from "src/utils/hierarchy";
 import { Node } from "./Node";
 
 export class Link {
@@ -28,13 +29,13 @@ export class Link {
             case "file-tree": 
               linkstyle = {
                 ...linkstyle,
-                ...plugin.settings.folderLinkStyle    
+                ...settings.folderLinkStyle    
               };
               break;
             case "tag-tree":
               linkstyle = {
                 ...linkstyle,
-                ...plugin.settings.tagLinkStyle    
+                ...settings.tagLinkStyle    
               };
               break;
           }
@@ -46,11 +47,21 @@ export class Link {
         }
       })
     }
+    // Up / Down region of the link, from the fields in hierarchyDefinition (docs/ontology-axis-design.md §1).
+    // Inferred links carry no definition, so they get no region.
+    const axis = axisOf(hierarchyDefinition, plugin.hierarchyLowerCase);
+    const axisStyle: LinkStyle = axis === "abstract"
+      ? settings.upLinkStyle
+      : axis === "concrete"
+        ? settings.downLinkStyle
+        : {};
+    // Layered base, inferred, region, per-field: a per-field style still wins over the region's.
     this.style = {
       ...settings.baseLinkStyle,
       ...this.isInferred
         ? settings.inferredLinkStyle
         : {},
+      ...axisStyle,
       ...linkstyle
     };
   }

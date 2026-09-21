@@ -16,7 +16,7 @@ import { WarningPrompt } from "./utils/Prompts";
 import { Node as GraphNode } from "./graph/Node";
 import { svgToBase64 } from "./utils/utils";
 import { Link } from "./graph/Link";
-import { DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, PREDEFINED_LINK_STYLES } from "./constants/constants";
+import { DEFAULT_AXIS_LINK_STYLE, DEFAULT_HIERARCHY_DEFINITION, DEFAULT_LINK_STYLE, DEFAULT_NODE_STYLE, PREDEFINED_LINK_STYLES } from "./constants/constants";
 import { ExcalidrawAutomate, getEA } from "./utils/ExcalidrawAutomateCompatibility";
 
 export interface ExcaliBrainSettings {
@@ -65,6 +65,10 @@ export interface ExcaliBrainSettings {
   inferredLinkStyle: LinkStyle;
   folderLinkStyle: LinkStyle;
   tagLinkStyle: LinkStyle;
+  /** Style of links whose field is in the Up (abstract) region; a per-field style in hierarchyLinkStyles wins over it. */
+  upLinkStyle: LinkStyle;
+  /** Same for the Down (concrete) region. */
+  downLinkStyle: LinkStyle;
   hierarchyLinkStyles: {[key: string]: LinkStyle};
   navigationHistory: string[];
   allowOntologySuggester: boolean;
@@ -165,6 +169,11 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   tagLinkStyle: {
     strokeColor: "#4682b4ff",
   },
+  // Two objects, not one shared: the settings tab edits a style object in place, so a shared
+  // one would make an edit to Up show up in Down. (Like the other link styles, a data.json
+  // without these keys still gets these very objects from Object.assign in loadSettings.)
+  upLinkStyle: { ...DEFAULT_AXIS_LINK_STYLE },
+  downLinkStyle: { ...DEFAULT_AXIS_LINK_STYLE },
   hierarchyLinkStyles: {},
   navigationHistory: [],
   allowOntologySuggester: true,

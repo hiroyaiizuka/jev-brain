@@ -43,7 +43,7 @@
 - Up と Parents に同じフィールドを書いたら Up が勝つ。Up／Down の無い既存設定は回帰なし（実機 E01〜E05）。
 - `Link` のスタイル重ね順と領域の排他に単体テスト。
 
-現在の実装: LEV-106 で `Hierarchy` に `abstract`／`concrete`（既定は空配列）を足し、読み込み時の既定値・排他（hidden → Up → Down → Parents → Children → 左右 → 前後 → exclusions の順に後ろから落とす）・ソートを `src/utils/hierarchy.ts` の純関数 `buildHierarchyLowerCase` と `axisOf` に移し、`loadSettings` から呼ぶ。`tests/utils/hierarchy.test.ts` が上流 0.2.18 のアルゴリズムの写しをオラクルにして「Up／Down の無い設定は同じ結果」を固定し、Up 対 Parents の排他・正規化・`axisOf` を検証する。関係判定とリンクスタイル（LEV-107）、設定画面・モーダル・サジェスター（LEV-108）、実機 E01〜E05 の回帰確認（LEV-109）は未着手。
+現在の実装: LEV-106 で `Hierarchy` に `abstract`／`concrete`（既定は空配列）を足し、読み込み時の既定値・排他（hidden → Up → Down → Parents → Children → 左右 → 前後 → exclusions の順に後ろから落とす）・ソートを `src/utils/hierarchy.ts` の純関数 `buildHierarchyLowerCase` と `axisOf` に移し、`loadSettings` から呼ぶ。`tests/utils/hierarchy.test.ts` が上流 0.2.18 のアルゴリズムの写しをオラクルにして「Up／Down の無い設定は同じ結果」を固定し、Up 対 Parents の排他・正規化・`axisOf` を検証する。LEV-107 で `Page.addDVFieldLinksToPage` が `hierarchyLowerCase.abstract` を Parents と同じ処理（北）、`concrete` を Children と同じ処理（南）に通し（`item.field` はフィールド名のまま定義に残る）、`Link` のスタイルの重ね順を base → inferred → 領域（`axisOf` で判定、`upLinkStyle`／`downLinkStyle`）→ フィールド別にした。`ExcaliBrainSettings` に `upLinkStyle`／`downLinkStyle` の型と既定値（`DEFAULT_AXIS_LINK_STYLE`: `#22ec23cc`・太さ 4.5）を足した。`tests/graph/link-style.test.ts` が plugin／EA スタブで領域のみ・フィールド別のみ・両方・inferred の 4 通りと file-tree／tag-tree の回帰、`render()` が EA に渡す色・太さ・ゲートを固定し、`tests/graph/page-relations.test.ts` が Dataview／vault スタブで Up が親・Down が子になること、Up／Down が空なら従来どおりなこと、定義の重複判定が完全一致になったこと（`architecture.md` D8）を固定する。設定画面・モーダル・サジェスター（LEV-108）、実機 E01〜E05 の回帰確認（LEV-109）は未着手。
 
 ### 3D-1 固定視点の 3D トグル（ONT-1 の後）
 
