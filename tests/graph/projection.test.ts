@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { Role } from 'src/Types';
+import { Layout } from 'src/graph/Layout';
+import type { Node } from 'src/graph/Node';
+import { LayoutSpecification, Role } from 'src/Types';
 import { DEFAULT_VIEW_3D_SETTINGS } from 'src/constants/constants';
 import {
   Level,
@@ -13,6 +15,8 @@ import {
   isOnAxis,
   limitByAxis,
   bandShift,
+  BandGrid,
+  regridBand,
   friendBandShift,
   levelOf,
   FLOOR_LEVEL,
@@ -1026,5 +1030,190 @@ describe('bandShift (床に残る Parents／Children の帯を中心から離す
     const shifted = -291 + bandShift(centerY, -291, distance, -1);
     expect(project({ x: 0, y: shifted }, 0, { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 1, downHeight: 1, rowLift: 1 }).y)
       .toBeCloseTo(project({ x: 0, y: centerY }, 0, { northShearX: 0.4, northRise: 0.3, heightShearX: 0, upHeight: 1, downHeight: 1, rowLift: 1 }).y - distance * 0.3, 9);
+  });
+});
+
+describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-design §7 の 3 つ目・LEV-145)', () => {
+  // artifacts/3d2-vertical-e2e の 2D（行の間隔 77）。docs/3d-brief.md §7 の 8 ノートを上流の `Layout` が置いたときの格子:
+  //   北の帯（親 4 つ）は 2 列 2 行、columnWidth 236。1 行目 y −368 に 抽象化のはしご（up）・習慣ループ（up）、
+  //   2 行目 y −291 に 行動デザイン（up）・読書メモ：習慣の本（origin）。
+  //   南の帯（子 5 つ）は 3 列 2 行、columnWidth 280。1 行目 y 214 に 9月20日 朝ランの記録・朝のルーティン手順・
+  //   歯磨き後に腕立て（どれも Down）、2 行目 y 290 に 習慣トラッカーの使い方・週次レビューのテンプレート（どちらも `leads to`）。
+  // 中心ノートは x 0 なので、帯の中心線（`LayoutSpecification.origoX`）も 0。
+  const north: BandGrid = { columns: 2, columnWidth: 236, rowHeight: 77, side: -1 };
+  const south: BandGrid = { columns: 3, columnWidth: 280, rowHeight: 77, side: 1 };
+  const centre = 0;
+
+  it('puts the one parent left on the band（origin）on the true north of the centre note', () => {
+    // 受入条件 1: up の 3 つが垂直軸へ抜けたあと、読書メモ：習慣の本 は 2 列の東側（x 118）に取り残されていた。
+    expect(regridBand([{ x: 118, y: -291 }], { x: centre, y: -291 }, north)).toEqual([{ x: centre, y: -291 }]);
+  });
+
+  it('puts two parents left on the band either side of the centre', () => {
+    // 受入条件 1 の後半。1 行に 2 つなので columnWidth の半分ずつ東西へ。
+    expect(regridBand([{ x: -118, y: -291 }, { x: 118, y: -368 }], { x: centre, y: -291 }, north)).toEqual([
+      { x: centre + 118, y: -291 }, // 読み順では y −291 が 2 つ目
+      { x: centre - 118, y: -291 },
+    ]);
+  });
+
+  it('centres the two `leads to` children of the south band on the centre note', () => {
+    // 受入条件 2: down／example の 3 つが抜けたあと、習慣トラッカー（x 0）と 週次レビュー（x 280）が東へ寄っていた。
+    // 残り 2 つで 1 行になり、丸ごと空いた 1 行目のぶん帯の内側の縁（y 214）まで詰める。
+    expect(regridBand([{ x: 0, y: 290 }, { x: 280, y: 290 }], { x: centre, y: 214 }, south)).toEqual([
+      { x: centre - 140, y: 214 },
+      { x: centre + 140, y: 214 },
+    ]);
+  });
+
+  it('keeps the band hugging the centre: the innermost row stays at `origin.y` and the rest stack outward', () => {
+    // 北の帯は最も南の行が中心側なので、読み順の最後の行が `origin.y`。南の帯は最も北の行が中心側。
+    const five = [0, 1, 2, 3, 4].map((i) => ({ x: i * 10, y: i }));
+    // 北の帯（2 列）は 3 行になり、読み順の最後の行が y −291、外側へ 77 ずつ北へ
+    expect(regridBand(five, { x: centre, y: -291 }, north).map((c) => c.y))
+      .toEqual([-291 - 2 * 77, -291 - 2 * 77, -291 - 77, -291 - 77, -291]);
+    // 南の帯（3 列）は 2 行で、読み順の 1 行目が y 214、外側へ 77 南へ
+    expect(regridBand(five, { x: centre, y: 214 }, south).map((c) => c.y)).toEqual([214, 214, 214, 214 + 77, 214 + 77]);
+  });
+
+  it('reads the band north to south, then west to east（`Layout` が並べたタイトル順のまま）', () => {
+    // 3 列。読み順の 1〜3 番目が 1 行目、4・5 番目が 2 行目の中央揃え。入力の並びは崩さずに返す
+    const scattered = [
+      { x: 280, y: 290 }, // 読み順 5
+      { x: -280, y: 214 }, // 読み順 1
+      { x: 280, y: 214 }, // 読み順 3
+      { x: -280, y: 290 }, // 読み順 4
+      { x: 0, y: 214 }, // 読み順 2
+    ];
+    expect(regridBand(scattered, { x: centre, y: 214 }, south)).toEqual([
+      { x: centre + 140, y: 214 + 77 },
+      { x: centre - 280, y: 214 },
+      { x: centre + 280, y: 214 },
+      { x: centre - 140, y: 214 + 77 },
+      { x: centre, y: 214 },
+    ]);
+  });
+
+  it('lands a full row exactly where `Layout.place()` would（満杯の行は 2D と同じ位置）', () => {
+    // `Layout.place()`: center00.x = origoX − (columns−1)/2 × columnWidth、idx 番目は + idx × columnWidth。
+    const placeX = (idx: number, grid: BandGrid) => centre - ((grid.columns - 1) / 2) * grid.columnWidth + idx * grid.columnWidth;
+    const row = [{ x: -280, y: 214 }, { x: 0, y: 214 }, { x: 280, y: 214 }];
+    expect(regridBand(row, { x: centre, y: 214 }, south).map((c) => c.x)).toEqual([placeX(0, south), placeX(1, south), placeX(2, south)]);
+  });
+
+  it('leaves the innermost row where it was, so `bandShift` keeps measuring the same distance', () => {
+    const centerY = -12;
+    const distance = 300;
+    const regridded = regridBand([{ x: 118, y: -291 }], { x: centre, y: -291 }, north);
+    expect(regridded[0].y + bandShift(centerY, regridded[0].y, distance, -1)).toBe(centerY - distance);
+  });
+
+  it('never touches the input centres', () => {
+    const centres = [{ x: 118, y: -291 }, { x: -118, y: -368 }];
+    const before = JSON.stringify(centres);
+    regridBand(centres, { x: centre, y: -291 }, north);
+    expect(JSON.stringify(centres)).toBe(before);
+  });
+
+  it('returns an empty band unchanged and falls back to one column on a broken column count', () => {
+    expect(regridBand([], { x: centre, y: -291 }, north)).toEqual([]);
+    const broken = { ...north, columns: Number.NaN };
+    // 1 列 2 行。読み順は北（y −368）が先で、中心にいちばん近い y −291 が最後の行
+    expect(regridBand([{ x: 118, y: -291 }, { x: -118, y: -368 }], { x: centre, y: -291 }, broken)).toEqual([
+      { x: centre, y: -291 },
+      { x: centre, y: -291 - 77 },
+    ]);
+  });
+});
+
+describe('regridBand と Layout.place() (8 ノート fixture の帯、LEV-145 の受入条件)', () => {
+  /** `Layout` が触るのは `title`（並べ替え）と `setCenter()` だけ。`level` は 3D の Scene が付ける。 */
+  class BandNode {
+    center: Point = { x: 0, y: 0 };
+    constructor(readonly title: string, readonly level: Level) {}
+    setCenter(center: Point): void {
+      this.center = center;
+    }
+  }
+
+  /** `Scene.calculateLayoutParams` が決める帯の形で上流の `Layout` に置かせ、置いたノードを返す。 */
+  const placeBand = (band: [string, Level][], spec: LayoutSpecification): BandNode[] => {
+    const layout = new Layout(spec);
+    const nodes = band.map(([title, level]) => new BandNode(title, level));
+    layout.nodes.push(...(nodes as unknown as Node[]));
+    layout.place();
+    return nodes;
+  };
+
+  /** 読み順（行＝北から南、同じ行は西から東）に並べ直して見る。`Layout` はタイトル順に並べてから格子へ入れる。 */
+  const readingOrder = (nodes: BandNode[]): { title: string; x: number; y: number }[] =>
+    [...nodes]
+      .sort((a, b) => a.center.y - b.center.y || a.center.x - b.center.x)
+      .map((node) => ({ title: node.title, ...node.center }));
+
+  /** 帯に残った level 0 だけを `regridBand` に渡す（`Scene.render3D` と同じ手順）。 */
+  const regridOf = (nodes: BandNode[], grid: BandGrid): { title: string; center: Point }[] => {
+    const onBand = nodes.filter((node) => !isOnAxis(node.level));
+    const ys = nodes.map((node) => node.center.y);
+    const innermostY = grid.side < 0 ? Math.max(...ys) : Math.min(...ys);
+    const centres = regridBand(onBand.map((node) => node.center), { x: 0, y: innermostY }, grid);
+    return onBand.map((node, i) => ({ title: node.title, center: centres[i] }));
+  };
+
+  /** 実測（artifacts/3d2-vertical-e2e）と同じ寸法。origoY は 1 行目が実測の y に来る値。 */
+  const baseSpec: LayoutSpecification = { columns: 1, origoX: 0, origoY: 0, top: null, bottom: null, rowHeight: 77, columnWidth: 236, maxLabelLength: 30 };
+  const parentsSpec: LayoutSpecification = { ...baseSpec, columns: 2, columnWidth: 236, origoY: -291, bottom: -154 };
+  const childrenSpec: LayoutSpecification = { ...baseSpec, columns: 3, columnWidth: 280, origoY: 291, top: 0 };
+
+  const parents: [string, Level][] = [['行動デザイン', 1], ['習慣ループ', 1], ['抽象化のはしご', 1], ['読書メモ：習慣の本', 0]];
+  const children: [string, Level][] = [
+    ['朝のルーティン手順', -1], ['歯磨き後に腕立て', -1], ['9月20日 朝ランの記録', -1],
+    ['習慣トラッカーの使い方', 0], ['週次レビューのテンプレート', 0],
+  ];
+
+  it('北の帯: origin の親が 2D では東に取り残され、組み直すと中心の真北に来る', () => {
+    const placed = placeBand(parents, parentsSpec);
+    // 2D（上流の `Layout`）: 2 列 2 行。読書メモ：習慣の本 は 2 行目の東の列で、中心（x 0）から columnWidth の半分だけ東
+    expect(readingOrder(placed)).toEqual([
+      { title: '抽象化のはしご', x: -118, y: -368 },
+      { title: '習慣ループ', x: 118, y: -368 },
+      { title: '行動デザイン', x: -118, y: -291 },
+      { title: '読書メモ：習慣の本', x: 118, y: -291 },
+    ]);
+    // 3D: up の 3 つが垂直軸へ抜け、残る 1 つが中心の真北（x が中心と同じ）に立つ
+    expect(regridOf(placed, { columns: 2, columnWidth: 236, rowHeight: 77, side: -1 })).toEqual([
+      { title: '読書メモ：習慣の本', center: { x: 0, y: -291 } },
+    ]);
+  });
+
+  it('北の帯: level 0 の親が 2 つなら中心を挟んで対称', () => {
+    const twoOnBand: [string, Level][] = [['行動デザイン', 1], ['習慣ループ', 1], ['抽象化のはしご', 0], ['読書メモ：習慣の本', 0]];
+    const centres = regridOf(placeBand(twoOnBand, parentsSpec), { columns: 2, columnWidth: 236, rowHeight: 77, side: -1 })
+      .map((n) => n.center.x);
+    expect(centres).toEqual([-118, 118]);
+    expect(centres[0] + centres[1]).toBe(0);
+  });
+
+  it('南の帯: `leads to` の 2 つが 2D では東に寄り、組み直すと中心を挟んで対称に来る', () => {
+    const placed = placeBand(children, childrenSpec);
+    // 2D: 3 列 2 行。1 行目は Down の 3 つ、2 行目は上流の行ベクトルで中央と東の列（x 0 と 280）に入る
+    expect(readingOrder(placed)).toEqual([
+      { title: '9月20日 朝ランの記録', x: -280, y: 214 },
+      { title: '朝のルーティン手順', x: 0, y: 214 },
+      { title: '歯磨き後に腕立て', x: 280, y: 214 },
+      { title: '習慣トラッカーの使い方', x: 0, y: 291 },
+      { title: '週次レビューのテンプレート', x: 280, y: 291 },
+    ]);
+    // 3D: down／example の 3 つが抜け、残る 2 つが中心を挟んで対称。丸ごと空いた 1 行目のぶん帯の内側の縁（y 214）へ詰まる
+    expect(regridOf(placed, { columns: 3, columnWidth: 280, rowHeight: 77, side: 1 })).toEqual([
+      { title: '習慣トラッカーの使い方', center: { x: -140, y: 214 } },
+      { title: '週次レビューのテンプレート', center: { x: 140, y: 214 } },
+    ]);
+  });
+
+  it('Up／Down を使っていない Vault では帯が丸ごと残るので、2D の格子をそのまま使う（Scene が組み直しを飛ばす条件）', () => {
+    const allOnBand = children.map(([title]) => [title, 0] as [string, Level]);
+    const placed = placeBand(allOnBand, childrenSpec);
+    expect(placed.filter((node) => !isOnAxis(node.level))).toHaveLength(placed.length);
   });
 });

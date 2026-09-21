@@ -80,6 +80,8 @@
 
 - 親 20・子 30 の fixture で要素数と描画時間を `artifacts/` に記録し、重なりの残りを判断する。
 
+現在の実装（LEV-145）: Up／Down を垂直軸へ抜いたあと北・南の帯に残る level 0 のノードだけで列を組み直す純関数 `Projection.regridBand`（行ごとの中央揃え、丸ごと空いた行は詰め、中心にいちばん近い行は `place()` の位置のまま）を足し、`Scene.render3D()` が Parents／Children の帯に当ててから `bandShift` を測るようにした（`3d-design.md` §6-8。軸へ抜けたノードが無い帯は 2D の格子のまま触らない。実機は未実施）。
+
 ### H1 引き継ぎコードの整地（3D-1 の後）
 
 - `eslint.config.mjs` の「引き継ぎ時のベースライン」ブロックが空になる（恒久の command ID を除く）。
