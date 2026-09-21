@@ -64,6 +64,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 - 3D のリンク・ノード（LEV-121。上の「`Link` のゲート」の 3D 側はこれで置き換え）: `link-gates.test.ts` は 2D が役割どおりのゲート（箱の `id` を読まない）、3D が箱同士（`Node.id`。ゲートを読まない）を太さ 1・不透明度 50%（隠すときは 10）で領域の色のまま結ぶこと、`Links.render()` の受け渡しを固定する。`node-render.test.ts` は `measureText`／`addText`（box 付き）／`addEllipse`／`addToGroup`／`getElement` を記録する EA スタブと近傍数だけを持つ Page スタブで、2D の呼び出し列（箱 → ゲート 4 つと近傍数 → グループ）とゲートの位置、3D（`render({floor})`）が箱だけを描いて `levelColors[level − floor]` を箱に solid で塗り文字色を読める側に寄せること（肩の「L{n}」ラベルは LEV-130 でやめた）、level／floor の組ごとの色、`levelColors` が足りないときの fallback、hachure の仮想ノードが solid になること、保持した埋め込みの枠は色を変えず削除済みの束縛矢印だけ落とすこと、枠 1 つだけのときはグループ化を呼ばないこと（`groupIds` を伸ばさない）、枠が無くても落ちないこと、`readableTextColor`（半透明の level 色はキャンバスに合成して測る）を固定する。
 - 初期ズームの対象（LEV-144）: `zoomTargets`（`src/graph/zoom.ts`）が 3D の床・グリッド・十字・方角の id を外してノードとリンクだけを返すこと、2D（床の id が空）と外すと空になるときは入力そのもの（同じ参照）を返すこと、床の id が画面に無いときは同じ内容の配列を返すこと、入力の配列も要素も書き換えず入力の要素そのものを返すことを固定する。`zoomToFit` を呼ぶ `Scene.zoomToFitNodes()`（2D は上流が渡していた対象をそのまま渡し、3D だけ置き換える）は EA 依存で実機のみ（倍率は CDP の `getAppState().zoom.value` を 2D／3D で比べる）。
 - 3D の帯の組み直し（LEV-145）: `regridBand` が帯に残った level 0 だけを行ごとに中央揃えし（満杯の行は `Layout.place()` と同じ位置、半端な行は中心を挟んで対称）、読み順（北から南、同じ行は西から東）を保ち、中心にいちばん近い行を `origin.y` に置いて外へ `rowHeight` ずつ積むこと、入力を書き換えないこと、列数が壊れていたら 1 列に落ちることを固定する。8 ノート fixture の帯は上流の `Layout.place()` に実寸（親 2 列 236・子 3 列 280・行 77）で置かせてから渡し、`origin` の親が中心の真北（x が中心と同じ）に、`leads to` の子 2 つが中心を挟んで対称に来ること、丸ごと空いた行があれば帯が中心側へ詰まって `bandShift` がそこから測ること、軸へ抜けたノードが無い帯でも半端な行が中心に揃うことを受入条件のまま確かめる。`Scene.render3D()` の当てはめ（帯ごとの内側の縁の選び方と `regridded` の引き当て）は EA 依存で実機のみ。
+- fixture: `tests/fixtures/` 直下は小さなグラフ（Asimov の 6 つ、3d-brief §7 の 3D 用 11）、`tests/fixtures/big/` は 3D の実測用の 75 ノート（中心「大きな脳」＋ level 0 の親 20（`origin::`）・level 0 の子 30（`leads to::`）・Up 7（`up::`）・Down 7（`down::`／`example::`）・左右の友 5 ずつ（`similar::`／`next::`）。タイトルの長さは揃えず、最長は `maxLabelLength` ちょうどの 30 文字）。`npm run harness:prepare` はサブフォルダごと `test-vault/Fixtures/` に写す（LEV-143、下記「3D の実測手順」）。
 - `obsidian` モジュールは `tests/mocks/obsidian.ts` に置き換える（`TFile`／`TFolder`／`normalizePath`／`Vault.recurseChildren`／`moment.locale`）。`import ... from "src/..."` は `vitest.config.ts` の alias で解決する。
 
 ### 未カバー（実機のみ）
@@ -79,6 +80,7 @@ AI エージェントと人間が同じ条件で開発・検証するため、�
 2. Obsidian でそのフォルダを Vault として開き、コミュニティプラグインの制限モードを解除して Dataview（`dataview`）と Excalidraw（`obsidian-excalidraw-plugin`、`MINEXCALIDRAWVERSION` 以上）をインストール・有効化する。ハーネスは他プラグインをダウンロードしない。
 3. `npm run harness:preflight` を実行する。これはファイルと設定の検査であり、実行中プラグインが最新である証明ではない。有効プラグインが 3 つちょうどでなければ失敗し、実機確認の条件に含めない。
 4. JevBrain を有効化し、コマンド「ExcaliBrain」（表示名は上流のまま。LEV-147 で変えたのは plugin ID・名前・作者だけ）でグラフを開く。`Fixtures/` の 14 ノート（Asimov の著作と関係 6 つ、3D 用の 8 つ＝`docs/3d-brief.md` §7）が期待するグラフになるかを画面で確認する。
+4. ExcaliBrain を有効化し、コマンド「ExcaliBrain」でグラフを開く。`Fixtures/` 直下の 17 ノート（Asimov の著作と関係 6 つ、3D 用の 11 ＝`docs/3d-brief.md` §7 の 8 つと LEV-124・LEV-128 の追加）が期待するグラフになるかを画面で確認する。`Fixtures/big/` の 75 ノートは 3D の実測（E17）専用で、ここでは開かない。
 5. 下記ケースを再現し、UI の状態と（ノートを変えた場合は）変更後の Markdown を両方保存する。
 
 `harness:prepare` は fixture を初期化するため、ユーザーが試用中の Vault には再実行しない。再実行した場合、`community-plugins.json` は jevbrain と、すでに有効なら Dataview／Excalidraw だけを残して書き直す（それらの配布物と設定には触れない）。本人の Vault や他プロジェクトの配布物は操作しない。
@@ -117,6 +119,43 @@ plugin ID を変える前（LEV-147 より前）に作った `test-vault/` に�
 | E14 | `Fixtures/習慣はトリガー固定で続く` を中心に 2D で開く | 北に 行動デザイン・習慣ループ・抽象化のはしご（どれも up、緑 4.5。抽象化のはしごはファイルの無い未解決リンク）と 読書メモ：習慣の本（origin、既定色）、西に if-then プラン（similar）、東に 意志力で続ける（next）、南に 朝のルーティン手順（down）・歯磨き後に腕立て・9月20日 朝ランの記録（example）と、習慣トラッカーの使い方・週次レビューのテンプレート（leads to、Children 領域なので段は付かない）。Up／Down の線だけ緑・太さ 4.5。確認 2026-09-21（2 つ目の Up「習慣ループ」と未解決の Up「抽象化のはしご」を足した LEV-124 のあとも確認。`artifacts/3d2-vertical-e2e/record.md`） |
 | E15 | ツールパネルの 3D トグルを押す | 斜投影（東西は水平、南北は右上がり、高さは東へ倒れる＝`heightShearX` 0.64、LEV-137）。if-then プラン／中心／意志力で続ける が水平一直線、Up の 3 つ（行動デザイン・習慣ループ・抽象化のはしご）は同じ高さで東西に等間隔、Down の 3 つは床の下で東西に等間隔。どちらも 2D では中心の真上・真下だが、画面では高さの傾き（`heightShearX` 0.64、LEV-137）のぶん Up が東・Down が西へ倒れる（既定値では Up が 153px 東、Down が 181px 西）。床の平行四辺形の上にいるのは level 0 だけ（読書メモ：習慣の本＝奥、if-then プラン＝西、意志力で続ける＝東、習慣トラッカーの使い方・週次レビューのテンプレート＝手前）で、Up と Parents、Down と Children は重ならない。床はグリッドと十字と N／S／W／E を持ち、手前（S）にも奥行きがあり、左右は中心ノート（垂直軸）に対して対称（LEV-135）。柱と影は描かない（LEV-128）。リンクは細く薄く箱同士、ゲートと数字なし、箱は level 別の色（L ラベルは LEV-130 でやめた）。方角の N と S は床の縁のすぐ外。console.error なし。確認 2026-09-21（3D-2 は `artifacts/3d2-e2e/record.md`、Up／Down の垂直軸と未解決の Up（LEV-124）は `artifacts/3d2-vertical-e2e/record.md`、柱と影の廃止・床の奥行き・帯の距離（LEV-128）は `artifacts/3d-floor-depth-e2e/record.md`。L ラベルの廃止と方角の位置（LEV-130）は `artifacts/3d-labels-e2e/record.md`（本人が編集中の Vault に対してで、確かめたのは L ラベル 0 個・方角の距離・2D の一致だけ）、床の左右の釣り合い（LEV-135）は `artifacts/3d-floor-centre-e2e/record.md`（同じく編集中の Vault で、確かめたのは床の 4 隅と中心までの距離・Up の列の中央・2D の一致だけ）、高さの傾き（LEV-137）は `artifacts/3d-height-shear-e2e/record.md`（同じく編集中の Vault で、確かめたのは上の段の東へのずれと 2D の一致だけ）、折り返しと上限（LEV-127）は `artifacts/3d-wrap-e2e/record.md`（同じく編集中の Vault で、確かめたのは 5 列での折り返し・行の高さ・Down が切られないこと・2D の一致）。この表の Up／Down の並びと床の上の顔ぶれは LEV-128 の証跡のまま。本人の目視は未） |
 | E16 | 3D トグルを戻す／プラグインを再読込する | 2D の座標が押す前と完全一致。再読込後は常に 2D で、Up／Down の設定は残る。確認 2026-09-21 |
+| E17 | `Fixtures/big/大きな脳` を中心に開き、2D → 3D → 2D と切り替える（3D-3 の実測用の大きな fixture。親 20（`origin::`）・子 30（`leads to::`）・Up 7・Down 7・左右の友 5 ずつ） | 2D は領域ごとに `maxItemCount`（既定 30）で切る。Up／Down は `Page` の `parentFields`／`childFields` の先頭なので残り、北は Up 7 ＋ 親 20 ＝ 27（上限内）、南は Down 7 ＋ 子 23（`leads to` の後ろ 7 件が落ちる）、左右は 5 ずつ＝箱 68。3D は帯が `maxItemCount3D`（既定 12）、垂直軸が `verticalColumns × maxVerticalRows`（5 × 3 ＝ 15）で別々に切られ（§6-7）、北は Up 7 ＋ 親 12、南は Down 7 ＋ 子 12、左右は 5 ずつ＝箱 49。Up 7 も Down 7 も 5＋2 の 2 行に折り返し、床の平行四辺形の上は level 0 だけ。3D を戻すと 2D の座標が完全一致、console.error なし。要素数・描画時間・箱の重なりは下記「3D の実測手順」で測り `artifacts/3d-3-measure/record.md` に記録する。未実施（箱の数はコードと既定値からの見積もりで、実測で確かめる） |
+
+### 3D の実測手順（3D-3、E17）
+
+`Fixtures/big/大きな脳`（75 ノート。タイトルの長さは揃えておらず、最長は `maxLabelLength` ちょうどの 30 文字＝いちばん広い箱）で、要素数・描画時間・箱の重なりを測る。先に E13 の設定（Up＝`up`、Down＝`down, example`）を入れ、`npm run harness:prepare`（`Fixtures/big/` はサブフォルダのまま入る）と `npm run harness:preflight` を通す。プローブは `artifacts/e2e/cdp.mjs`（gitignore 内）で renderer に流し、結果は `artifacts/3d-3-measure/record.md` に書く。先にコマンド「ExcaliBrain」でグラフを開いておく（`plugin.pages` が空だと `renderGraphForPath` は何もしないで戻る）。
+
+```js
+const scene = app.plugins.plugins.excalibrain.scene;
+const measure = async (view3D) => {
+  scene.view3D = view3D;
+  const t0 = performance.now();
+  await scene.reRender(false); // 索引は作り直さない。描画だけの時間
+  const ms = performance.now() - t0;
+  const elements = scene.ea.getViewElements();
+  const byId = new Map(elements.map((el) => [el.id, el]));
+  const boxes = [...scene.nodesMap.values()].flatMap((node) => {
+    const box = byId.get(node.id); // node.id は箱（テキストの枠）の要素
+    return box ? [{title: node.title, level: node.level, ...node.getCenter(), w: box.width, h: box.height}] : [];
+  });
+  const overlaps = [];
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const [a, b] = [boxes[i], boxes[j]];
+    // 同じ段（画面の y の差が箱の高さの和の半分未満）で、x の差が箱幅の和の半分未満なら重なり
+    if (Math.abs(a.y - b.y) < (a.h + b.h) / 2 && Math.abs(a.x - b.x) < (a.w + b.w) / 2) overlaps.push([a.title, b.title]);
+  }
+  return {view3D, ms: Math.round(ms), elements: elements.length, nodes: scene.nodesMap.size, boxes: boxes.length, overlaps};
+};
+await scene.renderGraphForPath("Fixtures/big/大きな脳.md", false);
+return {twoD: await measure(false), threeD: await measure(true), back: await measure(false)};
+```
+
+- **要素数**: `ea.getViewElements().length`（箱・リンク・床・方角をすべて含む）と、ノードの数 `scene.nodesMap.size`、箱が取れたノードの数の 3 つ。2D と 3D では上限が違うので両方を記録する。
+- **描画時間**: `reRender(false)` の前後の `performance.now()` の差。同じ切り替えを 3 回続けて測り、中央値と最大値を書く（初回は Excalidraw の初期化を含むので分けて書く）。索引の再構築込みを見たいときだけ `reRender(true)` で別に測る。
+- **重なり**: 上の組数と、どのノート同士かを記録する。2D と 3D の両方を測り、その差を「3D で増えた重なり」として読む。`docs/3d-design.md` §7 の開いている論点（埋め込みの中心、帯に残る level 0 の位置）に当たるものは分けて書く。
+- **戻り**: 最後に `view3D` を false に戻し、`back` と `twoD` の座標が一致すること（E16 と同じ確認）と console.error が無いことを見る。
+- 見た目の確認（E17 の並びと重なり）はツールパネルのトグルで行う。プローブが直接書き替える `scene.view3D` はトグルの表示に反映されない。
+- 判断は `docs/product-plan.md` §3「3D-3」の受入条件に戻す。重なりが残る場合は、上限（`maxItemCount3D`・`verticalColumns`）を下げるのか配置を変えるのかを証跡の数字と一緒に書く。
 
 ## 証跡
 
