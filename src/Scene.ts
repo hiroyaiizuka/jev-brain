@@ -1123,22 +1123,24 @@ export class Scene {
     // 友の帯を中心ノートの y に揃える（§6-1「フレンドと中心は同じ north」）。中心は動かさない
     const rootCenter = this.rootNode.getCenter();
 
-    // 帯に残る level 0 だけで列を組み直す（§7 の 3 つ目、LEV-145）: Up／Down を垂直軸へ抜いたあと、2D の格子は
-    // 穴が開いたままで、残ったノードが列の端に取り残されて中心の真北・真南からずれる。残った数で行を中央揃えし、
-    // 丸ごと空いた行は詰める（中心にいちばん近い行の位置は `place()` のままなので、下の `bandShift` の距離は変わらない）。
-    // 軸へ抜けたノードが無い帯（Up／Down を使っていない Vault）は 2D の格子のまま触らない
+    // 帯に残る level 0 だけで列を組み直す（§6-8、LEV-145）: Up／Down を垂直軸へ抜いたあと、2D の格子は穴が開いた
+    // ままで、残ったノードが列の端に取り残されて中心の真北・真南からずれる。残った数で行を中心ノートの x に
+    // 中央揃えし、丸ごと空いた行は詰める（内側の縁は `place()` が置いた位置なので帯は中心から遠ざからない。
+    // 下の `bandShift` は詰めたあとの内側の行から測る）。軸へ抜けたノードが無い帯も同じ規則で揃える: 上流の
+    // 半端な行は中心に対して非対称（3 列に 2 つなら東へ columnWidth/2）で、Up／Down を使っていない Vault でも
+    // 床の十字から同じだけずれる。2D の経路はこの分岐の外なので変わらない
     const regridded = new Map<Node, Point>();
     const regridBandOf = (layout: Layout, side: -1 | 1): void => {
-      const onBand = layout.nodes.filter(node => !isOnAxis(node.level));
-      if(onBand.length === 0 || onBand.length === layout.nodes.length) return;
-      const ys = layout.nodes.map(node => node.getCenter().y);
-      const innermostY = side < 0 ? Math.max(...ys) : Math.min(...ys);
+      const band = layout.nodes.map(node => ({node, center: node.getCenter()}));
+      const onBand = band.filter(({node}) => !isOnAxis(node.level));
+      if(onBand.length === 0) return;
+      const ys = band.map(({center}) => center.y);
       const centers = regridBand(
-        onBand.map(node => node.getCenter()),
-        {x: layout.spec.origoX, y: innermostY},
+        onBand.map(({center}) => center),
+        {x: rootCenter.x, y: side < 0 ? Math.max(...ys) : Math.min(...ys)},
         {columns: layout.spec.columns, columnWidth: layout.spec.columnWidth, rowHeight: layout.spec.rowHeight, side},
       );
-      onBand.forEach((node, i) => regridded.set(node, centers[i]));
+      onBand.forEach(({node}, i) => regridded.set(node, centers[i]));
     };
     regridBandOf(bands.parents, -1);
     regridBandOf(bands.children, 1);

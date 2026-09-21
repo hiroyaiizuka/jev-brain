@@ -80,7 +80,7 @@
 
 - 親 20・子 30 の fixture で要素数と描画時間を `artifacts/` に記録し、重なりの残りを判断する。
 
-現在の実装（LEV-145）: Up／Down を垂直軸へ抜いたあと北・南の帯に残る level 0 のノードだけで列を組み直す純関数 `Projection.regridBand`（行ごとの中央揃え、丸ごと空いた行は詰め、中心にいちばん近い行は `place()` の位置のまま）を足し、`Scene.render3D()` が Parents／Children の帯に当ててから `bandShift` を測るようにした（`3d-design.md` §6-8。軸へ抜けたノードが無い帯は 2D の格子のまま触らない。実機は未実施）。
+現在の実装（LEV-145）: Up／Down を垂直軸へ抜いたあと北・南の帯に残る level 0 のノードだけで列を組み直す純関数 `Projection.regridBand`（東西は `verticalSpread` と同じ中央揃えを中心ノートの x に、南北は読み順のまま帯の内側の縁へ詰める）を足し、`Scene.render3D()` が `place()` の直後・`bandShift` の前に Parents／Children の帯へ当てるようにした（`3d-design.md` §6-8。上流の半端な行は中心に対して非対称なので、軸へ抜けたノードが無い帯も同じ規則で揃える。2D は分岐の外で変更なし。実機は未実施）。
 
 ### H1 引き継ぎコードの整地（3D-1 の後）
 

@@ -1033,7 +1033,7 @@ describe('bandShift (床に残る Parents／Children の帯を中心から離す
   });
 });
 
-describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-design §7 の 3 つ目・LEV-145)', () => {
+describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-design §6-8・LEV-145)', () => {
   // artifacts/3d2-vertical-e2e の 2D（行の間隔 77）。docs/3d-brief.md §7 の 8 ノートを上流の `Layout` が置いたときの格子:
   //   北の帯（親 4 つ）は 2 列 2 行、columnWidth 236。1 行目 y −368 に 抽象化のはしご（up）・習慣ループ（up）、
   //   2 行目 y −291 に 行動デザイン（up）・読書メモ：習慣の本（origin）。
@@ -1101,10 +1101,13 @@ describe('regridBand (帯に残る level 0 だけで列を組み直す、3d-desi
     expect(regridBand(row, { x: centre, y: 214 }, south).map((c) => c.x)).toEqual([placeX(0, south), placeX(1, south), placeX(2, south)]);
   });
 
-  it('leaves the innermost row where it was, so `bandShift` keeps measuring the same distance', () => {
+  it('puts the innermost row on `origin.y`, so the band never moves away from the centre', () => {
+    // `origin.y` には帯が `place()` で占めていた内側の縁を渡す。`bandShift` はその行から測り、届いていなければ
+    // ちょうど `distance` まで動かす（丸ごと空いた行があれば帯は中心側へ詰まるので、測る距離は 2D より小さくなる）
     const centerY = -12;
     const distance = 300;
     const regridded = regridBand([{ x: 118, y: -291 }], { x: centre, y: -291 }, north);
+    expect(regridded[0].y).toBe(-291);
     expect(regridded[0].y + bandShift(centerY, regridded[0].y, distance, -1)).toBe(centerY - distance);
   });
 
@@ -1151,7 +1154,11 @@ describe('regridBand と Layout.place() (8 ノート fixture の帯、LEV-145 �
       .sort((a, b) => a.center.y - b.center.y || a.center.x - b.center.x)
       .map((node) => ({ title: node.title, ...node.center }));
 
-  /** 帯に残った level 0 だけを `regridBand` に渡す（`Scene.render3D` と同じ手順）。 */
+  /**
+   * `Scene.render3D` が `regridBand` に渡すのと同じ入力を作る: 帯に残った level 0 の中心（`node.level` で選ぶ）と、
+   * 帯が `place()` で占めていた内側の縁（北の帯は最も南の行、南の帯は最も北の行。垂直軸へ抜けるノードも数える）。
+   * 中心ノートの x は 0（`lCenter` の `origoX`）。Scene 側の当てはめそのものは EA 依存で実機のみ。
+   */
   const regridOf = (nodes: BandNode[], grid: BandGrid): { title: string; center: Point }[] => {
     const onBand = nodes.filter((node) => !isOnAxis(node.level));
     const ys = nodes.map((node) => node.center.y);
@@ -1211,9 +1218,34 @@ describe('regridBand と Layout.place() (8 ノート fixture の帯、LEV-145 �
     ]);
   });
 
-  it('Up／Down を使っていない Vault では帯が丸ごと残るので、2D の格子をそのまま使う（Scene が組み直しを飛ばす条件）', () => {
+  it('Up／Down を使っていない Vault でも、上流の半端な行の偏りを中心に揃え直す', () => {
+    // 軸へ抜けるノードが 1 つも無い帯（子 5 つが全部 level 0）。上流の 2 行目は x 0 と 280 で東へ寄っているので、
+    // 組み直しで中心を挟んで対称にする。1 行目は満杯なので `Layout.place()` と同じ位置のまま、行も動かない
     const allOnBand = children.map(([title]) => [title, 0] as [string, Level]);
     const placed = placeBand(allOnBand, childrenSpec);
-    expect(placed.filter((node) => !isOnAxis(node.level))).toHaveLength(placed.length);
+    expect(readingOrder(placed).slice(3)).toEqual([
+      { title: '習慣トラッカーの使い方', x: 0, y: 291 },
+      { title: '週次レビューのテンプレート', x: 280, y: 291 },
+    ]);
+    const centres = regridOf(placed, { columns: 3, columnWidth: 280, rowHeight: 77, side: 1 });
+    expect([...centres].sort((a, b) => a.center.y - b.center.y || a.center.x - b.center.x)).toEqual([
+      // 1 行目は満杯なので `Layout.place()` と同じ位置
+      { title: '9月20日 朝ランの記録', center: { x: -280, y: 214 } },
+      { title: '朝のルーティン手順', center: { x: 0, y: 214 } },
+      { title: '歯磨き後に腕立て', center: { x: 280, y: 214 } },
+      // 2 行目は中心を挟んで対称に（2D では x 0 と 280）
+      { title: '習慣トラッカーの使い方', center: { x: -140, y: 291 } },
+      { title: '週次レビューのテンプレート', center: { x: 140, y: 291 } },
+    ]);
+  });
+
+  it('中心にいちばん近い行が空いていれば、そのぶん帯は中心側へ詰まる（`bandShift` はそのあとから測る）', () => {
+    // 南の帯の 1 行目（y 214）が全部 Down なら、残った 2 つは 1 行目の位置まで詰まる。帯は中心から遠ざからない
+    const placed = placeBand(children, childrenSpec);
+    const innermost = Math.min(...placed.map((node) => node.center.y));
+    const centres = regridOf(placed, { columns: 3, columnWidth: 280, rowHeight: 77, side: 1 });
+    expect(centres.every((n) => n.center.y === innermost)).toBe(true);
+    // 詰めたあとの内側の行から測るので、中心（y −12）から 300 に届いていなければ `bandShift` がそこまで動かす
+    expect(innermost + bandShift(-12, innermost, 300, 1)).toBe(-12 + 300);
   });
 });
