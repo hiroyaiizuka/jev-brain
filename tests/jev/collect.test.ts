@@ -73,13 +73,19 @@ function makeVault(
     Object.entries(notes).map(([path, note]) => [path, parseLinks(note.content ?? '')]),
   );
   const pages = new Map<string, Page>();
+  const pagesStub = {
+    get: (path: string) => pages.get(path),
+    add: (path: string, page: Page) => pages.set(path, page),
+  } as unknown as Pages;
+  const resolve = (linkpath: string) => files.get(linkpath) ?? files.get(`${linkpath}.md`) ?? null;
   const plugin = {
     settings: { ...settingsStub, excludeFilepaths: options.excludeFilepaths ?? [] },
     hierarchyLowerCase: { ...createEmptyHierarchyLowerCase(), ...options.regions },
+    pages: pagesStub,
     app: {
       vault: { getAbstractFileByPath: (path: string) => files.get(path) ?? null },
       metadataCache: {
-        getFirstLinkpathDest: (link: string) => files.get(link) ?? files.get(`${link}.md`) ?? null,
+        getFirstLinkpathDest: resolve,
         getFileCache: (file: TFile) => caches.get(file.path) ?? null,
       },
     },
@@ -87,11 +93,25 @@ function makeVault(
       page: (path: string) => (notes[path] ? { ...notes[path].fields, file: { path } } : undefined),
     },
   } as unknown as ExcaliBrain;
-  const pagesStub = {
-    get: (path: string) => pages.get(path),
-    add: (path: string, page: Page) => pages.set(path, page),
-  };
-  for (const [path, file] of files) pages.set(path, new Page(pagesStub as unknown as Pages, path, file, plugin));
+  for (const [path, file] of files) pages.set(path, new Page(pagesStub, path, file, plugin));
+
+  // What `Pages.addResolvedLinks` / `addUnresolvedLinks` have already done by the time
+  // `collect*` runs: every body link carries an inferred relation both ways
+  // (src/graph/Pages.ts `addInferredParentChild`). External links go through `URLParser`
+  // instead and get none.
+  for (const [path, cache] of caches) {
+    const source = pages.get(path);
+    for (const link of cache.links) {
+      if (/^[a-z][\w+\-.]*:\/\//iu.test(link.link)) continue;
+      const linkpath = link.link.split('#')[0];
+      const targetPath = resolve(linkpath)?.path ?? linkpath;
+      const target = pages.get(targetPath) ?? new Page(pagesStub, targetPath, null, plugin);
+      pages.set(targetPath, target);
+      source.addChild(target, RelationType.INFERRED, LinkDirection.FROM);
+      target.addParent(source, RelationType.INFERRED, LinkDirection.TO);
+    }
+  }
+
   return {
     app: plugin.app,
     plugin,
@@ -162,21 +182,23 @@ describe('collectUntypedLinks', () => {
     ]);
   });
 
-  it('resolves a markdown link to a note, and skips one to a URL', () => {
-    const vault = makeVault(
-      { 'A.md': { content: '[ラベル](Some%20Note.md) と [外部](http://example.com)。' }, 'Some Note.md': {} },
-      { regions },
-    );
+  it('resolves a markdown link to a note, falls back to its target when the label is empty, and skips a URL', () => {
+    const content = '[ラベル](Some%20Note.md) と [](B.md) と [外部](http://example.com)。';
+    const vault = makeVault({ 'A.md': { content }, 'Some Note.md': {}, 'B.md': {} }, { regions });
     expect(collectUntypedLinks(...argsFor(vault, 'A.md'))).toEqual([
-      { target: 'Some Note.md', displayText: 'ラベル', line: 0, ch: 0, context: '[ラベル](Some%20Note.md) と [外部](http://example.com)。' },
+      { target: 'Some Note.md', displayText: 'ラベル', line: 0, ch: 0, context: content },
+      { target: 'B.md', displayText: 'B.md', line: 0, ch: 24, context: content },
     ]);
   });
 
-  it('leaves out a target of a hidden field and one under an excluded path', () => {
+  it('leaves out a target of a hidden field, one under an excluded path and the brain drawing', () => {
     const vault = makeVault(
       {
-        'A.md': { content: '[[B]] と [[アーカイブ/C]] と [[D]]。', fields: { ignore: { path: 'B.md' } } },
-        'B.md': {}, 'アーカイブ/C.md': {}, 'D.md': {},
+        'A.md': {
+          content: '[[B]] と [[アーカイブ/C]] と [[excalibrain]] と [[D]]。',
+          fields: { ignore: { path: 'B.md' } },
+        },
+        'B.md': {}, 'アーカイブ/C.md': {}, 'excalibrain.md': {}, 'D.md': {},
       },
       { regions, excludeFilepaths: ['アーカイブ/'] },
     );
@@ -184,18 +206,27 @@ describe('collectUntypedLinks', () => {
     expect(collectTypedLinks(...argsFor(vault, 'A.md'))).toEqual([]);
   });
 
-  it('keeps a link whose relation the graph only inferred, and drops one a neighbour defines', () => {
+  it('keeps a link the graph only inferred, and leaves one the neighbour defines out of both lists', () => {
     const vault = makeVault(
-      { 'A.md': { content: '[[B]] と [[C]]。' }, 'B.md': {}, 'C.md': { fields: { origin: { path: 'A.md' } } } },
+      {
+        'A.md': { content: '[[B]] と [[C]]。' },
+        'B.md': {},
+        'C.md': { content: 'origin:: [[A]]', fields: { origin: { path: 'A.md' } } },
+      },
       { regions },
     );
-    // What Pages does for the plain links of a body: an inferred relation to each target.
-    for (const target of ['B.md', 'C.md']) {
-      vault.page('A.md').addChild(vault.page(target), RelationType.INFERRED, LinkDirection.FROM);
-    }
     expect(collectUntypedLinks(...argsFor(vault, 'A.md')).map((link) => link.target)).toEqual(['B.md']);
-    // C.md types the pair from its own side (`origin:: [[A]]`), so A has nothing left to ask.
-    expect(collectTypedLinks(...argsFor(vault, 'A.md')).map((link) => link.fields)).toEqual([['origin']]);
+    // C.md types the pair from its own side (`origin:: [[A]]`): A has nothing to ask and no
+    // line of its own to review, so [[C]] is in neither list.
+    expect(collectTypedLinks(...argsFor(vault, 'A.md'))).toEqual([]);
+    expect(collectTypedLinks(...argsFor(vault, 'C.md')).map((link) => link.fields)).toEqual([['origin']]);
+  });
+
+  it('keeps ch aligned with the line it returns, whatever the indentation', () => {
+    const vault = makeVault({ 'A.md': { content: '- 箇条書き\n    - 入れ子で [[B]] に触れる' }, 'B.md': {} }, { regions });
+    const [link] = collectUntypedLinks(...argsFor(vault, 'A.md'));
+    expect(link).toMatchObject({ line: 1, ch: 11, context: '    - 入れ子で [[B]] に触れる' });
+    expect(link.context.slice(link.ch)).toMatch(/^\[\[B\]\]/u);
   });
 });
 

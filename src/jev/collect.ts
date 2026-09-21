@@ -1,6 +1,8 @@
 import type { App, LinkCache, TFile } from "obsidian";
 import type { Page } from "src/graph/Page";
 import { RelationType, type Relation } from "src/Types";
+import { getDVFieldLinksForPage } from "src/utils/dataview";
+import { HIERARCHY_REGIONS } from "src/utils/hierarchy";
 
 /**
  * One `[[X]]` of a note's body that no ontology field reaches yet: the input of the
@@ -14,11 +16,11 @@ export type UntypedLink = {
   /** Where the `[[` starts, 0-based, as `metadataCache` reports it. */
   line: number;
   ch: number;
-  /** The line the link sits on, trimmed. */
+  /** The line the link sits on, as written: `ch` indexes into it. */
   context: string;
 };
 
-/** The same occurrence for a link the note already types, with the fields it is typed with. */
+/** The same occurrence for a link this note types, with the fields of this note that type it. */
 export type TypedLink = UntypedLink & { fields: string[] };
 
 /** `[text](https://…)`, `mailto:` and the like. `metadataCache` lists them next to the wiki links. */
@@ -41,33 +43,37 @@ const linkpathOf = (link: LinkCache): string => {
 };
 
 /**
- * The `*TypeDefinition` of every slot in which the relation is defined by a field.
- * Empty for a relation that only comes from the link itself (`RelationType.INFERRED`),
- * which is what makes the link untyped.
+ * Whether a field defines the relation, in either note. A relation that only comes from the
+ * link itself (`RelationType.INFERRED`) does not, which is what leaves the link untyped.
  */
-const definedSlots = (relation: Relation | undefined): (string | undefined)[] => {
-  if (!relation) return [];
-  const slots: (string | undefined)[] = [];
-  if (relation.isParent && relation.parentType === RelationType.DEFINED) slots.push(relation.parentTypeDefinition);
-  if (relation.isChild && relation.childType === RelationType.DEFINED) slots.push(relation.childTypeDefinition);
-  if (relation.isLeftFriend && relation.leftFriendType === RelationType.DEFINED) slots.push(relation.leftFriendTypeDefinition);
-  if (relation.isRightFriend && relation.rightFriendType === RelationType.DEFINED) slots.push(relation.rightFriendTypeDefinition);
-  if (relation.isNextFriend && relation.nextFriendType === RelationType.DEFINED) slots.push(relation.nextFriendTypeDefinition);
-  if (relation.isPreviousFriend && relation.previousFriendType === RelationType.DEFINED) slots.push(relation.previousFriendTypeDefinition);
-  return slots;
-};
+const isDefined = (relation: Relation | undefined): boolean =>
+  relation !== undefined &&
+  ((relation.isParent && relation.parentType === RelationType.DEFINED) ||
+    (relation.isChild && relation.childType === RelationType.DEFINED) ||
+    (relation.isLeftFriend && relation.leftFriendType === RelationType.DEFINED) ||
+    (relation.isRightFriend && relation.rightFriendType === RelationType.DEFINED) ||
+    (relation.isNextFriend && relation.nextFriendType === RelationType.DEFINED) ||
+    (relation.isPreviousFriend && relation.previousFriendType === RelationType.DEFINED));
 
-/** A slot carries one field or several joined with ", " (`Page.addParent`); the same field counts once. */
-const fieldsOf = (slots: (string | undefined)[]): string[] => {
-  const fields = new Set<string>();
-  for (const slot of slots) {
-    (slot ?? "")
-      .split(",")
-      .map((field) => field.trim())
-      .filter((field) => field !== "")
-      .forEach((field) => fields.add(field));
+/** Every ontology region but `hidden`: the fields that can type a link. */
+const TYPED_REGIONS = HIERARCHY_REGIONS.filter((region) => region !== "hidden");
+
+/**
+ * The fields of the note itself, by target. The relation's own `*TypeDefinition` cannot be
+ * used for this: the other note's fields define the relation just as well (`C.md` writing
+ * `origin:: [[A]]` defines A's relation to C), and only a field written here can be reviewed
+ * and rewritten here. The keys are Dataview's, as everywhere else in the ontology.
+ */
+const ownFieldsOf = (page: Page): Map<string, string[]> => {
+  const byTarget = new Map<string, string[]>();
+  if (!page.dvPage) return byTarget;
+  const ontology = TYPED_REGIONS.flatMap((region) => page.plugin.hierarchyLowerCase[region]);
+  for (const { link, field } of getDVFieldLinksForPage(page.plugin, page.dvPage, ontology)) {
+    const fields = byTarget.get(link) ?? [];
+    if (!fields.includes(field)) fields.push(field);
+    byTarget.set(link, fields);
   }
-  return Array.from(fields);
+  return byTarget;
 };
 
 type Occurrence = { link: UntypedLink; relation: Relation | undefined };
@@ -75,8 +81,8 @@ type Occurrence = { link: UntypedLink; relation: Relation | undefined };
 /**
  * The note's wiki links paired with the relation the graph already holds for their target.
  * Embeds are left out because `metadataCache` keeps them in `embeds`, not in `links`.
- * Dropped here: URLs, the note itself, `excludeFilepaths`, and every occurrence of a
- * target after the first one.
+ * Dropped here: URLs, the note itself, the brain drawing, `excludeFilepaths`, and every
+ * occurrence of a target after the first one.
  */
 const occurrencesOf = (app: App, page: Page, file: TFile, content: string): Occurrence[] => {
   const links = app.metadataCache.getFileCache(file)?.links;
@@ -96,16 +102,19 @@ const occurrencesOf = (app: App, page: Page, file: TFile, content: string): Occu
     const linkpath = linkpathOf(link);
     if (linkpath === "") continue;
     const target = app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path ?? linkpath;
-    if (target === file.path || seen.has(target)) continue;
+    // Every relation setter of Page refuses the note itself and the brain drawing, so a field
+    // on either of them would never become a relation and the link would be offered forever.
+    if (target === file.path || target === page.plugin.settings.excalibrainFilepath) continue;
+    if (seen.has(target)) continue;
     if (page.plugin.settings.excludeFilepaths.some((path) => target.startsWith(path))) continue;
     seen.add(target);
     occurrences.push({
       link: {
         target,
-        displayText: link.displayText ?? linkpath,
+        displayText: link.displayText || linkpath,
         line: link.position.start.line,
         ch: link.position.start.col,
-        context: (lines[link.position.start.line] ?? "").trim(),
+        context: lines[link.position.start.line] ?? "",
       },
       relation: page.neighbours.get(target),
     });
@@ -114,17 +123,27 @@ const occurrencesOf = (app: App, page: Page, file: TFile, content: string): Occu
 };
 
 /**
- * The links of `file` that no field types yet. A target reached through a hidden field is
- * left out as well: the note already says what to do with it (design §2-1).
- * `content` is the note's text; only each link's `context` is read from it.
+ * The links of `file` that no field types yet, in either note: the pair is already typed when
+ * the other note names this one, so there is nothing left to ask. A target reached through a
+ * hidden field is left out as well — the note already says what to do with it (design §2-1).
+ * `content` is the note's text and only each link's `context` is read from it, so it has to be
+ * the version `metadataCache` parsed (`vault.cachedRead(file)`, or the editor's buffer).
  */
 export const collectUntypedLinks = (app: App, page: Page, file: TFile, content: string): UntypedLink[] =>
   occurrencesOf(app, page, file, content)
-    .filter(({ relation }) => !relation?.isHidden && definedSlots(relation).length === 0)
+    .filter(({ relation }) => !relation?.isHidden && !isDefined(relation))
     .map(({ link }) => link);
 
-/** The links of `file` that a field already types, for the review of existing types (design §5). */
-export const collectTypedLinks = (app: App, page: Page, file: TFile, content: string): TypedLink[] =>
-  occurrencesOf(app, page, file, content)
-    .filter(({ relation }) => !relation?.isHidden && definedSlots(relation).length > 0)
-    .map(({ link, relation }) => ({ ...link, fields: fieldsOf(definedSlots(relation)) }));
+/**
+ * The links of `file` that a field of this note types, with that field, for the review of
+ * existing types (design §5). A link only the other note types is in neither list: this note
+ * has no line to rewrite for it.
+ */
+export const collectTypedLinks = (app: App, page: Page, file: TFile, content: string): TypedLink[] => {
+  const occurrences = occurrencesOf(app, page, file, content);
+  const ownFields = ownFieldsOf(page);
+  return occurrences
+    .filter(({ relation }) => !relation?.isHidden)
+    .map(({ link }) => ({ ...link, fields: ownFields.get(link.target) ?? [] }))
+    .filter(({ fields }) => fields.length > 0);
+};
