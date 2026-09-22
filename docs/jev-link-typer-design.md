@@ -98,6 +98,8 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 - 上限: 1 回 64k トークン、state＋最長の質問で 32k。1,200 req/分。前払い残高制。
 - 料金: $0.042/M 入力トークン、出力無料。1 判定 2,000 トークン ≈ 0.013 円（150 円/$）。月 600 判定で約 8 円、3,000 リンクの一括で約 40 円。
 - 出典: OpenRouter の `typesafe/jev-1.13`、DEV Community「How to Use Jev」。正式な SDK・レスポンスの形は TypeSafe のドキュメントが正で、キー発行時に照合して差があれば本節と `client.ts`・`tests/fixtures/jev/` を直す。
+- 実測（2026-09-22、LEV-163。本人のキーで 600 回）: リクエストは上のとおりで 200 が返る。**返り値は上と違い**、トップレベルが `questions` ではなく `answers`、各回答に `type`（`"choice"`）が付き、`usage` は snake_case の `input_tokens`／`output_tokens`。`{"model":"jev-1.13.0","answers":{"<質問名>":{"type":"choice","choice":"up","confidence":0.19,"probabilities":{…}}},"usage":{"input_tokens":4371,"output_tokens":1376}}`。形の記録は `tests/fixtures/jev/systemone-answers-200.json`。`scripts/jev-accuracy-judge.mjs` はこの形で読む。`src/jev/client.ts` の `parseResponseBody` は `questions`／`inputTokens` のままなので実物の応答を取りこぼす（直すのは LEV-170）。
+- 実測の量（同上）: オントロジー 162 フィールドを criteria にした Q1 と 6 方向の Q2 を 1 回で聞くと、日本語の state 約 1,300 字を含めて入力 **平均 4,444 トークン**（上の見積もり 2,000 の 2.2 倍）、出力 1,375。1 判定 0.028 円で、2,448 リンクの一括は約 69 円。レイテンシは 1 回 1.4 秒。
 - 呼び出しは `src/jev/client.ts` だけ。Obsidian の `requestUrl` を使う（CORS を避け、モバイルでも同じ）。
 
 ## 8. 第 2 段階: 関連候補（JEV-5、Backlog）
@@ -130,4 +132,4 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 | しきい値 | 既定 0.8／0.9。JEV-0 で確定 |
 | API キー | 設定（`data.json`）。README に送信内容を明記。コミュニティ登録するならネットワーク利用の開示が要る |
 | BRAT | JEV-3 の後 |
-| 未確認 | Jev の正式 SDK とレスポンスの正確な形（キー発行後に照合）、日本語の state のトークン数、`requestUrl` のタイムアウト挙動 |
+| 未確認 | Jev の正式 SDK、`requestUrl` のタイムアウト挙動。レスポンスの形と日本語 state のトークン数は LEV-163 で実測し §7 に書いた（`client.ts` の読み取りは LEV-170 で直す） |

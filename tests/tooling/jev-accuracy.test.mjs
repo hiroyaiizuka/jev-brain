@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
   DEFAULT_OUT,
+  JUDGE_DEFAULTS,
   RECORD_NAME,
+  cleanFieldName,
   extractTruth,
   parseArguments,
   parseNote,
@@ -16,7 +18,8 @@ import {
 
 const fixturesSource = fileURLToPath(new URL('../fixtures', import.meta.url));
 const scriptName = 'jev-accuracy.mjs';
-const scriptSource = fileURLToPath(new URL(`../../scripts/${scriptName}`, import.meta.url));
+const scriptNames = [scriptName, 'jev-accuracy-judge.mjs'];
+const scriptsSource = fileURLToPath(new URL('../../scripts', import.meta.url));
 
 /**
  * The 3D notes of `docs/3d-brief.md` §7 (centre plus the seven of its table) and the three added
@@ -46,10 +49,12 @@ function addThreeDVault() {
   }
 }
 
-function addSettings(hierarchy) {
-  const directory = join(vault, '.obsidian', 'plugins', 'jevbrain');
+function addSettings(hierarchy, plugin = 'jevbrain') {
+  const directory = join(vault, '.obsidian', 'plugins', plugin);
   mkdirSync(directory, { recursive: true });
-  writeFileSync(join(directory, 'data.json'), `${JSON.stringify({ hierarchy }, null, 2)}\n`);
+  const path = join(directory, 'data.json');
+  writeFileSync(path, `${JSON.stringify({ hierarchy }, null, 2)}\n`);
+  return path;
 }
 
 function addNote(name, contents) {
@@ -101,6 +106,26 @@ describe('extract on the 3D fixture notes', () => {
     expect(entryFor(truth, '行動デザイン')).toMatchObject({ region: 'abstract', direction: 'parent' });
     expect(entryFor(truth, '歯磨き後に腕立て')).toMatchObject({ region: 'concrete', direction: 'child' });
     expect(countsByDirection(truth)).toEqual({ parent: 4, child: 5, 'left-friend': 1, next: 1 });
+  });
+
+  it('reads the ontology of another plugin folder when --hierarchy points at one', () => {
+    // 本人の Vault には jevbrain がまだ無く、hierarchy は上流版の data.json にある。
+    const path = addSettings({ abstract: ['up'], concrete: ['down', 'example'] }, 'excalibrain');
+
+    const truth = extractTruth(vault, { hierarchyPath: path });
+
+    expect(truth.hierarchySource).toBe('data.json');
+    expect(truth.hierarchyFile).toBe(path);
+    expect(truth.hierarchyDefinition).toEqual({ abstract: ['up'], concrete: ['down', 'example'] });
+    expect(entryFor(truth, '行動デザイン')).toMatchObject({ region: 'abstract', direction: 'parent' });
+    expect(extractTruth(vault).hierarchySource).toBe('defaults');
+    expect(() => extractTruth(vault, { hierarchyPath: join(vault, 'missing.json') })).toThrow(/No settings file/);
+  });
+
+  it('keeps the link as it is written, so judge can rebuild the window around it', () => {
+    const entry = entryFor(extractTruth(vault), '行動デザイン');
+
+    expect(entry).toMatchObject({ field: 'up', marker: 'up', linkText: '[[行動デザイン]]' });
   });
 
   it('records the neighbour frontmatter and opening characters, and leaves an unresolved link empty', () => {
@@ -184,6 +209,28 @@ describe('field forms', () => {
     expect(parsed.links).toBe(5);
   });
 
+  it('reads a key the way Dataview does, without its markdown', () => {
+    expect(cleanFieldName('**Previous**')).toBe('Previous');
+    expect(cleanFieldName(' *source* ')).toBe('source');
+    expect(cleanFieldName('__part of__')).toBe('part of');
+    expect(cleanFieldName('***up***')).toBe('up');
+    expect(cleanFieldName('`next`')).toBe('next');
+    // 記号そのものが名前のときは残す（両端がそろっていないものも）。
+    expect(cleanFieldName('**')).toBe('**');
+    expect(cleanFieldName('**up')).toBe('**up');
+  });
+
+  it('types a bold field the way the note means it', () => {
+    addNote('テンプレのノート.md', '**Previous** :: [[前のノート]]\n**up**:: [[上のノート]]\n');
+
+    const truth = extractTruth(vault);
+
+    expect(entryFor(truth, '前のノート')).toMatchObject({
+      field: 'Previous', marker: '**Previous**', fieldKey: 'previous', region: 'previous', direction: 'previous',
+    });
+    expect(entryFor(truth, '上のノート')).toMatchObject({ field: 'up', region: 'parents', direction: 'parent' });
+  });
+
   it('keeps the alias and the heading out of the target name', () => {
     const parsed = parseNote('up:: [[親ノート#見出し|別名]]\n');
 
@@ -213,21 +260,41 @@ describe('arguments', () => {
       subcommand: 'extract',
       vault: '/tmp/vault',
       out: DEFAULT_OUT,
+      hierarchy: null,
     });
   });
 
-  it('needs a vault for extract, a known subcommand and known flags', () => {
+  it('gives judge the defaults of design §2-4 and §7, and takes the numbers as numbers', () => {
+    expect(parseArguments(['judge'])).toEqual({
+      subcommand: 'judge',
+      truth: DEFAULT_OUT,
+      hierarchy: null,
+      responses: null,
+      record: null,
+      ...JUDGE_DEFAULTS,
+    });
+    expect(parseArguments(['judge', '--limit', '500', '--concurrency', '5', '--seed', '7'])).toMatchObject({
+      limit: 500, concurrency: 5, seed: 7,
+    });
+  });
+
+  it('needs a vault for extract, a known subcommand and the flags of that subcommand', () => {
     expect(() => parseArguments(['extract'])).toThrow(/--vault/);
     expect(() => parseArguments(['measure', '--vault', '/tmp/vault'])).toThrow(/extract or judge/);
     expect(() => parseArguments(['extract', '--vault', '/tmp/vault', '--all', 'yes'])).toThrow(/Unknown argument/);
     expect(() => parseArguments(['extract', '--vault'])).toThrow(/Missing value/);
+    // judge の旗を extract には渡せない（その逆も）。
+    expect(() => parseArguments(['extract', '--vault', '/tmp/v', '--limit', '5'])).toThrow(/Unknown argument/);
+    expect(() => parseArguments(['judge', '--vault', '/tmp/v'])).toThrow(/Unknown argument/);
+    expect(() => parseArguments(['judge', '--limit', 'たくさん'])).toThrow(/takes a number/);
+    expect(() => parseArguments(['judge', '--mask', 'maybe'])).toThrow(/--mask/);
   });
 });
 
 describe('the command', () => {
   function runScript(...args) {
     mkdirSync(join(root, 'scripts'), { recursive: true });
-    cpSync(scriptSource, join(root, 'scripts', scriptName));
+    for (const name of scriptNames) cpSync(join(scriptsSource, name), join(root, 'scripts', name));
     return spawnSync(process.execPath, [join('scripts', scriptName), ...args], { cwd: root, encoding: 'utf8' });
   }
 
@@ -245,10 +312,15 @@ describe('the command', () => {
     expect(existsSync(join(root, 'artifacts', 'jev-accuracy', RECORD_NAME))).toBe(true);
   });
 
-  it('keeps judge for LEV-163', () => {
-    const result = runScript('judge');
+  it('asks judge to run extract first when there is no truth file', () => {
+    // judge は node_modules（yaml）と src/ を要るので、コピーではなくプロジェクトそのもので動かす。読むだけ。
+    const result = spawnSync(
+      process.execPath,
+      [join('scripts', scriptName), 'judge', '--truth', join('artifacts', 'jev-accuracy', 'no-such-truth.json')],
+      { cwd: projectRoot(), encoding: 'utf8' },
+    );
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('LEV-163');
+    expect(result.stderr).toContain('Run extract first');
   });
 });

@@ -69,11 +69,46 @@ const DIRECTION_LABELS = {
   next: '次',
 };
 
+/**
+ * judge's defaults. `endpoint`, `model` and `price` repeat DEFAULT_JEV_SETTINGS and design §7; the
+ * sample is a seeded shuffle so a second run asks about the same links and reuses the saved answers.
+ */
+export const JUDGE_DEFAULTS = {
+  limit: 500,
+  concurrency: 5,
+  seed: 1,
+  /** `off` leaves the field marker (`up:: `) in the window, which tells Jev the answer: a control run only. */
+  mask: 'on',
+  endpoint: 'https://api.typesafe.ai/v1/systemone',
+  model: 'jev-latest',
+  /** USD per million input tokens, and yen per USD (design §7). */
+  price: 0.042,
+  rate: 150,
+};
+
 const USAGE = [
   'Usage:',
-  `  node scripts/jev-accuracy.mjs extract --vault <path> [--out ${DEFAULT_OUT}]`,
-  '  node scripts/jev-accuracy.mjs judge (LEV-163)',
+  `  node scripts/jev-accuracy.mjs extract --vault <path> [--out ${DEFAULT_OUT}] [--hierarchy <data.json>]`,
+  `  node scripts/jev-accuracy.mjs judge [--truth ${DEFAULT_OUT}] [--limit 500] [--concurrency 5]`,
+  '      [--hierarchy <data.json>] [--responses <jsonl>] [--record <md>] [--seed 1] [--mask on|off]',
+  '      [--endpoint <url>] [--model <name>] [--price <usd/Mtok>] [--rate <yen/usd>]',
+  '  judge needs JEV_API_KEY unless every answer is already in the responses file.',
 ].join('\n');
+
+/**
+ * The field name without the markdown Dataview strips from a key: `**Previous**:: [[X]]` and
+ * `*source*:: [[X]]` define Previous and source. Template-made notes write the bold form a lot.
+ */
+export function cleanFieldName(field) {
+  let name = field.trim();
+  for (;;) {
+    const marker = ['***', '**', '__', '*', '_', '`'].find(
+      (candidate) => name.length > candidate.length * 2 && name.startsWith(candidate) && name.endsWith(candidate),
+    );
+    if (!marker) return name.trim();
+    name = name.slice(marker.length, -marker.length).trim();
+  }
+}
 
 /** Dataview's key form of a field name, as src/utils/hierarchy.ts writes it. */
 export const toFieldKey = (field) => field.toLowerCase().replaceAll(' ', '-');
@@ -103,16 +138,23 @@ export function normalizeHierarchy(hierarchy) {
   return { regions, exclusions: new Set(exclusions) };
 }
 
-/** The ontology of the vault under test: its own settings when it has them, upstream's defaults otherwise. */
-export function readHierarchy(vaultPath) {
-  const path = join(vaultPath, '.obsidian', 'plugins', 'jevbrain', 'data.json');
-  if (!existsSync(path)) return { hierarchy: normalizeHierarchy(null), source: 'defaults', path };
+/**
+ * The ontology of the vault under test: its own settings when it has them, upstream's defaults
+ * otherwise. `hierarchyPath` points at another plugin's `data.json` — the upstream ExcaliBrain
+ * folder for a vault that has no jevbrain yet. `definition` is the stored lists as written, which
+ * judge hands to `buildQuestions` so the criteria carry the author's own field names.
+ */
+export function readHierarchy(vaultPath, hierarchyPath) {
+  const path = hierarchyPath ? resolve(hierarchyPath) : join(vaultPath, '.obsidian', 'plugins', 'jevbrain', 'data.json');
+  const defaults = { hierarchy: normalizeHierarchy(null), definition: null, source: 'defaults', path };
+  if (!existsSync(path)) {
+    if (hierarchyPath) throw new Error(`No settings file at ${path}`);
+    return defaults;
+  }
   const settings = JSON.parse(readFileSync(path, 'utf8'));
   const stored = settings && typeof settings === 'object' ? settings.hierarchy : null;
-  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
-    return { hierarchy: normalizeHierarchy(null), source: 'defaults', path };
-  }
-  return { hierarchy: normalizeHierarchy(stored), source: 'data.json', path };
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return defaults;
+  return { hierarchy: normalizeHierarchy(stored), definition: stored, source: 'data.json', path };
 }
 
 /** The region a field belongs to, or null for a field outside the ontology (an excluded one included). */
@@ -154,7 +196,7 @@ function linksIn(value, base) {
     if (match[1] === '!') continue;
     const target = match[2].split('|')[0].split('#')[0].trim();
     if (target === '') continue;
-    links.push({ target, offset: base + match.index, length: match[0].length });
+    links.push({ target, text: match[0], offset: base + match.index, length: match[0].length });
   }
   return links;
 }
@@ -312,11 +354,11 @@ function readNote(vaultPath, note) {
  * Every typed link of the vault as one truth record, with the counts that say which fields and
  * directions the notes actually use.
  */
-export function extractTruth(vaultPath, { contextChars = CONTEXT_CHARS, excerptChars = EXCERPT_CHARS } = {}) {
+export function extractTruth(vaultPath, { contextChars = CONTEXT_CHARS, excerptChars = EXCERPT_CHARS, hierarchyPath = null } = {}) {
   if (!existsSync(vaultPath) || !statSync(vaultPath).isDirectory()) {
     throw new Error(`Not a vault directory: ${vaultPath}`);
   }
-  const { hierarchy, source: hierarchySource } = readHierarchy(vaultPath);
+  const { hierarchy, definition, source: hierarchySource, path: hierarchyFile } = readHierarchy(vaultPath, hierarchyPath);
   const notes = listNotes(vaultPath);
   const index = linkIndex(notes);
   const entries = [];
@@ -327,7 +369,8 @@ export function extractTruth(vaultPath, { contextChars = CONTEXT_CHARS, excerptC
     const parsed = parseNote(text);
     links += parsed.links;
     for (const field of parsed.fields) {
-      const fieldKey = toFieldKey(field.field.trim());
+      const name = cleanFieldName(field.field);
+      const fieldKey = toFieldKey(name);
       const region = regionOf(fieldKey, hierarchy);
       const targetPath = index.get(field.target.toLowerCase()) ?? null;
       const target = targetPath === null ? null : noteSummary(readNote(vaultPath, targetPath), excerptChars);
@@ -336,11 +379,14 @@ export function extractTruth(vaultPath, { contextChars = CONTEXT_CHARS, excerptC
         note,
         line: field.line,
         source: field.source,
-        field: field.field.trim(),
+        field: name,
+        /** The key as written, `**Previous**` and all: judge hides exactly this much from the state. */
+        marker: field.field,
         fieldKey,
         region,
         direction: directionOf(region),
         target: field.target,
+        linkText: field.text,
         targetPath,
         noteFrontmatter: parsed.frontmatter,
         targetFrontmatter: target ? target.frontmatter : null,
@@ -357,6 +403,10 @@ export function extractTruth(vaultPath, { contextChars = CONTEXT_CHARS, excerptC
     vault: resolve(vaultPath),
     notes: notes.length,
     hierarchySource,
+    hierarchyFile: hierarchySource === 'data.json' ? hierarchyFile : null,
+    // The lists as data.json writes them. judge asks Jev with these very field names, so a truth file
+    // and its judgement can never be scored against two different ontologies.
+    hierarchyDefinition: definition,
     contextChars,
     excerptChars,
     summary: summarize(entries, links),
@@ -386,8 +436,8 @@ export function summarize(entries, links) {
 
 const percentage = (ratio) => `${(ratio * 100).toFixed(1)}%`;
 
-/** The tables of `artifacts/jev-accuracy/record.md`, printed to stdout as well. */
-export function renderRecord(truth) {
+/** The extract half of `artifacts/jev-accuracy/record.md`, printed to stdout as well. */
+export function renderRecord(truth, { judged = false } = {}) {
   const { summary } = truth;
   return [
     '# JEV-0 精度テスト: 正解の抽出（LEV-162）',
@@ -396,7 +446,7 @@ export function renderRecord(truth) {
     '| --- | --- |',
     `| 実行 | ${truth.generatedAt} |`,
     `| Vault | \`${truth.vault}\`（ノート ${truth.notes} 件） |`,
-    `| 設定 | ${truth.hierarchySource === 'data.json' ? '`.obsidian/plugins/jevbrain/data.json`' : '上流の既定値（data.json なし）'} |`,
+    `| 設定 | ${truth.hierarchyFile ? `\`${truth.hierarchyFile}\`` : '上流の既定値（data.json なし）'} |`,
     `| 正解 | ${summary.entries} 件（前後 ${truth.contextChars} 字、相手の冒頭 ${truth.excerptChars} 字） |`,
     `| リンク総数 | ${summary.links.total} 件（型付き ${percentage(summary.links.ratio)}） |`,
     '',
@@ -414,8 +464,7 @@ export function renderRecord(truth) {
     ...summary.byDirection.map((row) => `| ${row.direction ? DIRECTION_LABELS[row.direction] : '—（領域の外）'} | ${row.count} |`),
     '',
     'Vault の内容（前後の文・相手の冒頭）は `truth.json` にだけ入る。`artifacts/` は gitignore で、コミットしない。',
-    'Jev への判定と一致率は judge（LEV-163）で足す。',
-    '',
+    judged ? '' : 'Jev への判定と一致率は judge（LEV-163）で足す。\n',
   ].join('\n');
 }
 
@@ -425,7 +474,8 @@ export function projectRoot() {
 
 /** Vault content may only be written under `artifacts/`（AGENTS.md、設計 §10）. */
 export function resolveOutputPath(root, out) {
-  const target = resolve(out);
+  // Relative to the project root, not to where the shell happens to stand.
+  const target = resolve(root, out);
   const path = relative(join(root, 'artifacts'), target);
   if (!path || path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) {
     throw new Error(`--out must stay inside artifacts/: ${out}`);
@@ -442,47 +492,73 @@ export function writeOutputs(outPath, truth, record) {
   return recordPath;
 }
 
+const EXTRACT_FLAGS = { '--vault': 'vault', '--out': 'out', '--hierarchy': 'hierarchy' };
+const JUDGE_FLAGS = {
+  '--truth': 'truth', '--hierarchy': 'hierarchy', '--responses': 'responses', '--record': 'record', '--limit': 'limit',
+  '--concurrency': 'concurrency', '--seed': 'seed', '--mask': 'mask', '--endpoint': 'endpoint',
+  '--model': 'model', '--price': 'price', '--rate': 'rate',
+};
+
+const NUMERIC = new Set(['limit', 'concurrency', 'seed', 'price', 'rate']);
+
+const asNumber = (flag, value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`${flag} takes a number: ${value}.\n${USAGE}`);
+  return parsed;
+};
+
 export function parseArguments(argv) {
   const [subcommand, ...rest] = argv;
   if (subcommand !== 'extract' && subcommand !== 'judge') {
     throw new Error(`Expected the subcommand extract or judge.\n${USAGE}`);
   }
-  const options = { subcommand, vault: null, out: DEFAULT_OUT };
+  const flags = subcommand === 'extract' ? EXTRACT_FLAGS : JUDGE_FLAGS;
+  const options = subcommand === 'extract'
+    ? { subcommand, vault: null, out: DEFAULT_OUT, hierarchy: null }
+    : { subcommand, truth: DEFAULT_OUT, hierarchy: null, responses: null, record: null, ...JUDGE_DEFAULTS };
   for (let index = 0; index < rest.length; index += 2) {
     const flag = rest[index];
     const value = rest[index + 1];
+    const name = Object.prototype.hasOwnProperty.call(flags, flag) ? flags[flag] : null;
+    if (name === null) throw new Error(`Unknown argument: ${flag}.\n${USAGE}`);
     if (value === undefined) throw new Error(`Missing value for ${flag}.\n${USAGE}`);
-    if (flag === '--vault') options.vault = value;
-    else if (flag === '--out') options.out = value;
-    else throw new Error(`Unknown argument: ${flag}.\n${USAGE}`);
+    options[name] = NUMERIC.has(name) ? asNumber(flag, value) : value;
   }
   if (subcommand === 'extract' && options.vault === null) {
     throw new Error(`extract needs --vault <path>.\n${USAGE}`);
   }
+  if (subcommand === 'judge' && options.mask !== 'on' && options.mask !== 'off') {
+    throw new Error(`--mask takes on or off: ${options.mask}.\n${USAGE}`);
+  }
   return options;
 }
 
-/** The second half of JEV-0 (LEV-163): ask Jev two questions per truth record and score the answers. */
-export function runJudge() {
-  throw new Error('judge is not implemented yet; it comes with LEV-163 (JEV_API_KEY, two questions per truth record).');
+function runExtract(root, options) {
+  const outPath = resolveOutputPath(root, options.out);
+  const truth = extractTruth(options.vault, { hierarchyPath: options.hierarchy });
+  const record = renderRecord(truth);
+  const recordPath = writeOutputs(outPath, truth, record);
+  console.info(record);
+  console.info(`truth: ${outPath}`);
+  console.info(`record: ${recordPath}`);
 }
 
-const invokedAsScript = process.argv[1]
-  && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
-
-if (invokedAsScript) {
+async function main(argv) {
   try {
-    const options = parseArguments(process.argv.slice(2));
-    if (options.subcommand === 'judge') runJudge();
-    const outPath = resolveOutputPath(projectRoot(), options.out);
-    const truth = extractTruth(options.vault);
-    const record = renderRecord(truth);
-    const recordPath = writeOutputs(outPath, truth, record);
-    console.info(record);
-    console.info(`truth: ${outPath}`);
-    console.info(`record: ${recordPath}`);
+    const options = parseArguments(argv);
+    const root = projectRoot();
+    // Loaded only when it is asked for: judge bundles src/jev/ with esbuild, extract needs nothing.
+    // The import has to happen after this module finishes evaluating — judge imports it back, and a
+    // top-level await here would leave the two waiting for each other.
+    if (options.subcommand === 'judge') await (await import('./jev-accuracy-judge.mjs')).runJudge(root, options);
+    else runExtract(root, options);
   } catch (error) {
     console.error(`jev-accuracy failed: ${error.message}`);
     process.exitCode = 1;
   }
 }
+
+const invokedAsScript = process.argv[1]
+  && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+
+if (invokedAsScript) void main(process.argv.slice(2));

@@ -19,6 +19,7 @@ export default defineConfig({
         "scripts/version-bump.mjs",
         "scripts/preflight.mjs",
         "scripts/jev-accuracy.mjs",
+        "scripts/jev-accuracy-judge.mjs",
       ],
       exclude: ["src/excalibrain-main.ts", "src/lang/locale/**"],
       reporter: ["text", "html"],
