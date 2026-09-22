@@ -304,7 +304,7 @@ export default {
   JEV_QUEUE_ASKING: "Asking Jev…",
   JEV_QUEUE_FAILED: "Jev did not answer. The developer console has the reason.",
   JEV_QUEUE_RETRY: "Ask again",
-  JEV_QUEUE_DEFERRED: "Left for later. It stays here until Obsidian is restarted.",
+  JEV_QUEUE_DEFERRED: "Left for later. Jev does not ask about it again while this panel stays open.",
   JEV_QUEUE_BACK: "Bring back",
   JEV_QUEUE_LATER: "Later",
   JEV_QUEUE_DIRECTION: "Direction {direction}, {probability}",
@@ -314,5 +314,7 @@ export default {
   JEV_QUEUE_NO_CHANGE: "Jev left the note alone: that field is already on the link, or the link has moved.",
   JEV_QUEUE_UNDO: "Undo",
   JEV_QUEUE_UNDO_MISSING: "Jev no longer has a record of that line, so it was left as it is.",
+  JEV_QUEUE_WRITE_FAILED: "Jev could not finish writing that field. The developer console has the reason, and the note may already hold the line.",
+  JEV_QUEUE_UNDO_FAILED: "Jev could not undo that line. The developer console has the reason.",
   JEV_QUEUE_USAGE: "{calls} judgement(s) · {tokens} tokens · about ¥{cost}",
 }

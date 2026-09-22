@@ -5,11 +5,13 @@ import { JevQueueModel, estimateCostJpy, type JevQueueCard } from 'src/jev/queue
 
 const NOTE = 'notes/中心.md';
 
-const link = (target: string, line = 0): UntypedLink => ({
+const link = (target: string, offset = 4): UntypedLink => ({
   target,
   displayText: target.replace(/\.md$/u, ''),
-  line,
+  line: 0,
   ch: 4,
+  offset,
+  length: target.length + 4,
   context: `see [[${target}]] here`,
 });
 
@@ -38,8 +40,9 @@ beforeEach(() => {
 
 describe('setNote', () => {
   it('turns the collected links into cards that are waiting for Jev', () => {
-    model.setNote(NOTE, [link('a.md'), link('b.md', 3)]);
+    model.setNote(NOTE, [link('a.md'), link('b.md', 30)]);
 
+    expect(model.list.map((c) => [c.offset, c.length])).toEqual([[4, 8], [30, 8]]);
     expect(model.notePath).toBe(NOTE);
     expect(model.list.map((c) => [c.target, c.status])).toEqual([['a.md', 'pending'], ['b.md', 'pending']]);
     expect(model.pending().map((c) => c.target)).toEqual(['a.md', 'b.md']);
@@ -73,6 +76,35 @@ describe('open → done → 取り消し', () => {
     expect(model.judged('a.md', judgement('up'))).toBe(true);
 
     expect(card(model, 'a.md').status).toBe('open');
+    expect(card(model, 'a.md').selected).toBe('up');
+  });
+
+  it('preselects the answer of Q1, not whatever sorted to the front of the candidates', () => {
+    // judge() sorts a field the response said nothing about behind the others, so `ordered[0]`
+    // is not always Q1's answer. The card has to write the answer, never the accident.
+    model.judged('a.md', {
+      ...judgement('up'),
+      ordered: [{ field: 'origin', probability: 0.4 }, { field: 'up' }],
+    });
+
+    expect(card(model, 'a.md').selected).toBe('up');
+  });
+
+  it('matches Q1s answer to the ontologys spelling', () => {
+    model.judged('a.md', {
+      ...judgement('Part Of'),
+      ordered: [{ field: 'part of', probability: 0.8 }, { field: 'up', probability: 0.1 }],
+    });
+
+    expect(card(model, 'a.md').selected).toBe('part of');
+  });
+
+  it('falls back to the first candidate when the answer is outside the ontology', () => {
+    model.judged('a.md', {
+      ...judgement('invented'),
+      ordered: [{ field: 'up', probability: 0.5 }, { field: 'origin', probability: 0.2 }],
+    });
+
     expect(card(model, 'a.md').selected).toBe('up');
   });
 

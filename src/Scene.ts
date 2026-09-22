@@ -1663,6 +1663,8 @@ export class Scene {
     this.centralPagePath = undefined;
     this.centralPageFile = undefined;
     this.terminated = true;
+    //中心が無くなったことを同じ 1 本で知らせる。これが無いとキューは閉じた脳の中心を持ち続ける。
+    this.app.workspace.trigger(JEV_CENTRAL_PAGE_CHANGED, null);
     if(!this.app.plugins.plugins["obsidian-excalidraw-plugin"]) {
       this.plugin.EA = null;
     }
