@@ -95,7 +95,7 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 ## 7. Jev の API と費用（2026-09-22。要求は公開情報どおり、応答は実機 E18 の記録）
 
 - 要求: `POST https://api.typesafe.ai/v1/systemone`、Bearer キー、モデル `jev-latest`。本文は `model`・`state`（文字列か JSON）・`questions`（名前 → `{ type, instructions, criteria }`）。Choice の `criteria` はラベル→説明文の辞書で 255 候補まで。Score は 2〜10 段階、Noul は yes の確率。複数の質問は並列に評価される。公開情報のとおりで通った（2026-09-22、E18）。
-- 応答: トップレベルは `model`・`answers`・`usage`。`answers` は**質問の名前 → `{ type, choice, confidence, probabilities }`**、`usage` は `input_tokens`／`output_tokens`（snake_case）。公開情報から起こしていた形との差は 3 点で、(1) `questions` ではなく `answers`、(2) 各回答に `type`、(3) usage が snake_case。`src/jev/client.ts` の `parseResponseBody` はこの形だけを読み、質問の名前で引く辞書（`JevResponse.questions`）と `usage.inputTokens` に直す。出力は無料なので `output_tokens` は読まない。
+- 応答: トップレベルは `model`・`answers`・`usage`。`answers` は**質問の名前 → `{ type, choice, confidence, probabilities }`**、`usage` は `input_tokens`／`output_tokens`（snake_case）。公開情報から起こしていた形との差は 3 点で、(1) `questions` ではなく `answers`、(2) 各回答に `type`、(3) usage が snake_case。`src/jev/client.ts` の `parseResponseBody` はこの形だけを読み、質問の名前で引く辞書（`JevResponse.questions`）と `usage.inputTokens` に直す。出力は無料なので `output_tokens` は読まない。**`probabilities` は送った候補が全部揃うとは限らない**（E18 の記録では 6 方向のうち `previous`・`next` が無い）。`judge` の確率の読み取りは欠けたラベルを「確率なし」として扱い、`directionProbability` は 0 になる。しきい値（§2-4）をこの値に掛ける JEV-3／JEV-4 は、欠けを 0 と見るか対象外と見るかをそこで決める。
 
 ```json
 {"model":"jev-1.13.0",
@@ -130,6 +130,7 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 - 出す数字: フィールド一致率、方向一致率、しきい値（0.5／0.6／0.7／0.8／0.9）ごとの適合率と対象率、混同の多いフィールドの組、日本語 state のトークン数、費用の実績。500 件以上。
 - 判断: 一致率 7 割以上なら計画どおり。5 割なら criteria の説明文を厚くして再測。それ以下なら JEV-4 の自動確定をやめ、サジェスターとキューだけにする。
 - 記録: `artifacts/jev-accuracy/record.md`。Vault の内容と生の応答はコミットしない。
+- 例外（本人の決定、2026-09-22）: `tests/fixtures/` のノートだけで作った state に対する応答は、Vault の内容も鍵も含まないので `tests/fixtures/jev/` に実物のまま置いてよい。`two-choice-200.json` がそれ（E18 の記録）。本人の Vault を state にした応答は、JEV-0 の精度テストのものも含めてコミットしない。
 
 ## 11. 決定と残る課題
 

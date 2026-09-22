@@ -209,27 +209,37 @@ const fixtures = fileURLToPath(new URL('../fixtures/jev', import.meta.url));
 /** The wire shape of a recorded reply: `answers` keyed by question name, snake_case usage (client.ts). */
 type RecordedReply = {
   body: {
-    answers: Record<string, { choice: string; probabilities: Record<string, number>; confidence: number }>;
-    usage?: { input_tokens: number };
+    answers: Record<
+      string,
+      { type: string; choice: string; probabilities: Record<string, number>; confidence: number }
+    >;
+    usage: { input_tokens: number };
   };
 };
 
 /**
  * The response recorded from the real Jev on 2026-09-22 (`tests/fixtures/jev/two-choice-200.json`:
- * field `up` 0.39, direction `child`, 515 input tokens), converted the way `client.ts` converts it.
- * A test that needs a different answer swaps only that answer's `choice`, so the shape stays the
- * recorded one (AGENTS.md). The recording itself answers with a field and a direction that disagree,
- * which is what the unconfident test uses.
+ * field `up` 0.39, direction `child`, 515 input tokens), converted exactly the way `client.ts` hands
+ * it over: the answers keyed by question name, `type` dropped, `input_tokens` read as `inputTokens`.
+ * Keep this in step with `parseResponseBody` when the wire shape changes.
+ *
+ * The recording answers `child` for a field in the parent region, so the default here overrides the
+ * direction to the one that agrees; a test about the disagreement asks for `child` itself.
  */
 function answer(overrides: { field?: string; direction?: string } = {}): JevResponse {
   const recorded = JSON.parse(
     readFileSync(join(fixtures, 'two-choice-200.json'), 'utf8'),
   ) as RecordedReply;
-  const questions = { ...recorded.body.answers };
-  if (overrides.field) questions.field = { ...questions.field, choice: overrides.field };
-  if (overrides.direction) questions.direction = { ...questions.direction, choice: overrides.direction };
-  const inputTokens = recorded.body.usage?.input_tokens;
-  return inputTokens === undefined ? { questions } : { questions, usage: { inputTokens } };
+  const questions = Object.fromEntries(
+    Object.entries(recorded.body.answers).map(([name, wire]) => [
+      name,
+      { choice: wire.choice, probabilities: wire.probabilities, confidence: wire.confidence },
+    ]),
+  );
+  questions.direction.choice = 'parent';
+  if (overrides.field) questions.field.choice = overrides.field;
+  if (overrides.direction) questions.direction.choice = overrides.direction;
+  return { questions, usage: { inputTokens: recorded.body.usage.input_tokens } };
 }
 
 /** `askJev` replaced by a recorder; the tests never reach the network (design §9). */
@@ -254,7 +264,7 @@ describe('typeLinkAtCursor', () => {
       'A.md': { content: note, frontmatter: { tags: ['習慣'] } },
       'B.md': { content: 'B の冒頭。' },
     });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
 
     const result = await typeLinkAtCursor(
       vault.plugin,
@@ -268,6 +278,8 @@ describe('typeLinkAtCursor', () => {
       target: 'B',
       probability: 0.39,
       inputTokens: 515,
+      // 記録は実測の usage を持つので、見積もりの印は立たない（client.ts）。
+      estimatedTokens: undefined,
       logged: true,
     });
     expect(vault.vault.notes.get('A.md')).toBe(`${note}\n## Relations\nup:: [[B]]`);
@@ -290,7 +302,7 @@ describe('typeLinkAtCursor', () => {
       'A.md': { content: note, frontmatter: { tags: ['習慣'] } },
       'B.md': { content: 'B の冒頭。' },
     });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
 
     await typeLinkAtCursor(
       vault.plugin,
@@ -339,7 +351,7 @@ describe('typeLinkAtCursor', () => {
   it('asks about a link whose file does not exist and sends its name only', async () => {
     const content = '本文で [[まだ無いノート]] に触れる。';
     const vault = makeVault({ 'A.md': { content } });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
 
     const result = await typeLinkAtCursor(
       vault.plugin,
@@ -355,9 +367,9 @@ describe('typeLinkAtCursor', () => {
   });
 
   it('writes nothing when the field and the direction disagree', async () => {
-    // 記録した応答そのまま（field: up ＝親の領域、direction: child）。実機 E18 で実際に返ってきた形。
+    // field は up（親の領域）のまま、Q2 だけ child に。実機 E18 の記録がまさにこの食い違いだった。
     const vault = makeVault({ 'A.md': { content: note }, 'B.md': {} });
-    const jev = asking(answer());
+    const jev = asking(answer({ direction: 'child' }));
 
     const result = await typeLinkAtCursor(
       vault.plugin,
@@ -402,7 +414,7 @@ describe('typeLinkAtCursor', () => {
       'C.md': {},
       'D.md': {},
     });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
     const run = (cursor: { line: number; ch: number }) =>
       typeLinkAtCursor(vault.plugin, { file: vault.file('A.md'), content, cursor }, jev.deps);
 
@@ -418,7 +430,7 @@ describe('typeLinkAtCursor', () => {
     // 行はあるが Dataview の索引がまだ追いついていない状態: 二重書きは appendRelation が止める。
     const content = [...note.split('\n'), '## Relations', 'up:: [[B]]'].join('\n');
     const vault = makeVault({ 'A.md': { content }, 'B.md': {} });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
 
     const result = await typeLinkAtCursor(
       vault.plugin,
@@ -435,7 +447,7 @@ describe('typeLinkAtCursor', () => {
     // `[[../notes/B.md]]` はリンクとして解決しないので、本文の綴りではなく解決したパスを書く。
     const content = 'テンプレートは [B](../notes/B.md) に寄せる。';
     const vault = makeVault({ 'x/A.md': { content }, 'notes/B.md': { content: 'B の冒頭。' } });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
 
     const result = await typeLinkAtCursor(
       vault.plugin,
@@ -449,7 +461,7 @@ describe('typeLinkAtCursor', () => {
 
   it('writes the ontology spelling of the field, not the answer as Jev spelled it', async () => {
     const vault = makeVault({ 'A.md': { content: note }, 'B.md': {} });
-    const jev = asking(answer({ field: 'Up', direction: 'parent' }));
+    const jev = asking(answer({ field: 'Up' }));
 
     const result = await typeLinkAtCursor(
       vault.plugin,
@@ -463,7 +475,7 @@ describe('typeLinkAtCursor', () => {
 
   it('tells a field outside the ontology apart from a direction that disagrees', async () => {
     const vault = makeVault({ 'A.md': { content: note }, 'B.md': {} });
-    const jev = asking(answer({ field: 'まだ無いフィールド', direction: 'parent' }));
+    const jev = asking(answer({ field: 'まだ無いフィールド' }));
 
     expect(
       await typeLinkAtCursor(
@@ -477,7 +489,7 @@ describe('typeLinkAtCursor', () => {
 
   it('flushes the editor buffer to the file before writing', async () => {
     const vault = makeVault({ 'A.md': { content: note }, 'B.md': {} });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
 
     await typeLinkAtCursor(
       vault.plugin,
@@ -501,7 +513,7 @@ describe('typeLinkAtCursor', () => {
       'excalibrain.md': { content: note },
       'B.md': {},
     }, { excludeFilepaths: ['アーカイブ/'] });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
     const run = (path: string) =>
       typeLinkAtCursor(
         vault.plugin,
@@ -516,7 +528,7 @@ describe('typeLinkAtCursor', () => {
 
   it('asks nothing while the note is not in the index', async () => {
     const vault = makeVault({ 'A.md': { content: note }, 'B.md': {} });
-    const jev = asking(answer({ direction: 'parent' }));
+    const jev = asking(answer());
     const outside = Object.assign(new TFile(), { path: 'Z.md', stat: { mtime: 0 } });
 
     expect(

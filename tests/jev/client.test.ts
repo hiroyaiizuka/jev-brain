@@ -37,12 +37,12 @@ const request: JevRequest = {
     field: {
       kind: 'choice',
       instructions: 'このリンクに付けるフィールド',
-      criteria: { up: 'より抽象的な相手', origin: '出典', similar: '似た話' },
+      criteria: { up: 'より抽象的な相手', down: 'より具体的な相手', similar: '似た話', next: '次に来る話' },
     },
     direction: {
       kind: 'choice',
       instructions: 'このリンクの方向',
-      criteria: { parent: '親', child: '子' },
+      criteria: { parent: '親', child: '子', leftFriend: '左友', rightFriend: '右友' },
     },
   },
 };
@@ -86,12 +86,12 @@ describe('askJev', () => {
         field: {
           type: 'choice',
           instructions: 'このリンクに付けるフィールド',
-          criteria: { up: 'より抽象的な相手', origin: '出典', similar: '似た話' },
+          criteria: { up: 'より抽象的な相手', down: 'より具体的な相手', similar: '似た話', next: '次に来る話' },
         },
         direction: {
           type: 'choice',
           instructions: 'このリンクの方向',
-          criteria: { parent: '親', child: '子' },
+          criteria: { parent: '親', child: '子', leftFriend: '左友', rightFriend: '右友' },
         },
       },
     });
@@ -115,7 +115,8 @@ describe('askJev', () => {
 
     expect(response?.questions.field.choice).toBe('origin');
     // The criteria travel with the state, so the estimate counts the whole request, not just the state.
-    expect(response?.usage).toEqual({ inputTokens: requestUrlMock.calls[0].body?.length });
+    // `estimated` says so, and it travels to the Notice, so a record cannot read it as measured.
+    expect(response?.usage).toEqual({ inputTokens: requestUrlMock.calls[0].body?.length, estimated: true });
     expect(response?.usage?.inputTokens).toBeGreaterThan((request.state as string).length);
   });
 
@@ -177,6 +178,17 @@ describe('askJev', () => {
     expect(await askJev(config, request)).toBeNull();
     expect(requestUrlMock.calls).toHaveLength(1);
     expect(Notice.messages).toHaveLength(1);
+  });
+
+  it('refuses the shape the public documentation described, which the real API does not use', async () => {
+    // 設計 §7・§11: 実応答は `answers`。`questions` だけの応答はもう受けない（両方受けると、どちらの
+    // 形で動いているのか分からなくなる）。
+    requestUrlMock.respond = () => Promise.resolve(recorded('legacy-questions-200.json'));
+
+    expect(await askJev(config, request)).toBeNull();
+    expect(requestUrlMock.calls).toHaveLength(1);
+    expect(Notice.messages).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ message: expect.stringContaining('unreadable') as unknown });
   });
 
   it('fails when the reply answers only one of the two questions', async () => {

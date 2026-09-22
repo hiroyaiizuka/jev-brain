@@ -104,7 +104,8 @@ export const noticeFor = (result: TypeLinkResult): string | null => {
         field: result.field,
         target: result.target,
         probability: percent(result.probability),
-        tokens: String(result.inputTokens ?? 0),
+        // 実測は数字だけ、見積もりは "~1234"。E18 の記録に見積もりを実測として書かないための印。
+        tokens: `${result.estimatedTokens ? "~" : ""}${result.inputTokens ?? 0}`,
       });
   }
 };

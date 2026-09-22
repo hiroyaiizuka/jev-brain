@@ -8,7 +8,8 @@ import { sleep } from "src/utils/utils";
  * リクエストとレスポンスの形は 2026-09-22 の実応答（E18、`artifacts/jev-1-e2e/`）で照合済み。応答は
  * 公開情報と 3 点違っていた（トップレベルが `answers`、各回答に `type`、usage が snake_case）ので、
  * 読み取りをそちらに合わせた。以降も変換は toWireRequest と parseResponseBody の 2 か所に閉じ、
- * 形が変わったらこのファイルと tests/fixtures/jev/ だけを直す。
+ * 形が変わったらこのファイルと tests/fixtures/jev/、その形を写している tests/jev/typeLink.test.ts の
+ * `answer()` を直す。
  */
 
 /** タイムアウトの既定値。設定には持たせず、呼び出し側がこの値を JevClientConfig に入れる。 */
@@ -56,10 +57,11 @@ export interface JevResponse {
    */
   questions: Record<string, JevAnswer>;
   /**
-   * 費用表示（JEV-3）用の入力トークン。応答が返さなければ送った本文の文字数から見積もった値が入る。
-   * 出力は無料なので `output_tokens` は読まない（設計 §7）。
+   * 費用表示（JEV-3）用の入力トークン。出力は無料なので `output_tokens` は読まない（設計 §7）。
+   * 応答が usage を返さなければ送った本文の文字数から見積もり、`estimated` を立てる。実測と見積もりが
+   * 同じ数字として記録に残らないよう、印は呼び出し側まで運ぶ。
    */
-  usage?: { inputTokens: number };
+  usage?: { inputTokens: number; estimated?: boolean };
 }
 
 /**
@@ -88,7 +90,7 @@ export async function askJev(config: JevClientConfig, request: JevRequest): Prom
   if (result.outcome !== "ok") return reportFailure(config, result.reason);
   if (result.response.usage) return result.response;
   // 送った本文の文字数をそのままトークン数とみなす暫定値。日本語の実測（JEV-0、設計 §10）で置き換える。
-  return { ...result.response, usage: { inputTokens: body.length } };
+  return { ...result.response, usage: { inputTokens: body.length, estimated: true } };
 }
 
 /** 失敗の出口はここだけ。Notice 1 回と console.warn 1 回で、API キーは書かない。 */

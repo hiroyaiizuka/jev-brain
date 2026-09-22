@@ -62,8 +62,10 @@ export type TypeLinkResult =
       target: string;
       /** Q1 の第一候補の確率。応答がその候補の確率を返さなければ undefined。 */
       probability?: number;
-      /** 費用の記録（E18）用。応答に無ければ `client.ts` の見積もり。 */
+      /** 費用の記録（E18）用の入力トークン。 */
       inputTokens?: number;
+      /** その数字が応答の実測ではなく `client.ts` の見積もりか。記録に実測として残さないための印。 */
+      estimatedTokens?: boolean;
       /** `jev-log.json` に記録できたか。false のときは取り消せない。 */
       logged: boolean;
     };
@@ -154,6 +156,7 @@ export const typeLinkAtCursor = async (
     target: name,
     probability: chosen?.probability,
     inputTokens: response.usage?.inputTokens,
+    estimatedTokens: response.usage?.estimated,
     // 書いたあとに記録だけ落ちても、行は入っている。取り消せないことだけを呼び出し側に伝える。
     logged: await logEdit(plugin, file.path, edit),
   };
