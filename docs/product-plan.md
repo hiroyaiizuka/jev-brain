@@ -125,6 +125,8 @@
 - ホットキー付きコマンド「Jev: カーソルのリンクに型を付ける」が同じサジェストを任意のタイミングで出す。型付きなら現在のフィールドを先頭にした付け替え候補。
 - 実機（E19）: JevBrain の view を閉じたまま test-vault のノートに `[[X]]` を書き、サジェスト → 確定 → 行が入り、JevBrain を開くと反映される。証跡は `artifacts/jev-2-e2e/`。
 
+現在の実装（LEV-171）: `src/Suggesters/JevLinkSuggest.ts`（`registerJev()` で `registerEditorSuggest`）が、設定 `suggestOnLinkClose` が真でカーソルの直前に `[[X]]` が閉じ、その相手にまだどちらのノートのフィールドも付いておらず（埋め込み・自分自身・図面ファイル・`excludeFilepaths`・hidden・`up:: [[` を書いている途中の行は出さない）、このノートのその相手をまだ聞いていないときに候補を出す。未型付けの判断は `collectUntypedLinks` ではなく両ノートの Dataview のフィールドを 1 件だけ見る（今閉じたリンクは `metadataCache` の再解析に間に合わず、ブレインを開いていなければ `Pages` の索引も無いため。設計 §4-1）。問い合わせは `buildState`＋`buildQuestions`→`askJev`→`judge` で、待つ間は 1 行のプレースホルダ、届いたら `judge` の `ordered`（自信ありは確率の降順で確率と方向、自信なしは設定の順で確率を伏せ「自信なし」の注記）に入れ替える。描き直しは `close()`／`open()` ではなく `context` を捨てて `EditorSuggest` の内部の `trigger()` をやり直させる（公開 API に候補を取り直す入口が無いため、無ければ次の入力まで待ちの行のまま）。Enter で `appendRelation`（`writeMode`・`relationsHeading` に従う）と `jev-log.json` への記録（`source: "suggest"`）を行って Notice を出し、Esc は `EditorSuggest` が閉じる。同じノートの同じ相手はセッション中 1 回だけ聞き（`file-open` で別のノートに移るとそのノート以外を忘れる）、確定した相手は出し直さない。ホットキー版（LEV-172）の入口 `openAt()` だけ用意した。`tests/suggesters/jev-link-suggest.test.ts`（21 件）が `onTrigger` の条件・候補の並び（`tests/fixtures/jev/two-choice-200.json` と新しい `field-direction-mismatch-200.json`）・確定の書き込みと記録・描き直しの呼び出しを固定する。実機は未実施（E19 は LEV-173）。
+
 ### JEV-3 型付け待ちキュー（JEV-1 の後）
 
 - 右サイドの `ItemView`「型付け待ち」に中心ノートの未型付けリンクが並び、カードごとに Jev の判定（第一候補の確率、方向の一致）と「確定」「あとで」が出る。確定後は書き込んだ行と「取り消す」。中心が変わると更新され、「あとで」はセッション内で覚える。

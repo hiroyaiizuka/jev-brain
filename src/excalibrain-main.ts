@@ -9,6 +9,7 @@ import { Scene } from './Scene';
 import { LinkStyles, NodeStyles, LinkStyle, RelationType, LinkDirection } from './Types';
 import { WarningPrompt } from './utils/Prompts';
 import { FieldSuggester } from './Suggesters/OntologySuggester';
+import { JevLinkSuggest } from './Suggesters/JevLinkSuggest';
 import { URLParser } from './graph/URLParser';
 import { AddToOntologyModal, Ontology } from './Components/AddToOntologyModal';
 import { NavigationHistory } from './Components/NavigationHistory';
@@ -176,6 +177,8 @@ export default class ExcaliBrain extends Plugin {
    * a key never sees any of it. The parts themselves arrive with their own tickets.
    */
   private registerJev() {
+    // JEV-2: `]]` を閉じた直後の候補（docs/jev-link-typer-design.md §4-1）。
+    this.registerEditorSuggest(new JevLinkSuggest(this));
   }
 
   private registerEvents() {
