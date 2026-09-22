@@ -294,6 +294,20 @@ export default {
   JEV_MODEL_DESC: "The Jev model to ask.",
   JEV_RELOAD_NOTICE: "Reload Obsidian for this to take effect: whether Jev is registered at all is decided while the plugin loads.",
 
+  //Jev command (docs/jev-link-typer-design.md §4-1). {field}, {target}, {candidates}, {probability} and {tokens} are filled in by the command.
+  JEV_COMMAND_TYPE_LINK: "Jev: type the link at the cursor (confirm the first candidate)",
+  JEV_COMMAND_NO_DATAVIEW: "Jev needs Dataview to read the fields of your notes.",
+  JEV_COMMAND_NO_INDEX: "This note is not in the index yet. Try again in a moment, or check the excluded paths.",
+  JEV_COMMAND_NO_LINK: "Put the cursor on a link that has no field yet.",
+  JEV_COMMAND_EXCLUDED: "This note is left out of the graph (excluded paths, or the brain drawing itself), so Jev does not write to it.",
+  JEV_COMMAND_BUSY: "Jev is still working on the last link. Wait for its answer.",
+  JEV_COMMAND_UNCONFIDENT: "Jev is not sure about [[{target}]]: the field and the direction disagree. Candidates: {candidates}. Nothing was written.",
+  JEV_COMMAND_UNKNOWN_FIELD: "Jev answered \"{answer}\" for [[{target}]], which is not a field of your ontology. Nothing was written.",
+  JEV_COMMAND_UNCHANGED: "Nothing was written for {field}:: [[{target}]]: the line is already there, or inline writing could not find the link in the body.",
+  JEV_COMMAND_WROTE: "Jev wrote {field}:: [[{target}]] ({probability}%, {tokens} tokens).",
+  JEV_COMMAND_WROTE_UNLOGGED: "Jev wrote {field}:: [[{target}]] ({probability}%, {tokens} tokens), but could not record it: this line cannot be undone by Jev.",
+  JEV_COMMAND_ERROR: "The Jev command failed. See the developer console for details.",
+
   //Jev typing queue (docs/jev-link-typer-design.md §4-2). Other locales fall back to these.
   JEV_QUEUE_TITLE: "Jev typing queue",
   JEV_QUEUE_OPEN: "Open the typing queue",
