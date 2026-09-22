@@ -7,9 +7,9 @@ import type {
   TFile,
 } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
-import { normalizeRelationsHeading } from "src/Settings";
+import { isJevActive, normalizeRelationsHeading } from "src/Settings";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev } from "src/jev/client";
-import type { JevQuestion } from "src/jev/client";
+import type { JevQuestion, JevResponse as JevClientResponse } from "src/jev/client";
 import { buildQuestions, directionOfField, judge } from "src/jev/judge";
 import type { Direction, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry } from "src/jev/log";
@@ -49,6 +49,9 @@ const DIRECTION_TEXT: Record<Direction, string> = {
 };
 
 const ASKING: JevSuggestion = { kind: "asking" };
+
+/** console に出す理由。`client.ts` と同じ形で、Vault の中身も API キーも書かない。 */
+const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : "unexpected error");
 
 /**
  * `EditorSuggest` が候補を取り直す入口。obsidian.d.ts には無い（公開されているのは `onTrigger` と
@@ -98,6 +101,26 @@ const closedLinkAt = (line: string, ch: number): ClosedLink | null => {
   return linkpath === "" ? null : { start, linkpath };
 };
 
+/**
+ * その行が本文か（frontmatter とコードブロックの中ではないか）。そこの `[[X]]` を Obsidian は
+ * リンクとして数えず（`collect.ts` は `metadataCache` のリンク一覧を読むので自動的に外れる）、
+ * `relations.ts` の `readNote` も同じ判断で書き込みを避けるので、出す側もそろえる。
+ */
+const isInBody = (editor: Editor, line: number): boolean => {
+  let start = 0;
+  if (editor.getLine(0).trim() === "---") {
+    for (let i = 1; i <= editor.lastLine(); i++) {
+      if (editor.getLine(i).trim() === "---") { start = i + 1; break; }
+    }
+    if (line < start) return false;
+  }
+  let fenced = false;
+  for (let i = start; i < line; i++) {
+    if (/^\s*(?:```|~~~)/u.test(editor.getLine(i))) fenced = !fenced;
+  }
+  return !fenced;
+};
+
 /** オントロジーのフィールドを Dataview のキーで。hidden も入れる: そこで結ばれた相手はもう聞かない（設計 §2-1）。 */
 const ontologyFields = (plugin: ExcaliBrain): string[] =>
   HIERARCHY_REGIONS.flatMap((region) => plugin.hierarchyLowerCase[region]);
@@ -123,6 +146,8 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
   private ask: LinkAsk | null = null;
   /** セッション中に一度聞いた相手。ノートのパス → 相手（設計 §4-1）。 */
   private readonly asked = new Map<string, Set<string>>();
+  /** 前回 `onTrigger` が見た行。入力で変わったのかカーソルが動いただけなのかを分ける。 */
+  private lastLine: { path: string; line: number; text: string } | null = null;
 
   constructor(plugin: ExcaliBrain) {
     super(plugin.app);
@@ -143,8 +168,15 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
    * もう一度通るので、ここで閉じてしまうと候補に入れ替わらない。
    */
   onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
-    if (!this.plugin.settings.jev.suggestOnLinkClose || !file || !this.plugin.DVAPI) return null;
-    const closed = closedLinkAt(editor.getLine(cursor.line), cursor.ch);
+    // 登録は読み込み時に一度だけなので、途中でキーを消された・切られた場合もここで止める。
+    if (!isJevActive(this.plugin.settings) || !this.plugin.settings.jev.suggestOnLinkClose) return null;
+    if (!file || !this.plugin.DVAPI) return null;
+    const line = editor.getLine(cursor.line);
+    // 前回この関数が呼ばれたときの行。`onTrigger` はキー入力にもカーソル移動にも呼ばれるので、
+    // 「今 `]]` を打った」のか「閉じたリンクの後ろにカーソルを置いただけ」なのかはこれで分ける。
+    const previous = this.lastLine;
+    this.lastLine = { path: file.path, line: cursor.line, text: line };
+    const closed = closedLinkAt(line, cursor.ch);
     if (!closed) return null;
     const start: EditorPosition = { line: cursor.line, ch: closed.start };
     const target = this.plugin.app.metadataCache
@@ -153,7 +185,10 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     // 2 件目のリンクは別の鍵になって「もう聞いた」で止まる。
     const key = `${file.path}\n${cursor.line}:${closed.start}\n${target}`;
     if (this.ask?.key !== key) {
+      const justTyped = previous?.path === file.path && previous.line === cursor.line && previous.text !== line;
+      if (!justTyped) return null; // カーソルを置いただけで問い合わせを飛ばさない
       if (this.asked.get(file.path)?.has(target)) return null;
+      if (!isInBody(editor, cursor.line)) return null;
       if (!this.isUntyped(file, target)) return null;
       this.startAsk({
         key,
@@ -242,6 +277,29 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
   }
 
   private async run(ask: LinkAsk, text: string): Promise<void> {
+    let response: JevClientResponse | null = null;
+    try {
+      response = await this.answer(ask, text);
+    } catch (error) {
+      // `askJev` は投げないが、相手のノートの読み込みと state の組み立ては投げうる。
+      // 投げたまま放っておくと、ポップアップが待ちの 1 行のまま残る。
+      console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.run", message: reasonOf(error) });
+    }
+    if (this.ask !== ask) return; // 別のリンクへ移ったあとに届いた答えは捨てる
+    if (response) {
+      ask.judgement = judge(response, this.plugin.settings.hierarchy);
+      ask.status = "answered";
+    } else {
+      ask.status = "failed";
+      // 聞けなかったものは「聞いた」に数えない。もう一度書き直せば聞き直せる（`ask` は
+      // 残すので、今開いているポップアップがその場で聞き直すことはない）。
+      this.asked.get(ask.file.path)?.delete(ask.target);
+    }
+    this.refresh();
+  }
+
+  /** 1 件ぶんの state を組んで Jev に聞く（設計 §2-2・§2-3）。 */
+  private async answer(ask: LinkAsk, text: string): Promise<JevClientResponse | null> {
     const app = this.plugin.app;
     const jev = this.plugin.settings.jev;
     const targetFile = app.metadataCache.getFirstLinkpathDest(ask.linkpath, ask.file.path);
@@ -256,42 +314,48 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
         : null,
       contextChars: jev.contextChars,
     });
-    const response = await askJev(
+    return askJev(
       { apiKey: jev.apiKey, endpoint: jev.endpoint, model: jev.model, timeoutMs: DEFAULT_JEV_TIMEOUT_MS },
       { state, questions: toRequestQuestions(buildQuestions(this.plugin.settings.hierarchy)) },
     );
-    if (this.ask !== ask) return; // 別のリンクへ移ったあとに届いた答えは捨てる
-    if (response) {
-      ask.judgement = judge(response, this.plugin.settings.hierarchy);
-      ask.status = "answered";
-    } else {
-      ask.status = "failed";
-    }
-    this.refresh();
   }
 
   /** 確定は設計 §3 のまま: `## Relations` に 1 行足し、取り消せるよう `jev-log.json` に記録する。 */
   private async confirm(ask: LinkAsk, field: string): Promise<void> {
     const { app, manifest, settings } = this.plugin;
-    const edit = await appendRelation(app, ask.file, field, ask.linkpath, {
-      heading: normalizeRelationsHeading(settings.jev.relationsHeading),
-      mode: settings.jev.writeMode,
-    });
-    if (!edit) {
-      new Notice(`Jev: ${field}:: [[${ask.linkpath}]] is already there.`);
+    const written = `${field}:: [[${ask.linkpath}]]`;
+    let edit;
+    try {
+      edit = await appendRelation(app, ask.file, field, ask.linkpath, {
+        heading: normalizeRelationsHeading(settings.jev.relationsHeading),
+        mode: settings.jev.writeMode,
+      });
+    } catch (error) {
+      console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
+      new Notice(`Jev could not write ${written}. See the developer console for details.`);
       return;
     }
-    if (manifest.dir) {
-      await appendLogEntry(app, manifest.dir, {
-        batchId: `suggest-${Date.now().toString(36)}`,
+    if (!edit) {
+      new Notice(`Jev: ${written} is already there.`);
+      return;
+    }
+    // 書いたあとに記録が残せなかったときは、取り消せないことを黙って隠さない（設計 §3）。
+    const recorded = manifest.dir
+      ? await appendLogEntry(app, manifest.dir, {
+        // 1 行の確定にも一括と同じ形の id を付ける。同じミリ秒に 2 件確定しても
+        // `undoBatch` が巻き込まないよう、`log.ts` の id と同じく乱数を足す。
+        batchId: `suggest-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         file: ask.file.path,
         line: edit.line,
         before: edit.before,
         after: edit.after,
         source: "suggest",
-      });
-    }
-    new Notice(`Jev: added ${field}:: [[${ask.linkpath}]]`);
+      }).then(() => true, (error: unknown) => {
+        console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
+        return false;
+      })
+      : false;
+    new Notice(recorded ? `Jev: added ${written}` : `Jev: added ${written}, but it was not recorded and cannot be undone.`);
   }
 
   /** 届いた答えでポップアップを描き直す。開いていなければ何もしない。 */
@@ -302,7 +366,15 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
 
   private retrigger(editor: Editor, file: TFile): void {
     const trigger = (this as unknown as Partial<EditorSuggestInternals>).trigger;
-    if (typeof trigger !== "function") return;
+    if (typeof trigger !== "function") {
+      // 描き直せないと待ちの 1 行が残るので、次の入力まで直らないことを console に残す。
+      console.warn({
+        plugin: "ExcaliBrain",
+        fn: "JevLinkSuggest.retrigger",
+        message: "EditorSuggest.trigger() is gone; the suggestion cannot be redrawn",
+      });
+      return;
+    }
     // 前と同じ context なら候補を取り直さないことがあるので、先に捨ててから `onTrigger` を
     // やり直させる（設計 §4-1: `close()`／`open()` ではなく context の更新で描き直す）。
     this.context = null;

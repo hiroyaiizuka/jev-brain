@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,11 +112,12 @@ function setup(
   };
 }
 
-/** The editor members `onTrigger` reads: the line under the cursor, the buffer and the offset. */
+/** The editor members `onTrigger` reads: the lines, the buffer and the offset of a position. */
 function editorFor(text: string): Editor {
   const lines = text.split('\n');
   return {
     getLine: (line: number) => lines[line] ?? '',
+    lastLine: () => lines.length - 1,
     getValue: () => text,
     posToOffset: ({ line, ch }: EditorPosition) =>
       lines.slice(0, line).reduce((sum, own) => sum + own.length + 1, 0) + ch,
@@ -124,7 +125,20 @@ function editorFor(text: string): Editor {
 }
 
 /** The cursor at the end of a line, which is where `]]` has just been closed. */
-const endOf = (editor: Editor, line: number): EditorPosition => ({ line, ch: editor.getLine(line).length });
+const endOf = (text: string, line = 0): EditorPosition => ({ line, ch: text.split('\n')[line].length });
+
+/**
+ * The keystroke that closes a link. `onTrigger` runs on every key and on every caret move and only
+ * asks when the line changed since the call before, so a test has to play the key before it too.
+ */
+function typeClosing(suggester: JevLinkSuggest, file: TFile, text: string, cursor: EditorPosition) {
+  const lines = text.split('\n');
+  const before = [...lines];
+  before[cursor.line] = lines[cursor.line].slice(0, cursor.ch - 1) + lines[cursor.line].slice(cursor.ch);
+  suggester.onTrigger({ ...cursor, ch: cursor.ch - 1 }, editorFor(before.join('\n')), file);
+  const editor = editorFor(text);
+  return { editor, info: suggester.onTrigger(cursor, editor, file) };
+}
 
 const contextOf = (info: EditorSuggestTriggerInfo, editor: Editor, file: TFile): EditorSuggestContext =>
   ({ ...info, editor, file });
@@ -138,21 +152,27 @@ const TWO_NOTES: Record<string, Note> = {
   'B.md': { content: '# B\n行動デザインの話。' },
 };
 
-describe('JevLinkSuggest.onTrigger', () => {
-  beforeEach(() => {
-    vi.stubGlobal('window', globalThis);
-    requestUrlMock.reset();
-    requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-200.json'));
-    Notice.messages = [];
-  });
+const CURSOR = endOf(TWO_NOTES['A.md'].content ?? '');
 
+beforeEach(() => {
+  // `client.ts` races the request against `window.setTimeout`; this suite runs on the node environment.
+  vi.stubGlobal('window', globalThis);
+  requestUrlMock.reset();
+  requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-200.json'));
+  Notice.messages = [];
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('JevLinkSuggest.onTrigger', () => {
   it('fires on the link the cursor just closed and asks Jev once', async () => {
     const { suggester, file } = setup(TWO_NOTES);
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    const cursor = endOf(editor, 0);
+    const { editor, info } = typeClosing(suggester, file('A.md'), TWO_NOTES['A.md'].content ?? '', CURSOR);
 
-    const info = suggester.onTrigger(cursor, editor, file('A.md'));
-    expect(info).toEqual({ start: { line: 0, ch: 17 }, end: cursor, query: 'B' });
+    expect(info).toEqual({ start: { line: 0, ch: 17 }, end: CURSOR, query: 'B' });
     // The popup opens on the placeholder: the answer is still on its way.
     expect(suggester.getSuggestions(contextOf(info, editor, file('A.md')))).toEqual([{ kind: 'asking' }]);
     await flush();
@@ -160,12 +180,9 @@ describe('JevLinkSuggest.onTrigger', () => {
   });
 
   it('sends the note around the link and the target note, and nothing else (設計 §2-2)', async () => {
-    const { suggester, file } = setup({
-      ...TWO_NOTES,
-      'A.md': { ...TWO_NOTES['A.md'], frontmatter: { tags: ['習慣'] } },
-    });
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    suggester.onTrigger(endOf(editor, 0), editor, file('A.md'));
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const { suggester, file } = setup({ ...TWO_NOTES, 'A.md': { content, frontmatter: { tags: ['習慣'] } } });
+    typeClosing(suggester, file('A.md'), content, CURSOR);
     await flush();
 
     const sent = JSON.parse(requestUrlMock.calls[0].body ?? '{}') as {
@@ -173,39 +190,60 @@ describe('JevLinkSuggest.onTrigger', () => {
       questions: Record<string, { criteria: Record<string, string> }>;
     };
     expect(JSON.parse(sent.state)).toEqual({
-      note: { frontmatter: { tags: ['習慣'] }, context: TWO_NOTES['A.md'].content },
+      note: { frontmatter: { tags: ['習慣'] }, context: content },
       target: { name: 'B', frontmatter: null, excerpt: TWO_NOTES['B.md'].content },
     });
     expect(Object.keys(sent.questions)).toEqual(['field', 'direction']);
     expect(Object.keys(sent.questions.field.criteria)).toEqual(SETTINGS_ORDER);
   });
 
-  it('stays out of the way when the setting is off', () => {
-    const { suggester, file } = setup(TWO_NOTES, { jev: { suggestOnLinkClose: false } });
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    expect(suggester.onTrigger(endOf(editor, 0), editor, file('A.md'))).toBeNull();
+  it('stays out of the way when the setting is off, and when the key is gone', () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const off = setup(TWO_NOTES, { jev: { suggestOnLinkClose: false } });
+    expect(typeClosing(off.suggester, off.file('A.md'), content, CURSOR).info).toBeNull();
+
+    // Registration happens once at load, so a key emptied mid-session has to be caught here.
+    const keyless = setup(TWO_NOTES, { jev: { apiKey: '  ' } });
+    expect(typeClosing(keyless.suggester, keyless.file('A.md'), content, CURSOR).info).toBeNull();
     expect(requestUrlMock.calls).toHaveLength(0);
   });
 
   it('needs the cursor right after the closing `]]`', () => {
     const content = '関連: [[B]] を読む。';
     const { suggester, file } = setup({ ...TWO_NOTES, 'A.md': { content } });
-    const editor = editorFor(content);
-    expect(suggester.onTrigger({ line: 0, ch: content.length }, editor, file('A.md'))).toBeNull();
-    expect(suggester.onTrigger({ line: 0, ch: 8 }, editor, file('A.md'))).toBeNull(); // 「[[B]」まで
-    expect(suggester.onTrigger({ line: 0, ch: 9 }, editor, file('A.md'))).not.toBeNull();
+    expect(typeClosing(suggester, file('A.md'), content, { line: 0, ch: content.length }).info).toBeNull();
+    expect(typeClosing(suggester, file('A.md'), content, { line: 0, ch: 8 }).info).toBeNull(); // 「[[B]」まで
+    expect(typeClosing(suggester, file('A.md'), content, { line: 0, ch: 9 }).info).not.toBeNull();
+  });
+
+  it('does not ask when the caret is only put behind a link that was closed earlier', async () => {
+    const { suggester, file } = setup(TWO_NOTES);
+    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
+
+    // Clicking at the end of the line, or coming back to it: the line did not change.
+    expect(suggester.onTrigger(CURSOR, editor, file('A.md'))).toBeNull();
+    expect(suggester.onTrigger(CURSOR, editor, file('A.md'))).toBeNull();
+    await flush();
+    expect(requestUrlMock.calls).toHaveLength(0);
   });
 
   it('leaves out an embed, a heading link of the note itself and a line that already writes a field', () => {
-    const notes = {
-      'B.md': {},
-      'A.md': { content: '![[B]]\n[[#見出し]]\nup:: [[B]]\n本文 (similar:: [[B]]' },
-    };
-    const { suggester, file } = setup(notes);
-    const editor = editorFor(notes['A.md'].content);
+    const content = '![[B]]\n[[#見出し]]\nup:: [[B]]\n本文 (similar:: [[B]]';
+    const { suggester, file } = setup({ 'B.md': {}, 'A.md': { content } });
     for (const line of [0, 1, 2, 3]) {
-      expect(suggester.onTrigger(endOf(editor, line), editor, file('A.md'))).toBeNull();
+      expect(typeClosing(suggester, file('A.md'), content, endOf(content, line)).info).toBeNull();
     }
+  });
+
+  it('leaves out frontmatter and fenced code, which Obsidian does not count as links either', async () => {
+    // Every one of these lines ends in `]]`, so only the frontmatter and the fence keep them out.
+    const content = ['---', 'related: [[B]]', '---', '', '```md', 'see [[B]]', '```', '', '本文 [[B]]'].join('\n');
+    const { suggester, file } = setup({ 'B.md': {}, 'A.md': { content } });
+    expect(typeClosing(suggester, file('A.md'), content, endOf(content, 1)).info).toBeNull();
+    expect(typeClosing(suggester, file('A.md'), content, endOf(content, 5)).info).toBeNull();
+    expect(typeClosing(suggester, file('A.md'), content, endOf(content, 8)).info).not.toBeNull();
+    await flush();
+    expect(requestUrlMock.calls).toHaveLength(1);
   });
 
   it('leaves out a target that either note already types, including through a hidden field', () => {
@@ -218,30 +256,25 @@ describe('JevLinkSuggest.onTrigger', () => {
       'D.md': {},
     };
     const { suggester, file } = setup(notes);
-    const editor = editorFor(content);
     for (const ch of [5, 13, 21]) {
-      expect(suggester.onTrigger({ line: 0, ch }, editor, file('A.md'))).toBeNull();
+      expect(typeClosing(suggester, file('A.md'), content, { line: 0, ch }).info).toBeNull();
     }
     expect(requestUrlMock.calls).toHaveLength(0);
   });
 
   it('leaves out the note itself, the brain drawing and an excluded path', () => {
     const content = '[[A]]\n[[excalibrain]]\n[[アーカイブ/C]]';
-    const notes: Record<string, Note> = {
-      'A.md': { content }, 'excalibrain.md': {}, 'アーカイブ/C.md': {},
-    };
+    const notes: Record<string, Note> = { 'A.md': { content }, 'excalibrain.md': {}, 'アーカイブ/C.md': {} };
     const { suggester, file } = setup(notes, { excludeFilepaths: ['アーカイブ/'] });
-    const editor = editorFor(content);
     for (const line of [0, 1, 2]) {
-      expect(suggester.onTrigger(endOf(editor, line), editor, file('A.md'))).toBeNull();
+      expect(typeClosing(suggester, file('A.md'), content, endOf(content, line)).info).toBeNull();
     }
   });
 
   it('offers a link whose note does not exist yet, keyed by the link text', async () => {
     const content = '[[まだ無いノート]]';
     const { suggester, file } = setup({ 'A.md': { content } });
-    const editor = editorFor(content);
-    expect(suggester.onTrigger(endOf(editor, 0), editor, file('A.md'))).not.toBeNull();
+    expect(typeClosing(suggester, file('A.md'), content, endOf(content)).info).not.toBeNull();
     await flush();
     const sent = JSON.parse(requestUrlMock.calls[0].body ?? '{}') as { state: string };
     expect(JSON.parse(sent.state)).toMatchObject({ target: { name: 'まだ無いノート' } });
@@ -250,47 +283,37 @@ describe('JevLinkSuggest.onTrigger', () => {
   it('asks about the same link once a session, but keeps answering while the popup is on it', async () => {
     const content = '[[B]] と、もう一度 [[B]]';
     const { suggester, file } = setup({ ...TWO_NOTES, 'A.md': { content } });
-    const editor = editorFor(content);
-
-    const first = suggester.onTrigger({ line: 0, ch: 5 }, editor, file('A.md'));
+    const { editor, info: first } = typeClosing(suggester, file('A.md'), content, { line: 0, ch: 5 });
     expect(first).not.toBeNull();
     await flush();
+
     // The redraw that follows the answer runs onTrigger again: the link on show is let through.
     expect(suggester.onTrigger({ line: 0, ch: 5 }, editor, file('A.md'))).toEqual(first);
     // The second occurrence is the same target, so it is not asked again.
-    expect(suggester.onTrigger({ line: 0, ch: content.length }, editor, file('A.md'))).toBeNull();
+    expect(typeClosing(suggester, file('A.md'), content, endOf(content)).info).toBeNull();
     expect(requestUrlMock.calls).toHaveLength(1);
   });
 
   it('forgets a note once another one is opened (設計 §4-1)', async () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
     const { suggester, file, open } = setup(TWO_NOTES);
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    const cursor = endOf(editor, 0);
-    suggester.onTrigger(cursor, editor, file('A.md'));
+    typeClosing(suggester, file('A.md'), content, CURSOR);
     await flush();
-    expect(suggester.onTrigger(cursor, editor, file('A.md'))).not.toBeNull();
 
     open('B.md');
-    expect(suggester.onTrigger(cursor, editor, file('A.md'))).not.toBeNull();
+    expect(typeClosing(suggester, file('A.md'), content, CURSOR).info).not.toBeNull();
     await flush();
     expect(requestUrlMock.calls).toHaveLength(2);
   });
 });
 
 describe('JevLinkSuggest.getSuggestions', () => {
-  beforeEach(() => {
-    vi.stubGlobal('window', globalThis);
-    requestUrlMock.reset();
-    Notice.messages = [];
-  });
-
-  /** Triggers on `[[B]]` of `A.md` and waits for the recorded reply. */
-  async function answered(reply: string, options?: { ontology?: Partial<Hierarchy> }) {
+  /** Closes `[[B]]` in `A.md` and waits for the recorded reply. */
+  async function answered(reply: string) {
     requestUrlMock.respond = () => Promise.resolve(recorded(reply));
-    const harness = setup(TWO_NOTES, options);
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
+    const harness = setup(TWO_NOTES);
     const file = harness.file('A.md');
-    const info = harness.suggester.onTrigger(endOf(editor, 0), editor, file);
+    const { editor, info } = typeClosing(harness.suggester, file, TWO_NOTES['A.md'].content ?? '', CURSOR);
     await flush();
     return { ...harness, suggestions: harness.suggester.getSuggestions(contextOf(info, editor, file)) };
   }
@@ -324,11 +347,24 @@ describe('JevLinkSuggest.getSuggestions', () => {
     expect(Notice.messages).toEqual(['Jev request failed. See the developer console for details.']);
   });
 
-  it('redraws through the trigger of EditorSuggest, dropping the context first', async () => {
+  it('lets a link it could not ask about be asked again later', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const content = '[[B]]\nもう一度 [[B]]';
+    requestUrlMock.respond = () => Promise.resolve(recorded('unauthorized-401.json'));
+    const { suggester, file } = setup({ ...TWO_NOTES, 'A.md': { content } });
+    typeClosing(suggester, file('A.md'), content, endOf(content, 0));
+    await flush();
+
+    // A failed ask does not count as asked, so writing the link again asks once more.
     requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-200.json'));
+    expect(typeClosing(suggester, file('A.md'), content, endOf(content, 1)).info).not.toBeNull();
+    await flush();
+    expect(requestUrlMock.calls).toHaveLength(2);
+  });
+
+  it('redraws through the trigger of EditorSuggest, dropping the context first', async () => {
     const { suggester, file } = setup(TWO_NOTES);
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    const info = suggester.onTrigger(endOf(editor, 0), editor, file('A.md'));
+    const { editor, info } = typeClosing(suggester, file('A.md'), TWO_NOTES['A.md'].content ?? '', CURSOR);
     const context = contextOf(info, editor, file('A.md'));
     suggester.context = context;
 
@@ -344,20 +380,14 @@ describe('JevLinkSuggest.getSuggestions', () => {
 });
 
 describe('JevLinkSuggest.selectSuggestion', () => {
-  beforeEach(() => {
-    vi.stubGlobal('window', globalThis);
-    requestUrlMock.reset();
-    requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-200.json'));
-    Notice.messages = [];
-  });
+  const UP: JevSuggestion = { kind: 'candidate', field: 'up', probability: 0.82, direction: 'parent', confident: true };
 
   it('appends the field to the Relations section and records it so it can be undone', async () => {
     const { suggester, vault, file } = setup(TWO_NOTES);
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    suggester.onTrigger(endOf(editor, 0), editor, file('A.md'));
+    typeClosing(suggester, file('A.md'), TWO_NOTES['A.md'].content ?? '', CURSOR);
     await flush();
 
-    suggester.selectSuggestion({ kind: 'candidate', field: 'up', probability: 0.82, direction: 'parent', confident: true });
+    suggester.selectSuggestion(UP);
     await flush();
 
     expect(vault.notes.get('A.md')).toBe(`${TWO_NOTES['A.md'].content ?? ''}\n\n## Relations\nup:: [[B]]`);
@@ -367,23 +397,35 @@ describe('JevLinkSuggest.selectSuggestion', () => {
     expect(Notice.messages).toEqual(['Jev: added up:: [[B]]']);
   });
 
-  it('stops offering the link it has just written', async () => {
-    const { suggester, file } = setup(TWO_NOTES);
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    const cursor = endOf(editor, 0);
-    suggester.onTrigger(cursor, editor, file('A.md'));
+  it('says so when the line was written but could not be recorded', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { suggester, vault, file } = setup(TWO_NOTES);
+    vault.adapter.write = () => Promise.reject(new Error('no such folder'));
+    typeClosing(suggester, file('A.md'), TWO_NOTES['A.md'].content ?? '', CURSOR);
     await flush();
 
-    suggester.selectSuggestion({ kind: 'candidate', field: 'up', probability: 0.82, direction: 'parent', confident: true });
+    suggester.selectSuggestion(UP);
     await flush();
-    expect(suggester.onTrigger(cursor, editor, file('A.md'))).toBeNull();
+
+    expect(vault.notes.get('A.md')).toContain('up:: [[B]]');
+    expect(Notice.messages).toEqual(['Jev: added up:: [[B]], but it was not recorded and cannot be undone.']);
+  });
+
+  it('stops offering the link it has just written', async () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const { suggester, file } = setup(TWO_NOTES);
+    typeClosing(suggester, file('A.md'), content, CURSOR);
+    await flush();
+
+    suggester.selectSuggestion(UP);
+    await flush();
+    expect(typeClosing(suggester, file('A.md'), content, CURSOR).info).toBeNull();
     expect(requestUrlMock.calls).toHaveLength(1);
   });
 
   it('writes nothing for the placeholder row', async () => {
     const { suggester, vault, file } = setup(TWO_NOTES);
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    suggester.onTrigger(endOf(editor, 0), editor, file('A.md'));
+    typeClosing(suggester, file('A.md'), TWO_NOTES['A.md'].content ?? '', CURSOR);
 
     suggester.selectSuggestion({ kind: 'asking' });
     await flush();
