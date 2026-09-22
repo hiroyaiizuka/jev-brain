@@ -10,7 +10,7 @@ import type ExcaliBrain from "src/excalibrain-main";
 import { isJevActive, normalizeRelationsHeading } from "src/Settings";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev } from "src/jev/client";
 import type { JevQuestion, JevResponse as JevClientResponse } from "src/jev/client";
-import { buildQuestions, directionOfField, judge } from "src/jev/judge";
+import { buildQuestions, directionOfField, judge, percentOf } from "src/jev/judge";
 import type { Direction, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry } from "src/jev/log";
 import { appendRelation } from "src/jev/relations";
@@ -230,7 +230,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     el.createEl("code", { text: suggestion.field });
     // 自信なしでも並びと確率は同じで、食い違っていることだけを書き足す（設計 §2-3）。
     const note = [
-      suggestion.probability === undefined ? null : `${Math.round(suggestion.probability * 100)}%`,
+      suggestion.probability === undefined ? null : `${percentOf(suggestion.probability)}%`,
       suggestion.direction ? DIRECTION_TEXT[suggestion.direction] : null,
       suggestion.confident ? null : "Jev is not confident",
     ].filter((part): part is string => part !== null).join(" · ");
@@ -290,8 +290,13 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     }
     if (this.ask !== ask) return; // 別のリンクへ移ったあとに届いた答えは捨てる
     if (response) {
-      ask.judgement = judge(response, this.plugin.settings.hierarchy);
+      const judgement = judge(response, this.plugin.settings.hierarchy);
+      ask.judgement = judgement;
       ask.status = "answered";
+      // 候補が 1 件も無い応答（オントロジーのどのフィールドにも 0.5% 以上の確率が付かなかった）では
+      // 出すものが無く、ポップアップは黙って閉じる。それを「聞いた」に数えると、このセッション中は
+      // 二度と出せなくなる。聞き直せるよう忘れておく（失敗したときと同じ扱い）。
+      if (judgement.ordered.length === 0) this.asked.get(ask.file.path)?.delete(ask.target);
     } else {
       ask.status = "failed";
       // 聞けなかったものは「聞いた」に数えない。もう一度書き直せば聞き直せる（`ask` は

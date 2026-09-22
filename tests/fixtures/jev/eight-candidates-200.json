@@ -1,0 +1,38 @@
+{
+  "note": "2 問 Choice の応答で、Q1 が 8 候補のうち 7 つに確率を返し、Q2 は親（up は Up ＝方向は親なので整合する）。候補を確率順の上位 5 件に絞り、四捨五入で 0% になる after（0.4%）と確率の無い opposes を落とすところ（LEV-187、設計 §2-3）を固定するための作り物。形は two-choice-200.json（2026-09-22 の実応答）に合わせ、答えと確率だけ変えてある。",
+  "status": 200,
+  "body": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "field": {
+        "type": "choice",
+        "choice": "up",
+        "confidence": 0.3,
+        "probabilities": {
+          "up": 0.3,
+          "down": 0.2,
+          "origin": 0.16,
+          "steps": 0.14,
+          "similar": 0.1,
+          "before": 0.06,
+          "after": 0.004
+        }
+      },
+      "direction": {
+        "type": "choice",
+        "choice": "parent",
+        "confidence": 0.55,
+        "probabilities": {
+          "parent": 0.55,
+          "child": 0.25,
+          "leftFriend": 0.12,
+          "rightFriend": 0.08
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 1902,
+      "output_tokens": 91
+    }
+  }
+}

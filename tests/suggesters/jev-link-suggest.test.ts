@@ -357,33 +357,26 @@ describe('JevLinkSuggest.getSuggestions', () => {
   });
 
   it('shows five candidates at most (LEV-187)', async () => {
-    // オントロジーの 8 フィールド全部に確率が返った応答。
-    requestUrlMock.respond = () => Promise.resolve({
-      status: 200,
-      text: JSON.stringify({
-        model: 'jev-1.13.0',
-        answers: {
-          field: {
-            type: 'choice',
-            choice: 'up',
-            confidence: 0.3,
-            probabilities: {
-              up: 0.3, down: 0.2, origin: 0.16, steps: 0.14, similar: 0.1, opposes: 0.06, before: 0.04, after: 0.004,
-            },
-          },
-          direction: { type: 'choice', choice: 'parent', confidence: 0.6, probabilities: { parent: 0.6 } },
-        },
-        usage: { input_tokens: 1000, output_tokens: 10 },
-      }),
-    });
-    const harness = setup(TWO_NOTES);
-    const file = harness.file('A.md');
-    const { editor, info } = typeClosing(harness.suggester, file, TWO_NOTES['A.md'].content ?? '', CURSOR);
-    await flush();
+    // オントロジーの 8 フィールドのうち 7 つに確率が返った応答（after は 0.4%、opposes は確率なし）。
+    const { suggestions } = await answered('eight-candidates-200.json');
 
-    const suggestions = harness.suggester.getSuggestions(contextOf(info, editor, file));
     expect(suggestions.map((suggestion) => suggestion.kind === 'candidate' && suggestion.field))
       .toEqual(['up', 'down', 'origin', 'steps', 'similar']);
+  });
+
+  it('lets a link whose answer left no candidate be asked again (LEV-187)', async () => {
+    // オントロジーのどのフィールドにも確率が付かなかった応答。出すものが無いので黙って閉じるが、
+    // 「もう聞いた」に数えると、このセッション中は二度と出せなくなる。
+    const content = '[[B]]\nもう一度 [[B]]';
+    requestUrlMock.respond = () => Promise.resolve(recorded('unknown-fields-200.json'));
+    const { suggester, file } = setup({ ...TWO_NOTES, 'A.md': { content } });
+    const first = typeClosing(suggester, file('A.md'), content, endOf(content, 0));
+    await flush();
+
+    expect(suggester.getSuggestions(contextOf(first.info, first.editor, file('A.md')))).toEqual([]);
+    expect(typeClosing(suggester, file('A.md'), content, endOf(content, 1)).info).not.toBeNull();
+    await flush();
+    expect(requestUrlMock.calls).toHaveLength(2);
   });
 
   it('closes the popup when the request fails (client.ts has already said so)', async () => {

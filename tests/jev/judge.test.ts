@@ -196,6 +196,13 @@ describe('judge', () => {
     expect(result.field).toBe('origin');
   });
 
+  it('puts the current field back in the ontology’s spelling', () => {
+    const result = judge(response('origin', 'parent'), hierarchy, { currentField: 'Part Of' });
+
+    // 候補は本人が押せば Vault に入る綴りなので、呼び出し側の書き方をそのまま出さない。
+    expect(result.ordered[0]).toEqual({ field: 'part of' });
+  });
+
   it('puts the current field first when it is not confident too', () => {
     const result = judge(response('origin', 'child'), hierarchy, { currentField: 'similar' });
     const fields = result.ordered.map((candidate) => candidate.field);
@@ -273,5 +280,40 @@ describe('judge の候補の数（LEV-187）', () => {
     const result = judge(response('origin', 'parent', eight), hierarchy);
 
     expect(result.probabilities).toEqual(eight);
+  });
+});
+
+/** 絞り込みが「Jev が選んだのはどれか」を変えないこと（LEV-187 のレビュー指摘）。 */
+describe('judge の chosen', () => {
+  it('resolves Q1’s answer to the ontology’s spelling, with its probability', () => {
+    const result = judge(response('Part Of', 'parent', { 'part of': 0.7, up: 0.3 }), hierarchy);
+
+    expect(result.chosen).toEqual({ field: 'part of', probability: 0.7 });
+    expect(result.field).toBe('Part Of');
+  });
+
+  it('keeps the answer even when the top five left it out', () => {
+    const result = judge(
+      response('next', 'next', { origin: 0.3, up: 0.2, child: 0.15, jump: 0.12, similar: 0.1, next: 0.004 }),
+      hierarchy,
+    );
+
+    // 出す候補からは 0.4% として落ちるが、答えとしては残る。確率もそのまま。
+    expect(result.ordered.map((candidate) => candidate.field)).not.toContain('next');
+    expect(result.chosen).toEqual({ field: 'next', probability: 0.004 });
+    expect(result.confident).toBe(true);
+  });
+
+  it('keeps the answer even when the response gave it no probability', () => {
+    const result = judge(response('child', 'child', { up: 0.6, origin: 0.4 }), hierarchy);
+
+    expect(result.chosen).toEqual({ field: 'child', probability: undefined });
+    expect(result.confident).toBe(true);
+  });
+
+  it('is null for an answer the ontology does not carry', () => {
+    expect(judge(response('invented', 'parent'), hierarchy).chosen).toBeNull();
+    expect(judge(response('secret', 'parent'), hierarchy).chosen).toBeNull();
+    expect(judge(response('origin', 'parent'), emptyHierarchy).chosen).toBeNull();
   });
 });

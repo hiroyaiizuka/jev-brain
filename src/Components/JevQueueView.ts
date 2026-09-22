@@ -8,7 +8,7 @@ import { DEFAULT_JEV_TIMEOUT_MS, askJev } from "src/jev/client";
 import type { JevClientConfig, JevQuestion } from "src/jev/client";
 import { collectUntypedLinks } from "src/jev/collect";
 import type { UntypedLink } from "src/jev/collect";
-import { DIRECTION_QUESTION, FIELD_QUESTION, buildQuestions, judge } from "src/jev/judge";
+import { DIRECTION_QUESTION, FIELD_QUESTION, buildQuestions, judge, percentOf } from "src/jev/judge";
 import type { Choice, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry, undo } from "src/jev/log";
 import { JevQueueModel } from "src/jev/queue-model";
@@ -512,7 +512,7 @@ const toJevQuestion = (choice: Choice): JevQuestion => ({
   criteria: choice.criteria,
 });
 
-const percent = (probability: number): string => `${Math.round(probability * 100)}%`;
+const percent = (probability: number): string => `${percentOf(probability)}%`;
 
 /**
  * カード 1 行の要約。確率は候補のボタンに出るので、自信なしのときここで言うのは

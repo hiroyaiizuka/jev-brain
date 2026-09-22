@@ -1,5 +1,6 @@
 import { Editor, MarkdownFileInfo, MarkdownView, Notice, TFile } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
+import { percentOf } from "src/jev/judge";
 import { typeLinkAtCursor, type TypeLinkResult } from "src/jev/typeLink";
 import { t } from "src/lang/helpers";
 import { errorlog } from "src/utils/utils";
@@ -118,4 +119,4 @@ const fill = (template: string, values: Record<string, string>): string =>
 
 /** 確率のパーセント表記。応答がその候補の確率を返さなかったときは「?」。 */
 const percent = (probability?: number): string =>
-  typeof probability === "number" ? `${Math.round(probability * 100)}` : "?";
+  typeof probability === "number" ? `${percentOf(probability)}` : "?";

@@ -1,6 +1,5 @@
 import { TFile } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
-import { toHierarchyKey } from "src/utils/hierarchy";
 import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev, type JevQuestion, type JevRequest } from "./client";
 import { collectUntypedLinks } from "./collect";
@@ -50,7 +49,7 @@ export type TypeLinkResult =
   /** Jev に届かなかった。Notice は `client.ts` が既に 1 回出している。 */
   | { status: "failed" }
   /**
-   * `judge` が自信なしとしたとき（設計 §2-3）。確率は伏せ、候補は設定の順で、何も書かない。
+   * `judge` が自信なしとしたとき（設計 §2-3）。候補は自信ありと同じ確率順の上位 5 件で、何も書かない。
    * `reason` は Q1 と Q2 の食い違い（`direction`）か、Q1 の答えがオントロジーに無い語（`unknown-field`）。
    */
   | { status: "unconfident"; reason: "direction" | "unknown-field"; target: string; answer: string; candidates: string[] }
@@ -126,9 +125,10 @@ export const typeLinkAtCursor = async (
   if (!response) return { status: "failed" };
 
   const judgement = judge(response, settings.hierarchy);
-  // `judge` の `field` は Jev の答えそのままなので、書くのは設定に書いてある綴り（`ordered` は設定から
-  // 組まれている）。応答が "Up" と返しても Vault には `up::` が入る。
-  const chosen = chosenCandidate(judgement.ordered, judgement.field);
+  // `judge` の `field` は Jev の答えそのままなので、書くのは設定に書いてある綴り（`judge` が
+  // オントロジーの中で解決した `chosen`）。応答が "Up" と返しても Vault には `up::` が入る。
+  // 出す候補（`ordered`）は上位 5 件に絞ってあるので、書く綴りをそこから探してはいけない。
+  const chosen = judgement.chosen;
   if (!judgement.confident) {
     return {
       status: "unconfident",
@@ -161,13 +161,6 @@ export const typeLinkAtCursor = async (
     logged: await logEdit(plugin, file.path, edit),
   };
 };
-
-/** Q1 の答えに当たる候補（設定の綴りと確率）。オントロジーに無い語なら undefined。 */
-const chosenCandidate = (
-  ordered: { field: string; probability?: number }[],
-  field: string,
-): { field: string; probability?: number } | undefined =>
-  ordered.find((candidate) => toHierarchyKey(candidate.field) === toHierarchyKey(field));
 
 /** `judge.ts` の 2 問を `client.ts` が送る形にする。どちらの側も相手の形を知らずに済むよう、変換はここだけ。 */
 const toRequestQuestions = (questions: Questions): JevRequest["questions"] =>
