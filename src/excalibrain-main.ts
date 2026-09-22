@@ -11,6 +11,7 @@ import { WarningPrompt } from './utils/Prompts';
 import { FieldSuggester } from './Suggesters/OntologySuggester';
 import { URLParser } from './graph/URLParser';
 import { AddToOntologyModal, Ontology } from './Components/AddToOntologyModal';
+import { registerJevTypeLinkCommand } from './Components/JevTypeLinkCommand';
 import { NavigationHistory } from './Components/NavigationHistory';
 import { getDailyNoteSettings, IPeriodicNoteSettings } from './utils/datehelpers';
 import { ExcalidrawAutomate, Literal, destroyViewEA, getEA, waitForExcalidrawViewReady } from './utils/ExcalidrawAutomateCompatibility';
@@ -176,6 +177,7 @@ export default class ExcaliBrain extends Plugin {
    * a key never sees any of it. The parts themselves arrive with their own tickets.
    */
   private registerJev() {
+    registerJevTypeLinkCommand(this);
   }
 
   private registerEvents() {
