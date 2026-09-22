@@ -17,6 +17,8 @@ import { parse as parseYaml } from 'yaml';
 import { RECORD_NAME, parseCriteria, readHierarchy, renderRecord, resolveOutputPath } from './jev-accuracy.mjs';
 
 export const RESPONSES_NAME = 'responses.jsonl';
+/** The comparison row `compare` reads. Like the record, one per condition. */
+export const SUMMARY_NAME = 'summary.json';
 
 /** Names the two questions are sent and answered under; they come from src/jev/judge.ts. */
 const FIELD_QUESTION = 'field';
@@ -73,14 +75,26 @@ export const DIRECTION_NOTES = {
 };
 
 const LEVER_LABELS = {
-  narrow: `候補を絞る（Vault で ${NARROW_MIN_USES} 件以上使われているフィールドだけ）`,
-  examples: `候補ごとに用例 ${EXAMPLES_PER_FIELD} つ（前後 ${EXAMPLE_CHARS} 字、判定対象と別のノートから）`,
-  directions: '方向の 6 候補に 1 文ずつ',
+  narrow: ({ minUses }) => `候補を絞る（Vault で ${minUses} 件以上使われているフィールドだけ）`,
+  examples: ({ perField, chars }) => `候補ごとに用例 ${perField} つ（前後 ${chars} 字、判定対象と別のノートから）`,
+  directions: () => '方向の 6 候補に 1 文ずつ',
 };
 
-/** What a lever set does, for the record and the comparison table. */
-export const criteriaLabel = (levers) =>
-  (levers.length === 0 ? '既定（全フィールド、説明は領域と方向だけ）' : levers.map((lever) => LEVER_LABELS[lever]).join(' ＋ '));
+/**
+ * What a lever set does, for the record and the comparison table. The numbers come from the
+ * settings the plan was built with, not from the defaults: a run with `{ minUses: 2 }` must not
+ * be filed under a label that says 5.
+ */
+export const criteriaLabel = (levers, settings = {}) => {
+  const values = {
+    minUses: settings.minUses ?? NARROW_MIN_USES,
+    chars: settings.chars ?? EXAMPLE_CHARS,
+    perField: settings.perField ?? EXAMPLES_PER_FIELD,
+  };
+  return levers.length === 0
+    ? '既定（全フィールド、説明は領域と方向だけ）'
+    : levers.map((lever) => LEVER_LABELS[lever](values)).join(' ＋ ');
+};
 
 /**
  * Input tokens per character of request body, from LEV-163's 500 real answers (5,964 chars →
@@ -132,11 +146,14 @@ export function buildCriteriaPlan(mode, entries, {
   return {
     mode,
     levers,
-    label: criteriaLabel(levers),
+    settings: { minUses, chars, perField },
+    label: criteriaLabel(levers, { minUses, chars, perField }),
     fields,
     examples,
     perField,
-    directionNotes: levers.includes('directions') ? DIRECTION_NOTES : null,
+    // A copy: the plan travels into the questions and the summary file, and the module constant
+    // must not become writable caller state.
+    directionNotes: levers.includes('directions') ? { ...DIRECTION_NOTES } : null,
   };
 }
 
@@ -466,7 +483,7 @@ const probabilityOf = (probabilities, label, toKey) => {
  * Scores one answered record: what the note says (`field`, and the direction the ontology gives it)
  * against what Jev answered, read by the plugin's own `judge`.
  */
-export function scoreRow(jev, hierarchy, entry, response) {
+export function scoreRow(jev, hierarchy, entry, response, offered = null) {
   const judgement = jev.judge(response, hierarchy);
   const expected = jev.directionOfField(entry.field, hierarchy);
   const probability = probabilityOf(judgement.probabilities, judgement.field, jev.toHierarchyKey) ?? 0;
@@ -481,6 +498,8 @@ export function scoreRow(jev, hierarchy, entry, response) {
     directionProbability: judgement.directionProbability,
     confident: judgement.confident,
     rank: rankOf(judgement.probabilities, entry.field, jev.toHierarchyKey),
+    /** Whether Q1 even offered the note's own field; null when the caller did not say. */
+    offerable: offered === null ? null : offered.has(jev.toHierarchyKey(entry.field)),
     fieldMatch: jev.toHierarchyKey(judgement.field) === jev.toHierarchyKey(entry.field),
     directionMatch: judgement.direction === expected,
   };
@@ -501,6 +520,12 @@ const agreement = (rows) => ({
  * the bulk auto-confirm.
  */
 export function summarizeJudgements(rows, { failures, selection, tokens, price, rate }) {
+  // Links whose own field is not a candidate under this condition: they cannot be answered
+  // correctly, so they cap the field rate. `narrow` drops 110 of 162 fields, and 14 of the 500
+  // sampled links use one of them (LEV-186). The record has to say so, or the 13.0% → 16.4%
+  // comparison reads as if both conditions were scored out of the same 500.
+  const unofferable = rows.filter((row) => row.offerable === false).length;
+  const offerable = rows.length - unofferable;
   const confident = rows.filter((row) => row.confident);
   const thresholds = THRESHOLDS.map((threshold) => {
     const above = rows.filter((row) => row.probability >= threshold);
@@ -519,7 +544,9 @@ export function summarizeJudgements(rows, { failures, selection, tokens, price, 
   const pairs = new Map();
   for (const row of rows) {
     if (row.fieldMatch) continue;
-    const key = `${row.truthField} ${row.field}`;
+    // The separator is written as an escape: a literal NUL byte in the source makes the
+    // whole file read as binary to grep, `file` and review tooling.
+    const key = `${row.truthField}\u0000${row.field}`;
     const pair = pairs.get(key) ?? { truth: row.truthField, answer: row.field, count: 0, sameDirection: 0 };
     pair.count += 1;
     if (row.directionMatch) pair.sameDirection += 1;
@@ -554,6 +581,11 @@ export function summarizeJudgements(rows, { failures, selection, tokens, price, 
     judged,
     failures,
     selection,
+    unofferable,
+    /** The field rate the condition could reach at best, given the candidates it offers. */
+    ceiling: ratio(offerable, judged),
+    /** The field rate over the links this condition could actually answer. */
+    offerableFieldRate: ratio(rows.filter((row) => row.fieldMatch).length, offerable),
     overall: agreement(rows),
     // The half of the misses that would still put the link on the right side of the graph.
     directionOnly: ratio(rows.filter((row) => !row.fieldMatch && row.directionMatch).length, judged),
@@ -584,6 +616,8 @@ export function summarizeJudgements(rows, { failures, selection, tokens, price, 
 
 const percentage = (value) => `${(value * 100).toFixed(1)}%`;
 const yen = (value) => `${value.toFixed(2)} 円`;
+/** Four places: one judgement costs hundredths of a yen, and the conditions differ in that digit. */
+const perCallYen = (value) => `${value.toFixed(4)} 円`;
 
 /**
  * What a run would cost, from the requests it has already built and nothing else. The criteria of
@@ -592,9 +626,16 @@ const yen = (value) => `${value.toFixed(2)} 円`;
  * endpoint's 32k limit on state plus the longest question, design §7).
  */
 export function estimateAsks(asks, { candidates, missing, price, rate }) {
-  const chars = asks.map((ask) => ask.body.length);
-  const total = (values) => values.reduce((sum, value) => sum + value, 0);
-  const averageChars = ratio(total(chars), chars.length);
+  // Folded, not spread into Math.max: `--limit 0` on a large vault would overflow the call stack.
+  let charsTotal = 0;
+  let stateTotal = 0;
+  let maxChars = 0;
+  for (const ask of asks) {
+    charsTotal += ask.body.length;
+    stateTotal += ask.state.length;
+    if (ask.body.length > maxChars) maxChars = ask.body.length;
+  }
+  const averageChars = ratio(charsTotal, asks.length);
   const averageTokens = averageChars * TOKENS_PER_CHAR;
   const perCallYen = ((averageTokens * price) / 1e6) * rate;
   return {
@@ -602,10 +643,10 @@ export function estimateAsks(asks, { candidates, missing, price, rate }) {
     missing,
     candidates,
     averageChars,
-    maxChars: Math.max(...chars),
-    averageStateChars: ratio(total(asks.map((ask) => ask.state.length)), asks.length),
+    maxChars,
+    averageStateChars: ratio(stateTotal, asks.length),
     averageTokens,
-    maxTokens: Math.max(...chars) * TOKENS_PER_CHAR,
+    maxTokens: maxChars * TOKENS_PER_CHAR,
     perCallYen,
     totalYen: perCallYen * missing,
   };
@@ -622,7 +663,7 @@ export function renderEstimate(estimate, { criteria, label, responsesPath }) {
     `| 判定 | ${estimate.calls} 件（うち新たに聞くのは ${estimate.missing} 件、残りは \`${responsesPath}\` の保存済み） |`,
     `| 要求の本文 | 平均 ${Math.round(estimate.averageChars)} 字・最大 ${estimate.maxChars} 字（うち state 平均 ${Math.round(estimate.averageStateChars)} 字） |`,
     `| 入力トークン（推定） | 平均 ${Math.round(estimate.averageTokens)}・最大 ${Math.round(estimate.maxTokens)}（LEV-163 の実測 ${TOKENS_PER_CHAR.toFixed(3)} トークン/字） |`,
-    `| 費用（推定） | 1 判定 ${yen(estimate.perCallYen)}、新規 ${estimate.missing} 件で ${yen(estimate.totalYen)} |`,
+    `| 費用（推定） | 1 判定 ${perCallYen(estimate.perCallYen)}、新規 ${estimate.missing} 件で ${yen(estimate.totalYen)} |`,
     '',
     '推定はトークン数を文字数から換算したもの。実測は応答の `usage.input_tokens` で、判定を走らせたときだけ出る。',
   ].join('\n');
@@ -640,7 +681,13 @@ export function renderJudgeRecord(summary, context) {
     `| 実行 | ${context.at} |`,
     `| endpoint / model | \`${context.endpoint}\` / \`${context.model}\` |`,
     `| criteria | ${criteria} ＝ ${context.criteriaLabel ?? criteria}。Q1 の候補 ${context.candidates ?? '—'} 件 |`,
-    `| 対象 | 正解 ${selection.total} 件のうちオントロジー内 ${selection.eligible} 件（外の ${selection.skipped} 件は Q1 の候補に無いので除外） |`,
+    `| 対象 | 正解 ${selection.total} 件のうちオントロジー内 ${selection.eligible} 件（外の ${selection.skipped} 件はどの条件でも候補に無いので除外） |`,
+    summary.unofferable > 0
+      ? `| **この条件では当たらない正解** | ${summary.unofferable} 件（標本の ${percentage(1 - summary.ceiling)}）。`
+        + `絞り込みで候補から外れたフィールドが正解なので、原理的に当てられない。`
+        + `**この条件の一致率の上限は ${percentage(summary.ceiling)}**、候補内だけで数えた一致率は `
+        + `${percentage(summary.offerableFieldRate)} |`
+      : '| この条件では当たらない正解 | 0 件（標本の正解はすべて Q1 の候補にある） |',
     `| 判定 | ${summary.judged} 件（seed ${context.seed} の並べ替えから ${context.limit > 0 ? `先頭 ${context.limit}` : '全件'}、並列 ${context.concurrency}） |`,
     `| state | 前後 ${context.contextChars} 字・相手の冒頭 300 字。フィールド名の伏せ字: ${context.mask === 'on' ? 'あり' : '**なし（対照）**'} |`,
     `| 失敗 | ${summary.failures.length} 件 |`,
@@ -777,18 +824,26 @@ export async function runJudge(root, options) {
   if (!existsSync(truthPath)) throw new Error(`No truth file at ${truthPath}. Run extract first.`);
   const truth = JSON.parse(readFileSync(truthPath, 'utf8'));
   const directory = dirname(truthPath);
-  // The record and the saved answers sit next to the truth unless the run says otherwise (a control run).
-  const responsesPath = resolveOutputPath(root, options.responses ?? join(directory, RESPONSES_NAME));
-  const recordPath = resolveOutputPath(root, options.record ?? join(directory, RECORD_NAME));
+  // The record and the saved answers sit next to the truth, one set per condition: two conditions
+  // run back to back must not overwrite each other's record, which is what `compare` then reads.
+  // `default` keeps the plain names so LEV-163's files stay where they were.
+  const criteria = options.criteria ?? 'default';
+  const suffix = criteria === 'default' ? '' : `-${criteria.replaceAll(',', '-')}`;
+  const named = (name) => {
+    const dot = name.lastIndexOf('.');
+    return join(directory, `${name.slice(0, dot)}${suffix}${name.slice(dot)}`);
+  };
+  const responsesPath = resolveOutputPath(root, options.responses ?? named(RESPONSES_NAME));
+  const recordPath = resolveOutputPath(root, options.record ?? named(RECORD_NAME));
+  const summaryOut = options.summary ?? named(SUMMARY_NAME);
 
   const jev = await loadJevSource(root);
   const definition = options.hierarchy ? readHierarchy(null, options.hierarchy).definition : truth.hierarchyDefinition;
   const { hierarchy } = jev.buildHierarchyLowerCase(definition);
-  const plan = buildCriteriaPlan(options.criteria ?? 'default', truth.entries);
+  const plan = buildCriteriaPlan(criteria, truth.entries);
   // Only an example-carrying plan reads the note, so the other three build the questions once.
   const shared = planVariesByNote(plan) ? null : jev.buildQuestions(hierarchy, criteriaOptionsFor(plan, null));
   const questionsFor = (entry) => shared ?? jev.buildQuestions(hierarchy, criteriaOptionsFor(plan, entry.note));
-  const candidates = Object.keys((shared ?? questionsFor(truth.entries[0]))[FIELD_QUESTION].criteria).length;
   const asked = [FIELD_QUESTION, DIRECTION_QUESTION];
 
   const { eligible, skipped, sample } = selectEntries(truth.entries, {
@@ -797,7 +852,16 @@ export async function runJudge(root, options) {
     limit: options.limit,
     seed: options.seed,
   });
+  // Before the sample is read: an empty truth must reach this message, not a TypeError from
+  // building the questions for `truth.entries[0]`.
   if (sample.length === 0) throw new Error('Nothing to judge: no truth record uses a field of this ontology.');
+
+  // The candidate names Q1 offers. A note-dependent plan varies only the descriptions, never the
+  // set of candidates, so the first sampled note answers for the whole run.
+  const offered = new Set(
+    Object.keys(questionsFor(sample[0])[FIELD_QUESTION].criteria).map(jev.toHierarchyKey),
+  );
+  const candidates = offered.size;
 
   const saved = readResponses(responsesPath);
   const apiKey = process.env.JEV_API_KEY ?? '';
@@ -811,7 +875,10 @@ export async function runJudge(root, options) {
   const estimate = estimateAsks(asks, { candidates, missing, price: options.price, rate: options.rate });
   if (options.dryRun) {
     console.info(renderEstimate(estimate, { criteria: plan.mode, label: plan.label, responsesPath }));
-    return { estimate, plan, recordPath, responsesPath };
+    // Say what the run is not doing: a caller that then feeds the summary to `compare` would
+    // otherwise meet an ENOENT with nothing pointing back here.
+    if (options.summary) console.warn(`--dry-run なので --summary (${options.summary}) は書いていない。`);
+    return { estimate, plan, summary: null, summaryPath: null, recordPath, responsesPath };
   }
   if (missing > 0 && apiKey === '') {
     throw new Error(`JEV_API_KEY is not set and ${missing} of ${asks.length} answers are not in ${responsesPath}.`);
@@ -866,7 +933,7 @@ export async function runJudge(root, options) {
     }
     tokens.requestChars.push(ask.body.length);
     tokens.stateChars.push(ask.state.length);
-    rows.push(scoreRow(jev, hierarchy, ask.entry, response));
+    rows.push(scoreRow(jev, hierarchy, ask.entry, response, offered));
   }
   if (rows.length === 0) {
     throw new Error(`No answer could be read. First failure: ${failures[0]?.error ?? 'none'}`);
@@ -896,25 +963,28 @@ export async function runJudge(root, options) {
   const notes = [...shapeNotes(), ...recordNotes(context)];
   const record = `${renderRecord(truth, { judged: true })}\n${renderJudgeRecord(summary, { ...context, notes })}`;
   writeFileSync(recordPath, record, { mode: 0o600 });
-  let summaryPath = null;
-  if (options.summary) {
-    summaryPath = resolveOutputPath(root, options.summary);
-    mkdirSync(dirname(summaryPath), { recursive: true });
-    writeFileSync(summaryPath, `${JSON.stringify(comparisonFile(summary, context), null, 2)}\n`, { mode: 0o600 });
-  }
+  const summaryPath = resolveOutputPath(root, summaryOut);
+  mkdirSync(dirname(summaryPath), { recursive: true });
+  writeFileSync(summaryPath, `${JSON.stringify(comparisonFile(summary, context), null, 2)}\n`, { mode: 0o600 });
   console.info(renderJudgeRecord(summary, { ...context, notes: [] }));
   if (failures.length > 0) console.warn(`失敗 ${failures.length} 件。最初の 1 件: ${failures[0].error}`);
   console.info(`record: ${recordPath}`);
   console.info(`responses: ${responsesPath}`);
-  if (summaryPath) console.info(`summary: ${summaryPath}`);
+  console.info(`summary: ${summaryPath}`);
   return { summary, recordPath, responsesPath, summaryPath, estimate };
 }
+
+/**
+ * The shape of a summary file. `runCompare` refuses another version rather than rendering its
+ * missing keys as unmeasured columns, so bump this whenever `row` gains or renames a key.
+ */
+export const SUMMARY_VERSION = 2;
 
 /** The comparison row of one run, and enough of the run to read it a month later (LEV-186). */
 export function comparisonFile(summary, context) {
   const rank = (value) => summary.ranks.find((row) => row.rank === value)?.hit ?? null;
   return {
-    version: 1,
+    version: SUMMARY_VERSION,
     criteria: context.criteria,
     label: context.criteriaLabel,
     levers: context.levers,
@@ -932,6 +1002,10 @@ export function comparisonFile(summary, context) {
       /** Links a bulk run of this condition would judge, which is what its per-call price buys. */
       eligible: summary.selection.eligible,
       judged: summary.judged,
+      /** Sampled links whose own field this condition never offered (see summarizeJudgements). */
+      unofferable: summary.unofferable,
+      ceiling: summary.ceiling,
+      offerableFieldRate: summary.offerableFieldRate,
       failures: summary.failures.length,
       fieldRate: summary.overall.fieldRate,
       top3: rank(3),
@@ -942,9 +1016,11 @@ export function comparisonFile(summary, context) {
       confidentShare: ratio(summary.consistency.confident.count, summary.judged),
       confidentFieldRate: summary.consistency.confident.fieldRate,
       confidentDirectionRate: summary.consistency.confident.directionRate,
-      averageTokens: summary.tokens.averageTokens,
-      perCallYen: summary.cost.perCallYen,
-      totalYen: summary.cost.totalYen,
+      // `ratio(0, 0)` is 0, so a run whose responses carried no `usage` would otherwise be
+      // compared as a free condition. Unmeasured is null, which the table prints as 「—」.
+      averageTokens: summary.tokens.reportedCalls > 0 ? summary.tokens.averageTokens : null,
+      perCallYen: summary.tokens.reportedCalls > 0 ? summary.cost.perCallYen : null,
+      totalYen: summary.tokens.reportedCalls > 0 ? summary.cost.totalYen : null,
       thresholds: summary.thresholds,
       confusion: summary.confusion.slice(0, 5),
       directions: summary.directions,
@@ -962,6 +1038,9 @@ const pct = (value) => orDash(value, percentage);
  */
 export function renderComparison(files, { at, notes = [] }) {
   const columns = files.map((file) => file.criteria);
+  // The runs should be over the same sample; say so from the data rather than from a fixed number.
+  const judged = [...new Set(files.map((file) => file.row.judged).filter((value) => typeof value === 'number'))];
+  const judgedLabel = judged.length === 1 ? `${judged[0]} 本` : '本数は条件ごと';
   const header = (first) => [
     `| ${first} | ${columns.join(' | ')} |`,
     `| ${['---', ...columns.map(() => '---')].join(' | ')} |`,
@@ -969,7 +1048,7 @@ export function renderComparison(files, { at, notes = [] }) {
   const line = (name, read) => `| ${name} | ${files.map((file) => read(file.row)).join(' | ')} |`;
 
   const lines = [
-    '# JEV-0 精度テスト v2: criteria の 4 条件（LEV-186）',
+    `# JEV-0 精度テスト v2: criteria の ${files.length} 条件（LEV-186）`,
     '',
     '| 項目 | 値 |',
     '| --- | --- |',
@@ -989,6 +1068,9 @@ export function renderComparison(files, { at, notes = [] }) {
     '',
     ...header('指標'),
     line('フィールド一致率', (row) => pct(row.fieldRate)),
+    line('　うちこの条件では当たらない正解', (row) => (typeof row.unofferable === 'number'
+      ? `${row.unofferable} 件（上限 ${percentage(row.ceiling)}、候補内だけなら ${percentage(row.offerableFieldRate)}）`
+      : '—')),
     line('上位 3', (row) => pct(row.top3)),
     line('上位 5', (row) => pct(row.top5)),
     line('上位 10', (row) => pct(row.top10)),
@@ -1003,8 +1085,8 @@ export function renderComparison(files, { at, notes = [] }) {
     ...header('指標'),
     line('平均入力トークン', (row) => orDash(row.averageTokens, (value) => `${Math.round(value)}`)),
     // Four places: a judgement costs hundredths of a yen, and the conditions differ in that digit.
-    line('1 判定の費用', (row) => orDash(row.perCallYen, (value) => `${value.toFixed(4)} 円`)),
-    line('この実行の費用（500 本）', (row) => orDash(row.totalYen, yen)),
+    line('1 判定の費用', (row) => orDash(row.perCallYen, perCallYen)),
+    line(`この実行の費用（${judgedLabel}）`, (row) => orDash(row.totalYen, yen)),
     // What the condition costs in use, not in the measurement: design §7's 月 600 判定 and one bulk run.
     line('月 600 判定なら', (row) => orDash(row.perCallYen, (value) => yen(value * 600))),
     line('オントロジー内を一括したら', (row) => (typeof row.eligible === 'number'
@@ -1057,6 +1139,11 @@ export function runCompare(root, options) {
   const files = paths.map((path) => {
     const parsed = JSON.parse(readFileSync(resolve(root, path), 'utf8'));
     if (!isRecord(parsed) || !isRecord(parsed.row)) throw new Error(`Not a judge summary file: ${path}`);
+    // Checked, not just stamped: a summary from an older row shape would otherwise render as a
+    // column of 「—」 and read as an unmeasured condition rather than as a stale file.
+    if (parsed.version !== SUMMARY_VERSION) {
+      throw new Error(`Summary file ${path} is version ${parsed.version}, this build writes ${SUMMARY_VERSION}. Re-run judge for it.`);
+    }
     return parsed;
   });
   const notes = options.notes ? readFileSync(resolve(root, options.notes), 'utf8').trimEnd().split('\n') : [];

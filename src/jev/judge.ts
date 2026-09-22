@@ -149,11 +149,19 @@ export type CriteriaOptions = {
   directionNotes?: Readonly<Partial<Record<Direction, string>>>;
 };
 
-/** One entry of a criteria note dictionary, matched the way a field name is. */
-const noteFor = (notes: Readonly<Record<string, string>>, label: string): string => {
-  const key = toHierarchyKey(label);
-  const found = Object.entries(notes).find(([candidate]) => toHierarchyKey(candidate) === key);
-  return found?.[1]?.trim() ?? "";
+/**
+ * A criteria note dictionary keyed the way a field name is matched, built once so the
+ * lookup inside the loop stays O(1): with the examples lever the questions are rebuilt
+ * for every note judged, and a scan per candidate would be O(fields²) each time.
+ * An earlier spelling wins, as the ontology's own duplicate resolution does.
+ */
+const notesByKey = (notes: Readonly<Record<string, string>>): Map<string, string> => {
+  const byKey = new Map<string, string>();
+  for (const [candidate, note] of Object.entries(notes)) {
+    const key = toHierarchyKey(candidate);
+    if (!byKey.has(key)) byKey.set(key, note.trim());
+  }
+  return byKey;
 };
 
 const withNote = (description: string, note: string): string => (note === "" ? description : `${description}。${note}`);
@@ -170,13 +178,13 @@ export const buildQuestions = (hierarchy: Hierarchy, options: CriteriaOptions = 
   const wanted = options.fields ? new Set(options.fields.map(toHierarchyKey)) : null;
   const narrowed = wanted ? entries.filter((entry) => wanted.has(toHierarchyKey(entry.field))) : entries;
   const offered = narrowed.length > 0 ? narrowed : entries;
-  const fieldNotes = options.fieldNotes ?? {};
+  const fieldNotes = notesByKey(options.fieldNotes ?? {});
   const directionNotes = options.directionNotes ?? {};
 
   const fieldCriteria: Record<string, string> = {};
   for (const { field, region } of offered) {
     const description = `${REGION_LABELS[region]}・方向: ${DIRECTION_LABELS[REGION_TO_DIRECTION[region]]}`;
-    fieldCriteria[field] = withNote(description, noteFor(fieldNotes, field));
+    fieldCriteria[field] = withNote(description, fieldNotes.get(toHierarchyKey(field)) ?? "");
   }
   const directionCriteria: Record<string, string> = {};
   for (const direction of Object.keys(DIRECTION_LABELS) as Direction[]) {

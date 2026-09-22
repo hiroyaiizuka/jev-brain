@@ -118,7 +118,9 @@ export const CRITERIA_MODES = Object.keys(CRITERIA_ALIASES);
  * lives here so a typo fails before the vault is read.
  */
 export function parseCriteria(value) {
-  if (Object.prototype.hasOwnProperty.call(CRITERIA_ALIASES, value)) return CRITERIA_ALIASES[value];
+  // A copy: the result becomes `plan.levers` and is serialised into the summary file, and the
+  // exported alias table must not be reachable, writable state from there.
+  if (Object.prototype.hasOwnProperty.call(CRITERIA_ALIASES, value)) return [...CRITERIA_ALIASES[value]];
   const asked = String(value ?? '').split(',').map((lever) => lever.trim()).filter((lever) => lever !== '');
   if (asked.length === 0 || asked.some((lever) => !CRITERIA_LEVERS.includes(lever))) return null;
   return CRITERIA_LEVERS.filter((lever) => asked.includes(lever));
