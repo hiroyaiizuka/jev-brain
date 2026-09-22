@@ -21,9 +21,11 @@ const judgement = (field: string, confident = true): Judgement => ({
   direction: 'parent',
   directionProbability: 0.95,
   confident,
-  ordered: confident
-    ? [{ field, probability: 0.92 }, { field: 'origin', probability: 0.05 }]
-    : [{ field: 'up' }, { field: 'origin' }],
+  // Q1 の答えをオントロジーの綴りで解決したもの（`judge` が候補を絞る前に決める）。
+  chosen: { field, probability: 0.92 },
+  // 自信ありでも自信なしでも `judge` が返す候補は同じ（確率順の上位 5 件、LEV-187）。
+  // 変わるのはカードの既定の選択だけ。
+  ordered: [{ field, probability: 0.92 }, { field: 'origin', probability: 0.05 }],
 });
 
 const card = (model: JevQueueModel, target: string): JevQueueCard => {
@@ -86,32 +88,48 @@ describe('open → done → 取り消し', () => {
   });
 
   it('preselects the answer of Q1, not whatever sorted to the front of the candidates', () => {
-    // judge() sorts a field the response said nothing about behind the others, so `ordered[0]`
-    // is not always Q1's answer. The card has to write the answer, never the accident.
+    // `ordered` は出す用に絞ってあるので、その先頭は Q1 の答えとは限らない（LEV-187 で
+    // 「現在のフィールド」が先頭に来る付け替えも同じ）。カードが書くのは答えのほう。
     model.judged('a.md', {
       ...judgement('up'),
-      ordered: [{ field: 'origin', probability: 0.4 }, { field: 'up' }],
+      chosen: { field: 'up', probability: 0.3 },
+      ordered: [{ field: 'origin', probability: 0.4 }, { field: 'up', probability: 0.3 }],
     });
 
     expect(card(model, 'a.md').selected).toBe('up');
   });
 
-  it('matches Q1s answer to the ontologys spelling', () => {
+  it('takes the ontologys spelling from judge, not the answer as Jev wrote it', () => {
     model.judged('a.md', {
       ...judgement('Part Of'),
+      chosen: { field: 'part of', probability: 0.8 },
       ordered: [{ field: 'part of', probability: 0.8 }, { field: 'up', probability: 0.1 }],
     });
 
     expect(card(model, 'a.md').selected).toBe('part of');
   });
 
-  it('falls back to the first candidate when the answer is outside the ontology', () => {
+  it('preselects nothing when the answer is outside the ontology', () => {
+    // `judge` が解決できなかった答え。別のフィールドを選んだ状態にすると、本人が確定を
+    // 押すだけで Jev が答えていない型が入る。
     model.judged('a.md', {
       ...judgement('invented'),
+      chosen: null,
       ordered: [{ field: 'up', probability: 0.5 }, { field: 'origin', probability: 0.2 }],
     });
 
-    expect(card(model, 'a.md').selected).toBe('up');
+    expect(card(model, 'a.md').selected).toBeNull();
+  });
+
+  it('preselects the answer even when the top five left it out (LEV-187)', () => {
+    // 出す候補は 5 件で切られるが、既定にするのは `chosen`。絞り込みが書く内容を変えない。
+    model.judged('a.md', {
+      ...judgement('steps'),
+      chosen: { field: 'steps', probability: 0.004 },
+      ordered: [{ field: 'up', probability: 0.5 }, { field: 'origin', probability: 0.2 }],
+    });
+
+    expect(card(model, 'a.md').selected).toBe('steps');
   });
 
   it('preselects nothing when the field and the direction disagree', () => {
@@ -119,6 +137,14 @@ describe('open → done → 取り消し', () => {
 
     expect(card(model, 'a.md').status).toBe('open');
     expect(card(model, 'a.md').selected).toBeNull();
+  });
+
+  it('keeps the candidates and their probabilities when it is not confident (LEV-187)', () => {
+    model.judged('a.md', judgement('up', false));
+
+    // 出す候補は自信ありのときと同じ並び。カードは `ordered` をそのまま描く。
+    expect(card(model, 'a.md').judgement?.ordered)
+      .toEqual([{ field: 'up', probability: 0.92 }, { field: 'origin', probability: 0.05 }]);
   });
 
   it('writes down what was confirmed', () => {

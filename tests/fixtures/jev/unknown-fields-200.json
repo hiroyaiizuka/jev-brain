@@ -1,0 +1,32 @@
+{
+  "note": "2 問 Choice の応答で、Q1 の答えも確率のラベルもオントロジーに無い語だけ（上流版の既定の綴りを返してきた場合など）。候補が 1 件も残らない枝（LEV-187）を固定するための作り物。形は two-choice-200.json（2026-09-22 の実応答）に合わせてある。",
+  "status": 200,
+  "body": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "field": {
+        "type": "choice",
+        "choice": "parent",
+        "confidence": 0.41,
+        "probabilities": {
+          "parent": 0.41,
+          "child": 0.33,
+          "friend": 0.26
+        }
+      },
+      "direction": {
+        "type": "choice",
+        "choice": "parent",
+        "confidence": 0.7,
+        "probabilities": {
+          "parent": 0.7,
+          "child": 0.3
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 1744,
+      "output_tokens": 80
+    }
+  }
+}

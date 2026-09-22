@@ -1,4 +1,3 @@
-import { toHierarchyKey } from "../utils/hierarchy";
 import type { UntypedLink } from "./collect";
 import type { Judgement } from "./judge";
 
@@ -60,17 +59,6 @@ export const estimateCostJpy = (inputTokens: number): number =>
 
 /** パネル下部に出す、このノートでの実績（設計 §4-2）。 */
 export type JevQueueUsage = { calls: number; inputTokens: number; costJpy: number };
-
-/**
- * 既定にするフィールド。Q1 の答え（`judgement.field`）であって `ordered[0]` ではない（`judge.ts`）。
- * `ordered` はオントロジーの綴りなので、Dataview のキーで突き合わせて綴りを揃える。応答の語が
- * オントロジーに無ければ（`confident` なら起きないが）先頭に落とす。
- */
-const firstChoice = (judgement: Judgement): string | null => {
-  const key = toHierarchyKey(judgement.field ?? "");
-  const found = judgement.ordered.find((candidate) => toHierarchyKey(candidate.field) === key);
-  return found?.field ?? judgement.ordered[0]?.field ?? null;
-};
 
 /** 「あとで」の鍵。ノートが違えば別のカードなので、パスと相手の組で覚える。 */
 const deferKey = (notePath: string, target: string): string => `${notePath}\n${target}`;
@@ -139,8 +127,9 @@ export class JevQueueModel {
     const card = this.card(target);
     if (!card || (card.status !== "pending" && card.status !== "later")) return false;
     card.judgement = judgement;
-    // 自信なしは既定を作らない（設計 §2-3: 何も第一候補を示さない）。
-    card.selected = judgement.confident ? firstChoice(judgement) : null;
+    // 自信なしは既定を作らない（設計 §2-3: 何も第一候補を示さない）。既定にするのは Jev が選んだ
+    // フィールド（`judge` がオントロジーの綴りで解決した `chosen`）で、候補の並びの先頭ではない。
+    card.selected = judgement.confident ? judgement.chosen?.field ?? null : null;
     if (card.status === "pending") card.status = "open";
     return true;
   }

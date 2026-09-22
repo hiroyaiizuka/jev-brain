@@ -55,10 +55,11 @@ describe('noticeFor', () => {
       .toBe('Jev wrote up:: [[B]] (?%, 0 tokens).');
   });
 
-  it('tells the two unconfident cases apart and shows the first three candidates', () => {
+  it('tells the two unconfident cases apart and shows the candidates judge offered (LEV-187)', () => {
+    // `judge` が確率順の上位 5 件に絞ってあるので、Notice もその全部＝サジェスターと同じ並び。
     const candidates = ['up', 'down', 'origin', 'similar'];
     expect(noticeFor({ status: 'unconfident', reason: 'direction', target: 'B', answer: 'up', candidates }))
-      .toBe('Jev is not sure about [[B]]: the field and the direction disagree. Candidates: up, down, origin. Nothing was written.');
+      .toBe('Jev is not sure about [[B]]: the field and the direction disagree. Candidates: up, down, origin, similar. Nothing was written.');
     expect(noticeFor({ status: 'unconfident', reason: 'unknown-field', target: 'B', answer: '謎', candidates }))
       .toBe('Jev answered "謎" for [[B]], which is not a field of your ontology. Nothing was written.');
   });

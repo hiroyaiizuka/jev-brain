@@ -81,10 +81,39 @@ export type JevResponse = {
   questions: Record<string, ChoiceAnswer>;
 };
 
-/** One field to offer, with its probability when the judgement is confident. */
+/**
+ * One field to offer, with the probability Q1 gave it. A typed link's current field is the only
+ * candidate that can come without one: it is offered because it is already written, not because
+ * Jev ranked it.
+ */
 export type Candidate = {
   field: string;
   probability?: number;
+};
+
+/** How many candidates a judgement offers (§2-3, 本人の決定 2026-09-22「上位 5 件」). */
+export const MAX_CANDIDATES = 5;
+
+/**
+ * The lowest probability a candidate can have and still be offered: below it {@link percentOf}
+ * is 0 and the line would read "0%" (§2-3「四捨五入で 0% になる候補は出さない」).
+ */
+export const MIN_CANDIDATE_PROBABILITY = 0.005;
+
+/**
+ * A probability as the whole percent every entrance writes. The threshold above is this rounding,
+ * so the three screens share it rather than each rounding their own way and printing "0%" again.
+ */
+export const percentOf = (probability: number): number => Math.round(probability * 100);
+
+/** What a judgement offers, when the caller wants something other than §2-3's defaults. */
+export type JudgeOptions = {
+  /** A typed link's field, put first so the offer reads as a change of type (§4-1). */
+  currentField?: string;
+  /** At most this many candidates, the current field included. Default {@link MAX_CANDIDATES}. */
+  maxCandidates?: number;
+  /** Candidates under this probability are left out. Default {@link MIN_CANDIDATE_PROBABILITY}. */
+  minProbability?: number;
 };
 
 export type Judgement = {
@@ -101,9 +130,17 @@ export type Judgement = {
   /** Q1's answer sits in a region whose direction is Q2's answer. */
   confident: boolean;
   /**
-   * What to offer, and the only list a UI should show: every field of the ontology, by
-   * probability when confident and in the settings' order without probabilities when not
-   * (§2-3, so nothing suggests a pick). A typed link's current field comes first.
+   * Q1's answer as the ontology spells it, or null when the answer is not a field of the
+   * ontology. This — not `ordered[0]`, and not a scan of `ordered` — is what Jev picked: the
+   * default pick and the field a write puts in the note come from here, so that narrowing
+   * `ordered` for the screen can never change what gets written.
+   */
+  chosen: Candidate | null;
+  /**
+   * What to offer, and the only list a UI should show: the fields of the ontology by
+   * probability, {@link MAX_CANDIDATES} at most and none that would read "0%" (§2-3). Confident
+   * or not, the list is the same one — only the default pick goes away when it is not (§2-3, so
+   * nothing suggests a pick). A typed link's current field comes first, and the cap counts it.
    */
   ordered: Candidate[];
 };
@@ -173,23 +210,31 @@ const probabilityOf = (probabilities: Record<string, number>, label: string): nu
   return found && Number.isFinite(found[1]) ? found[1] : undefined;
 };
 
-/** Moves the link's current field to the front, keeping the probability it already had (§2-2). */
-const currentFieldFirst = (ordered: Candidate[], currentField: string): Candidate[] => {
+/**
+ * Moves the link's current field to the front, keeping the probability it already had (§2-2).
+ * A current field the ranking left out is added back in the ontology's spelling, because the
+ * candidate a UI shows is the string a confirmation writes — never the caller's own wording.
+ */
+const currentFieldFirst = (ordered: Candidate[], currentField: string, entries: FieldEntry[]): Candidate[] => {
   const key = toHierarchyKey(currentField);
   const current = ordered.find((candidate) => toHierarchyKey(candidate.field) === key);
+  const spelling = entries.find((entry) => toHierarchyKey(entry.field) === key)?.field ?? currentField;
   return [
-    current ?? { field: currentField },
+    current ?? { field: spelling },
     ...ordered.filter((candidate) => toHierarchyKey(candidate.field) !== key),
   ];
 };
 
 /**
  * Reads one response: Q1's answer, Q2's answer and the consistency check of
- * §2-3. Confident means Q1's field has the direction Q2 answered; otherwise the
- * candidates come back in the settings' order without probabilities, so nothing
- * suggests a first pick.
+ * §2-3. Confident means Q1's field has the direction Q2 answered; when it is not, the same
+ * candidates come back and only the default pick goes away, which the UI says in words.
  */
-export const judge = (response: JevResponse, hierarchy: Hierarchy, currentField?: string): Judgement => {
+export const judge = (
+  response: JevResponse,
+  hierarchy: Hierarchy,
+  { currentField, maxCandidates = MAX_CANDIDATES, minProbability = MIN_CANDIDATE_PROBABILITY }: JudgeOptions = {},
+): Judgement => {
   const questions = response.questions ?? {};
   const fieldAnswer = questions[FIELD_QUESTION];
   const directionAnswer = questions[DIRECTION_QUESTION];
@@ -199,17 +244,25 @@ export const judge = (response: JevResponse, hierarchy: Hierarchy, currentField?
   const directionProbability = probabilityOf(directionAnswer?.probabilities, directionAnswer?.choice) ?? 0;
 
   const entries = fieldEntries(hierarchy);
-  const expected = entries.find((entry) => toHierarchyKey(entry.field) === toHierarchyKey(field));
-  const confident = expected ? REGION_TO_DIRECTION[expected.region] === direction : false;
+  // Q1 の答えをオントロジーの中で 1 度だけ解決する。綴りも方向の突き合わせもここから引くので、
+  // 出す候補をいくら絞っても「Jev が選んだのはどれか」は変わらない。
+  const answer = entries.find((entry) => toHierarchyKey(entry.field) === toHierarchyKey(field));
+  const confident = answer ? REGION_TO_DIRECTION[answer.region] === direction : false;
+  const chosen: Candidate | null = answer
+    ? { field: answer.field, probability: probabilityOf(probabilities, answer.field) }
+    : null;
 
-  // Candidates always come from the ontology: a field the response leaves out stays offerable and a
-  // label the response invented never becomes a line to write. A stable sort keeps the settings'
-  // order for equal probabilities and for the fields the response said nothing about.
-  const ordered: Candidate[] = confident
-    ? entries
-        .map((entry) => ({ field: entry.field, probability: probabilityOf(probabilities, entry.field) }))
-        .sort((left, right) => (right.probability ?? -1) - (left.probability ?? -1))
-    : entries.map((entry) => ({ field: entry.field }));
+  // Candidates always come from the ontology: a label the response invented never becomes a line to
+  // write. A field the response said nothing about has no probability to rank or to show, so it is
+  // left out along with the ones that would read "0%" (§2-3). A stable sort keeps the settings'
+  // order for equal probabilities.
+  const ranked: { field: string; probability: number }[] = [];
+  for (const entry of entries) {
+    const probability = probabilityOf(probabilities, entry.field);
+    if (probability !== undefined && probability >= minProbability) ranked.push({ field: entry.field, probability });
+  }
+  ranked.sort((left, right) => right.probability - left.probability);
+  const ordered = currentField ? currentFieldFirst(ranked, currentField, entries) : ranked;
 
   return {
     field,
@@ -217,6 +270,8 @@ export const judge = (response: JevResponse, hierarchy: Hierarchy, currentField?
     direction,
     directionProbability,
     confident,
-    ordered: currentField ? currentFieldFirst(ordered, currentField) : ordered,
+    chosen,
+    // The current field takes one of the places, so a re-type reads as short as a first type.
+    ordered: ordered.slice(0, Math.max(0, maxCandidates)),
   };
 };
