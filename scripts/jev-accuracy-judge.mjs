@@ -10,11 +10,11 @@
  */
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { RECORD_NAME, readHierarchy, renderRecord, resolveOutputPath } from './jev-accuracy.mjs';
+import { RECORD_NAME, parseCriteria, readHierarchy, renderRecord, resolveOutputPath } from './jev-accuracy.mjs';
 
 export const RESPONSES_NAME = 'responses.jsonl';
 
@@ -39,6 +39,128 @@ export const THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9];
  * list, not one answer, so their worth is decided by these, not by the first candidate alone.
  */
 export const RANKS = [1, 3, 5, 10];
+
+/** `narrow`: a field has to be used this often in the vault to stay a candidate. */
+export const NARROW_MIN_USES = 5;
+
+/** `examples`: how much of the note around an example link goes into the description, each side. */
+export const EXAMPLE_CHARS = 60;
+
+/** `examples`: how many examples one field's description carries. */
+export const EXAMPLES_PER_FIELD = 2;
+
+/**
+ * Examples kept per field beyond the two that are shown. An example never comes from the note being
+ * judged — that note's own field is what the measurement hides — so the pool needs spares.
+ */
+const EXAMPLE_SPARE = 2;
+
+export const EXAMPLE_LEAD = 'この Vault での使い方: ';
+
+/**
+ * `directions`: one sentence per direction for Q2. LEV-163 answered 左友 zero times out of 500 and 前
+ * eleven, with only the one-word label 「左友」／「前」 to go on; these say what the label means.
+ * They live here, not in `judge.ts`, because §2-3's wording is what the plugin sends and this run is
+ * measuring whether it should change.
+ */
+export const DIRECTION_NOTES = {
+  parent: '[[X]] の方が抽象的で上位。今のノートの出典・元になった考え・所属する上位の概念',
+  child: '[[X]] の方が具体的で下位。今のノートの例・詳細・派生・実装',
+  leftFriend: '同じ段の似た話題。抽象度は同じで、言い換え・関連・支持・代替',
+  rightFriend: '同じ段の対立する話題。抽象度は同じで、反対・欠点・制約',
+  previous: '時系列や手順で、[[X]] が今のノートより前に来る',
+  next: '時系列や手順で、[[X]] が今のノートより後に来る',
+};
+
+const LEVER_LABELS = {
+  narrow: `候補を絞る（Vault で ${NARROW_MIN_USES} 件以上使われているフィールドだけ）`,
+  examples: `候補ごとに用例 ${EXAMPLES_PER_FIELD} つ（前後 ${EXAMPLE_CHARS} 字、判定対象と別のノートから）`,
+  directions: '方向の 6 候補に 1 文ずつ',
+};
+
+/** What a lever set does, for the record and the comparison table. */
+export const criteriaLabel = (levers) =>
+  (levers.length === 0 ? '既定（全フィールド、説明は領域と方向だけ）' : levers.map((lever) => LEVER_LABELS[lever]).join(' ＋ '));
+
+/**
+ * Input tokens per character of request body, from LEV-163's 500 real answers (5,964 chars →
+ * 4,444 `usage.input_tokens`). Only `--dry-run` uses it: every number that reaches the record is
+ * measured from the responses themselves.
+ */
+export const TOKENS_PER_CHAR = 4444 / 5964;
+
+/** One example: the note around the link, on one line. */
+export function exampleText(entry, chars) {
+  const before = entry.contextBefore.slice(-chars);
+  const after = entry.contextAfter.slice(0, chars);
+  return `${before}${entry.linkText}${after}`.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * What one criteria mode needs from the truth, worked out once for the whole run: the fields that
+ * stay candidates and a pool of examples per field. The counts are over the whole vault, not the
+ * sample, since 「Vault で実際に使われている」 is a property of the vault.
+ */
+export function buildCriteriaPlan(mode, entries, {
+  minUses = NARROW_MIN_USES,
+  chars = EXAMPLE_CHARS,
+  perField = EXAMPLES_PER_FIELD,
+} = {}) {
+  const levers = parseCriteria(mode);
+  if (levers === null) throw new Error(`Not a criteria condition: ${mode}`);
+  const narrow = levers.includes('narrow');
+  const withExamples = levers.includes('examples');
+
+  const counts = new Map();
+  for (const entry of entries) counts.set(entry.fieldKey, (counts.get(entry.fieldKey) ?? 0) + 1);
+  const fields = narrow
+    ? [...counts.entries()].filter(([, count]) => count >= minUses).map(([key]) => key)
+    : null;
+
+  const examples = new Map();
+  if (withExamples) {
+    const wanted = fields ? new Set(fields) : null;
+    for (const entry of entries) {
+      if (wanted && !wanted.has(entry.fieldKey)) continue;
+      const pool = examples.get(entry.fieldKey) ?? [];
+      // Distinct notes, so two examples never show the same passage twice.
+      if (pool.length >= perField + EXAMPLE_SPARE || pool.some((example) => example.note === entry.note)) continue;
+      pool.push({ note: entry.note, text: exampleText(entry, chars) });
+      examples.set(entry.fieldKey, pool);
+    }
+  }
+  return {
+    mode,
+    levers,
+    label: criteriaLabel(levers),
+    fields,
+    examples,
+    perField,
+    directionNotes: levers.includes('directions') ? DIRECTION_NOTES : null,
+  };
+}
+
+/** Whether a plan's descriptions depend on which note is being judged (they do once it has examples). */
+export const planVariesByNote = (plan) => plan.examples.size > 0;
+
+/**
+ * The plan as `buildQuestions`'s options for one note. Examples from that note are left out: its own
+ * field is the answer, and the measurement hides it from the state (`maskEntry`) for the same reason.
+ */
+export function criteriaOptionsFor(plan, note) {
+  const options = {};
+  if (plan.fields) options.fields = plan.fields;
+  if (plan.directionNotes) options.directionNotes = plan.directionNotes;
+  if (plan.examples.size > 0) {
+    const fieldNotes = {};
+    for (const [field, pool] of plan.examples) {
+      const picked = pool.filter((example) => example.note !== note).slice(0, plan.perField);
+      if (picked.length > 0) fieldNotes[field] = `${EXAMPLE_LEAD}${picked.map((example) => `「${example.text}」`).join('／')}`;
+    }
+    options.fieldNotes = fieldNotes;
+  }
+  return options;
+}
 
 /** 429 and 5xx are worth asking again; client.ts waits once, a 500-link run can afford two. */
 const RETRY_DELAYS_MS = [1_000, 3_000];
@@ -463,16 +585,61 @@ export function summarizeJudgements(rows, { failures, selection, tokens, price, 
 const percentage = (value) => `${(value * 100).toFixed(1)}%`;
 const yen = (value) => `${value.toFixed(2)} 円`;
 
+/**
+ * What a run would cost, from the requests it has already built and nothing else. The criteria of
+ * LEV-186 change the size of every request — `verbose` carries two passages of the vault per
+ * candidate — so a 500-link run is priced before it is paid for (the ticket's 60 円 cap, and the
+ * endpoint's 32k limit on state plus the longest question, design §7).
+ */
+export function estimateAsks(asks, { candidates, missing, price, rate }) {
+  const chars = asks.map((ask) => ask.body.length);
+  const total = (values) => values.reduce((sum, value) => sum + value, 0);
+  const averageChars = ratio(total(chars), chars.length);
+  const averageTokens = averageChars * TOKENS_PER_CHAR;
+  const perCallYen = ((averageTokens * price) / 1e6) * rate;
+  return {
+    calls: asks.length,
+    missing,
+    candidates,
+    averageChars,
+    maxChars: Math.max(...chars),
+    averageStateChars: ratio(total(asks.map((ask) => ask.state.length)), asks.length),
+    averageTokens,
+    maxTokens: Math.max(...chars) * TOKENS_PER_CHAR,
+    perCallYen,
+    totalYen: perCallYen * missing,
+  };
+}
+
+/** `--dry-run`: the estimate on stdout, with nothing sent and nothing written. */
+export function renderEstimate(estimate, { criteria, label, responsesPath }) {
+  return [
+    `## 見積もり（--dry-run。criteria: ${criteria} ＝ ${label}）`,
+    '',
+    '| 項目 | 値 |',
+    '| --- | --- |',
+    `| Q1 の候補 | ${estimate.candidates} 件 |`,
+    `| 判定 | ${estimate.calls} 件（うち新たに聞くのは ${estimate.missing} 件、残りは \`${responsesPath}\` の保存済み） |`,
+    `| 要求の本文 | 平均 ${Math.round(estimate.averageChars)} 字・最大 ${estimate.maxChars} 字（うち state 平均 ${Math.round(estimate.averageStateChars)} 字） |`,
+    `| 入力トークン（推定） | 平均 ${Math.round(estimate.averageTokens)}・最大 ${Math.round(estimate.maxTokens)}（LEV-163 の実測 ${TOKENS_PER_CHAR.toFixed(3)} トークン/字） |`,
+    `| 費用（推定） | 1 判定 ${yen(estimate.perCallYen)}、新規 ${estimate.missing} 件で ${yen(estimate.totalYen)} |`,
+    '',
+    '推定はトークン数を文字数から換算したもの。実測は応答の `usage.input_tokens` で、判定を走らせたときだけ出る。',
+  ].join('\n');
+}
+
 /** The judge half of `artifacts/jev-accuracy/record.md`. */
 export function renderJudgeRecord(summary, context) {
   const { selection, overall, consistency, tokens, cost } = summary;
+  const criteria = context.criteria ?? 'default';
   const lines = [
-    '## Jev の判定（LEV-163）',
+    criteria === 'default' ? '## Jev の判定（LEV-163）' : `## Jev の判定（LEV-186、criteria: ${criteria}）`,
     '',
     '| 項目 | 値 |',
     '| --- | --- |',
     `| 実行 | ${context.at} |`,
     `| endpoint / model | \`${context.endpoint}\` / \`${context.model}\` |`,
+    `| criteria | ${criteria} ＝ ${context.criteriaLabel ?? criteria}。Q1 の候補 ${context.candidates ?? '—'} 件 |`,
     `| 対象 | 正解 ${selection.total} 件のうちオントロジー内 ${selection.eligible} 件（外の ${selection.skipped} 件は Q1 の候補に無いので除外） |`,
     `| 判定 | ${summary.judged} 件（seed ${context.seed} の並べ替えから ${context.limit > 0 ? `先頭 ${context.limit}` : '全件'}、並列 ${context.concurrency}） |`,
     `| state | 前後 ${context.contextChars} 字・相手の冒頭 300 字。フィールド名の伏せ字: ${context.mask === 'on' ? 'あり' : '**なし（対照）**'} |`,
@@ -617,7 +784,11 @@ export async function runJudge(root, options) {
   const jev = await loadJevSource(root);
   const definition = options.hierarchy ? readHierarchy(null, options.hierarchy).definition : truth.hierarchyDefinition;
   const { hierarchy } = jev.buildHierarchyLowerCase(definition);
-  const questions = jev.buildQuestions(hierarchy);
+  const plan = buildCriteriaPlan(options.criteria ?? 'default', truth.entries);
+  // Only an example-carrying plan reads the note, so the other three build the questions once.
+  const shared = planVariesByNote(plan) ? null : jev.buildQuestions(hierarchy, criteriaOptionsFor(plan, null));
+  const questionsFor = (entry) => shared ?? jev.buildQuestions(hierarchy, criteriaOptionsFor(plan, entry.note));
+  const candidates = Object.keys((shared ?? questionsFor(truth.entries[0]))[FIELD_QUESTION].criteria).length;
   const asked = [FIELD_QUESTION, DIRECTION_QUESTION];
 
   const { eligible, skipped, sample } = selectEntries(truth.entries, {
@@ -632,10 +803,16 @@ export async function runJudge(root, options) {
   const apiKey = process.env.JEV_API_KEY ?? '';
   const asks = sample.map((entry) => {
     const state = buildJudgeState(jev, entry, { contextChars: truth.contextChars, mask: options.mask });
-    const body = JSON.stringify(toWireRequest(options.model, state, questions));
+    const body = JSON.stringify(toWireRequest(options.model, state, questionsFor(entry)));
     return { entry, state, body, requestHash: hashOf(body) };
   });
   const missing = asks.filter((ask) => !saved.has(`${ask.entry.id}:${ask.requestHash}`)).length;
+  // What the run would cost before it spends anything: the record's own numbers are always measured.
+  const estimate = estimateAsks(asks, { candidates, missing, price: options.price, rate: options.rate });
+  if (options.dryRun) {
+    console.info(renderEstimate(estimate, { criteria: plan.mode, label: plan.label, responsesPath }));
+    return { estimate, plan, recordPath, responsesPath };
+  }
   if (missing > 0 && apiKey === '') {
     throw new Error(`JEV_API_KEY is not set and ${missing} of ${asks.length} answers are not in ${responsesPath}.`);
   }
@@ -704,6 +881,10 @@ export async function runJudge(root, options) {
     concurrency: options.concurrency,
     contextChars: truth.contextChars,
     mask: options.mask,
+    criteria: plan.mode,
+    criteriaLabel: plan.label,
+    levers: plan.levers,
+    candidates,
   };
   const summary = summarizeJudgements(rows, {
     failures,
@@ -715,9 +896,175 @@ export async function runJudge(root, options) {
   const notes = [...shapeNotes(), ...recordNotes(context)];
   const record = `${renderRecord(truth, { judged: true })}\n${renderJudgeRecord(summary, { ...context, notes })}`;
   writeFileSync(recordPath, record, { mode: 0o600 });
+  let summaryPath = null;
+  if (options.summary) {
+    summaryPath = resolveOutputPath(root, options.summary);
+    mkdirSync(dirname(summaryPath), { recursive: true });
+    writeFileSync(summaryPath, `${JSON.stringify(comparisonFile(summary, context), null, 2)}\n`, { mode: 0o600 });
+  }
   console.info(renderJudgeRecord(summary, { ...context, notes: [] }));
   if (failures.length > 0) console.warn(`失敗 ${failures.length} 件。最初の 1 件: ${failures[0].error}`);
   console.info(`record: ${recordPath}`);
   console.info(`responses: ${responsesPath}`);
-  return { summary, recordPath, responsesPath };
+  if (summaryPath) console.info(`summary: ${summaryPath}`);
+  return { summary, recordPath, responsesPath, summaryPath, estimate };
+}
+
+/** The comparison row of one run, and enough of the run to read it a month later (LEV-186). */
+export function comparisonFile(summary, context) {
+  const rank = (value) => summary.ranks.find((row) => row.rank === value)?.hit ?? null;
+  return {
+    version: 1,
+    criteria: context.criteria,
+    label: context.criteriaLabel,
+    levers: context.levers,
+    at: context.at,
+    run: {
+      endpoint: context.endpoint,
+      model: context.model,
+      seed: context.seed,
+      limit: context.limit,
+      mask: context.mask,
+      contextChars: context.contextChars,
+    },
+    row: {
+      candidates: context.candidates,
+      /** Links a bulk run of this condition would judge, which is what its per-call price buys. */
+      eligible: summary.selection.eligible,
+      judged: summary.judged,
+      failures: summary.failures.length,
+      fieldRate: summary.overall.fieldRate,
+      top3: rank(3),
+      top5: rank(5),
+      top10: rank(10),
+      directionRate: summary.overall.directionRate,
+      directionOnly: summary.directionOnly,
+      confidentShare: ratio(summary.consistency.confident.count, summary.judged),
+      confidentFieldRate: summary.consistency.confident.fieldRate,
+      confidentDirectionRate: summary.consistency.confident.directionRate,
+      averageTokens: summary.tokens.averageTokens,
+      perCallYen: summary.cost.perCallYen,
+      totalYen: summary.cost.totalYen,
+      thresholds: summary.thresholds,
+      confusion: summary.confusion.slice(0, 5),
+      directions: summary.directions,
+    },
+  };
+}
+
+const orDash = (value, format) => (typeof value === 'number' && Number.isFinite(value) ? format(value) : '—');
+const pct = (value) => orDash(value, percentage);
+
+/**
+ * `record-v2.md`: the criteria conditions side by side. Every row comes from a summary file a judge
+ * run wrote, except the LEV-163 baseline, which was transcribed from its own record (its file says
+ * so in `note`) because that run's saved answers are gone.
+ */
+export function renderComparison(files, { at, notes = [] }) {
+  const columns = files.map((file) => file.criteria);
+  const header = (first) => [
+    `| ${first} | ${columns.join(' | ')} |`,
+    `| ${['---', ...columns.map(() => '---')].join(' | ')} |`,
+  ];
+  const line = (name, read) => `| ${name} | ${files.map((file) => read(file.row)).join(' | ')} |`;
+
+  const lines = [
+    '# JEV-0 精度テスト v2: criteria の 4 条件（LEV-186）',
+    '',
+    '| 項目 | 値 |',
+    '| --- | --- |',
+    `| 実行 | ${at} |`,
+    `| 条件 | ${files.length} 件（${columns.join('・')}） |`,
+    '',
+    'LEV-163（フィールド一致率 13.0%）を受けた再測。設計 §10「5 割なら criteria の説明文を厚くして再測」。',
+    '',
+    '## 条件',
+    '',
+    '| criteria | 内容 | Q1 の候補 | 判定 | 実行 |',
+    '| --- | --- | --- | --- | --- |',
+    ...files.map((file) => `| ${file.criteria} | ${file.label} | ${orDash(file.row.candidates, (value) => `${value} 件`)} `
+      + `| ${orDash(file.row.judged, (value) => `${value} 件`)} | ${file.at}${file.note ? `（${file.note}）` : ''} |`),
+    '',
+    '## 一致率',
+    '',
+    ...header('指標'),
+    line('フィールド一致率', (row) => pct(row.fieldRate)),
+    line('上位 3', (row) => pct(row.top3)),
+    line('上位 5', (row) => pct(row.top5)),
+    line('上位 10', (row) => pct(row.top10)),
+    line('方向一致率', (row) => pct(row.directionRate)),
+    line('フィールドは外したが方向は合っている', (row) => pct(row.directionOnly)),
+    line('自信あり の割合', (row) => pct(row.confidentShare)),
+    line('自信あり のフィールド一致率', (row) => pct(row.confidentFieldRate)),
+    line('自信あり の方向一致率', (row) => pct(row.confidentDirectionRate)),
+    '',
+    '## トークンと費用',
+    '',
+    ...header('指標'),
+    line('平均入力トークン', (row) => orDash(row.averageTokens, (value) => `${Math.round(value)}`)),
+    // Four places: a judgement costs hundredths of a yen, and the conditions differ in that digit.
+    line('1 判定の費用', (row) => orDash(row.perCallYen, (value) => `${value.toFixed(4)} 円`)),
+    line('この実行の費用（500 本）', (row) => orDash(row.totalYen, yen)),
+    // What the condition costs in use, not in the measurement: design §7's 月 600 判定 and one bulk run.
+    line('月 600 判定なら', (row) => orDash(row.perCallYen, (value) => yen(value * 600))),
+    line('オントロジー内を一括したら', (row) => (typeof row.eligible === 'number'
+      ? orDash(row.perCallYen, (value) => `${yen(value * row.eligible)}（${row.eligible} 本）`)
+      : '—')),
+    '',
+    '## しきい値ごとの適合率と対象率',
+    '',
+    'Q1 第一候補の確率がしきい値以上のもの。「＋自信あり」は設計 §2-3 の整合性チェックも満たすもの（§2-4 の一括自動確定の条件）。',
+    '',
+    '| criteria | しきい値 | 対象率 | 適合率 | 件数 | ＋自信あり 対象率 | ＋自信あり 適合率 | 件数 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...files.flatMap((file) => (file.row.thresholds ?? []).map((row) => `| ${file.criteria} | ${row.threshold.toFixed(1)} `
+      + `| ${pct(row.coverage)} | ${pct(row.precision)} | ${row.count} | ${pct(row.confidentCoverage)} `
+      + `| ${pct(row.confidentPrecision)} | ${row.confidentCount} |`)),
+    '',
+    '## 正解の方向別（フィールド一致率 / 方向一致率、かっこは件数）',
+    '',
+    ...header('正解の方向'),
+    ...Object.keys(DIRECTION_LABELS).map((direction) => {
+      const cell = (file) => {
+        const row = (file.row.directions ?? []).find((candidate) => candidate.direction === direction);
+        return row ? `${percentage(row.fieldRate)} / ${percentage(row.directionRate)}（${row.count}）` : '—';
+      };
+      return `| ${DIRECTION_LABELS[direction]} | ${files.map(cell).join(' | ')} |`;
+    }),
+    '',
+    '## 混同の多い組（条件ごとに上位 5）',
+    '',
+    ...files.flatMap((file) => [
+      `### ${file.criteria}`,
+      '',
+      '| 正解 | Jev の答え | 件数 | うち方向は一致 |',
+      '| --- | --- | --- | --- |',
+      ...(file.row.confusion ?? []).map((row) => `| ${row.truth} | ${row.answer} | ${row.count} | ${row.sameDirection} |`),
+      '',
+    ]),
+  ];
+  if (notes.length > 0) lines.push(...notes, '');
+  return lines.join('\n');
+}
+
+/**
+ * `node scripts/jev-accuracy.mjs compare --summaries a.json,b.json --out artifacts/jev-accuracy/record-v2.md`:
+ * the comparison of `record-v2.md` from the summary files the judge runs wrote. It asks Jev nothing.
+ */
+export function runCompare(root, options) {
+  const paths = options.summaries.split(',').map((value) => value.trim()).filter((value) => value !== '');
+  if (paths.length === 0) throw new Error('compare needs --summaries <json>[,<json>...]');
+  const files = paths.map((path) => {
+    const parsed = JSON.parse(readFileSync(resolve(root, path), 'utf8'));
+    if (!isRecord(parsed) || !isRecord(parsed.row)) throw new Error(`Not a judge summary file: ${path}`);
+    return parsed;
+  });
+  const notes = options.notes ? readFileSync(resolve(root, options.notes), 'utf8').trimEnd().split('\n') : [];
+  const outPath = resolveOutputPath(root, options.out);
+  mkdirSync(dirname(outPath), { recursive: true });
+  const record = renderComparison(files, { at: new Date().toISOString(), notes });
+  writeFileSync(outPath, `${record}\n`, { mode: 0o600 });
+  console.info(record);
+  console.info(`record: ${outPath}`);
+  return { record, outPath };
 }

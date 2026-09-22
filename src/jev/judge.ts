@@ -130,19 +130,57 @@ const fieldEntries = (hierarchy: Hierarchy): FieldEntry[] => {
 };
 
 /**
+ * Ways the JEV-0 re-measurement (LEV-186) may shape the criteria, so the two
+ * conditions of design §10「criteria の説明文を厚くして再測」 can be asked without a
+ * second copy of the questions. Left out — which is what the plugin does — the
+ * questions are exactly what §2-3 describes.
+ */
+export type CriteriaOptions = {
+  /**
+   * Offer only these fields in Q1, matched the way a field name is. The settings'
+   * order is kept and a name the ontology does not have is ignored; a selection
+   * that leaves nothing falls back to the whole ontology, since a Choice question
+   * with no candidate has no answer.
+   */
+  fields?: readonly string[];
+  /** A sentence appended to one field's description, keyed by field name. */
+  fieldNotes?: Readonly<Record<string, string>>;
+  /** A sentence appended to one direction's description. */
+  directionNotes?: Readonly<Partial<Record<Direction, string>>>;
+};
+
+/** One entry of a criteria note dictionary, matched the way a field name is. */
+const noteFor = (notes: Readonly<Record<string, string>>, label: string): string => {
+  const key = toHierarchyKey(label);
+  const found = Object.entries(notes).find(([candidate]) => toHierarchyKey(candidate) === key);
+  return found?.[1]?.trim() ?? "";
+};
+
+const withNote = (description: string, note: string): string => (note === "" ? description : `${description}。${note}`);
+
+/**
  * Q1 「このリンクに付けるフィールド」 over the whole ontology and Q2
  * 「このリンクの方向」 over the six directions. A description is the region and
  * the direction; the author's own wording is appended here once the settings
- * carry it.
+ * carry it. `options` is the measurement's lever (see {@link CriteriaOptions})
+ * and changes nothing when it is left out.
  */
-export const buildQuestions = (hierarchy: Hierarchy): Questions => {
+export const buildQuestions = (hierarchy: Hierarchy, options: CriteriaOptions = {}): Questions => {
+  const entries = fieldEntries(hierarchy);
+  const wanted = options.fields ? new Set(options.fields.map(toHierarchyKey)) : null;
+  const narrowed = wanted ? entries.filter((entry) => wanted.has(toHierarchyKey(entry.field))) : entries;
+  const offered = narrowed.length > 0 ? narrowed : entries;
+  const fieldNotes = options.fieldNotes ?? {};
+  const directionNotes = options.directionNotes ?? {};
+
   const fieldCriteria: Record<string, string> = {};
-  for (const { field, region } of fieldEntries(hierarchy)) {
-    fieldCriteria[field] = `${REGION_LABELS[region]}・方向: ${DIRECTION_LABELS[REGION_TO_DIRECTION[region]]}`;
+  for (const { field, region } of offered) {
+    const description = `${REGION_LABELS[region]}・方向: ${DIRECTION_LABELS[REGION_TO_DIRECTION[region]]}`;
+    fieldCriteria[field] = withNote(description, noteFor(fieldNotes, field));
   }
   const directionCriteria: Record<string, string> = {};
   for (const direction of Object.keys(DIRECTION_LABELS) as Direction[]) {
-    directionCriteria[direction] = DIRECTION_LABELS[direction];
+    directionCriteria[direction] = withNote(DIRECTION_LABELS[direction], directionNotes[direction]?.trim() ?? "");
   }
   return {
     [FIELD_QUESTION]: { question: "このリンクに付けるフィールド", criteria: fieldCriteria },

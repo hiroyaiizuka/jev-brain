@@ -83,6 +83,65 @@ describe('buildQuestions', () => {
   });
 });
 
+// LEV-186: 精度テストが criteria を組み替えるためのオプション。既定の挙動は上の describe が固定している。
+describe('buildQuestions の criteria オプション', () => {
+  it('changes nothing when no option is given, which is what the plugin sends', () => {
+    expect(buildQuestions(hierarchy, {})).toEqual(buildQuestions(hierarchy));
+  });
+
+  it('offers only the fields asked for, in the settings\' order', () => {
+    const { criteria } = buildQuestions(hierarchy, { fields: ['next', 'UP', 'part-of'] })[FIELD_QUESTION];
+
+    // Asked out of order and in another spelling; the settings' order and the written name win.
+    expect(Object.keys(criteria)).toEqual(['part of', 'up', 'next']);
+    expect(criteria['up']).toBe('Up（抽象）・方向: 親');
+  });
+
+  it('ignores a field the ontology does not have, and falls back to all of them when none is left', () => {
+    expect(Object.keys(buildQuestions(hierarchy, { fields: ['up', 'プロジェクト'] })[FIELD_QUESTION].criteria))
+      .toEqual(['up']);
+    // A Choice question with no candidate has no answer, so an empty selection offers everything.
+    expect(Object.keys(buildQuestions(hierarchy, { fields: ['プロジェクト'] })[FIELD_QUESTION].criteria))
+      .toEqual(settingsOrder);
+    expect(Object.keys(buildQuestions(hierarchy, { fields: [] })[FIELD_QUESTION].criteria)).toEqual(settingsOrder);
+  });
+
+  it('appends a note to the fields it is given and leaves the others as they were', () => {
+    const { criteria } = buildQuestions(hierarchy, {
+      fieldNotes: { 'PART OF': '例: 「章は本の part of」', jump: '  ', unknown: '出ない' },
+    })[FIELD_QUESTION];
+
+    expect(criteria['part of']).toBe('Up（抽象）・方向: 親。例: 「章は本の part of」');
+    expect(criteria['jump']).toBe('左友・方向: 左友');
+    expect(criteria['up']).toBe('Up（抽象）・方向: 親');
+    expect(criteria).not.toHaveProperty('unknown');
+  });
+
+  it('appends a sentence to the directions it is given', () => {
+    const { criteria } = buildQuestions(hierarchy, {
+      directionNotes: { leftFriend: '同じ段の似た話題', previous: '' },
+    })[DIRECTION_QUESTION];
+
+    expect(criteria.leftFriend).toBe('左友。同じ段の似た話題');
+    expect(criteria.previous).toBe('前');
+    expect(criteria.parent).toBe('親');
+  });
+
+  it('takes the narrowing and the notes together', () => {
+    const questions = buildQuestions(hierarchy, {
+      fields: ['up', 'next'],
+      fieldNotes: { next: '例: 「次の章」' },
+      directionNotes: { next: '時系列で後' },
+    });
+
+    expect(questions[FIELD_QUESTION].criteria).toEqual({
+      up: 'Up（抽象）・方向: 親',
+      next: '次・方向: 次。例: 「次の章」',
+    });
+    expect(questions[DIRECTION_QUESTION].criteria.next).toBe('次。時系列で後');
+  });
+});
+
 describe('directionOfField', () => {
   it('gives Up the direction of Parents and Down the direction of Children', () => {
     expect(directionOfField('up', hierarchy)).toBe('parent');
