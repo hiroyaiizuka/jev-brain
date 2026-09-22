@@ -1,11 +1,29 @@
 {
-  "note": "questions と probabilities に __proto__ を混ぜた応答。Jev が返す形ではなく、JSON の危険な入力に対する組み立ての備えを固定するためのもの。",
+  "note": "answers と probabilities に __proto__ を混ぜた応答。Jev が返す形ではなく、JSON の危険な入力に対する組み立ての備えを固定するためのもの。",
   "status": 200,
   "body": {
-    "questions": {
-      "field": { "choice": "up", "probabilities": { "up": 0.5, "__proto__": 0.5 }, "confidence": 0.5 },
-      "direction": { "choice": "parent", "probabilities": { "parent": 1 }, "confidence": 1 },
-      "__proto__": { "polluted": true }
+    "model": "jev-1.13.0",
+    "answers": {
+      "field": {
+        "type": "choice",
+        "choice": "up",
+        "confidence": 0.5,
+        "probabilities": {
+          "up": 0.5,
+          "__proto__": 0.5
+        }
+      },
+      "direction": {
+        "type": "choice",
+        "choice": "parent",
+        "confidence": 1,
+        "probabilities": {
+          "parent": 1
+        }
+      },
+      "__proto__": {
+        "polluted": true
+      }
     }
   }
 }

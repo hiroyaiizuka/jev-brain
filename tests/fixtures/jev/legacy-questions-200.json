@@ -1,0 +1,27 @@
+{
+  "note": "2026-09-22 より前に公開情報から起こしていた形（トップレベルが questions、type 無し、usage が camelCase）。実応答はこの形ではないので、受けないことを固定するために残している。",
+  "status": 200,
+  "body": {
+    "questions": {
+      "field": {
+        "choice": "up",
+        "probabilities": {
+          "up": 0.82,
+          "origin": 0.11
+        },
+        "confidence": 0.82
+      },
+      "direction": {
+        "choice": "parent",
+        "probabilities": {
+          "parent": 0.88,
+          "child": 0.06
+        },
+        "confidence": 0.88
+      }
+    },
+    "usage": {
+      "inputTokens": 1873
+    }
+  }
+}

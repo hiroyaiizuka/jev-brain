@@ -206,19 +206,40 @@ function cursorAt(content: string, snippet: string, offset = 2) {
 
 const fixtures = fileURLToPath(new URL('../fixtures/jev', import.meta.url));
 
+/** The wire shape of a recorded reply: `answers` keyed by question name, snake_case usage (client.ts). */
+type RecordedReply = {
+  body: {
+    answers: Record<
+      string,
+      { type: string; choice: string; probabilities: Record<string, number>; confidence: number }
+    >;
+    usage: { input_tokens: number };
+  };
+};
+
 /**
- * The recorded two-Choice response (`tests/fixtures/jev/two-choice-200.json`: field `up` 0.82,
- * direction `parent`, 1873 tokens) as `client.ts` hands it over. A test that needs a different
- * answer swaps only that answer's `choice`, so the shape stays the recorded one (AGENTS.md).
+ * A recorded reply as `client.ts` hands it over: the answers keyed by question name, `type` dropped,
+ * `input_tokens` read as `inputTokens`. Keep this in step with `parseResponseBody` when the wire
+ * shape changes (it is the same conversion, written out for the stub).
+ *
+ * The default is `two-choice-agree-200.json` (Q1 `up` 0.82, Q2 `parent`, 1873 tokens), because the
+ * response recorded from the real Jev on 2026-09-22 (`two-choice-200.json`) answers a field of the
+ * parent region with `child` — that one is what the disagreement test asks for by name.
  */
-function answer(overrides: { field?: string; direction?: string } = {}): JevResponse {
-  const recorded = JSON.parse(
-    readFileSync(join(fixtures, 'two-choice-200.json'), 'utf8'),
-  ) as { body: JevResponse };
-  const response = recorded.body;
-  if (overrides.field) response.questions.field.choice = overrides.field;
-  if (overrides.direction) response.questions.direction.choice = overrides.direction;
-  return response;
+function answer(
+  overrides: { field?: string; direction?: string } = {},
+  fixture = 'two-choice-agree-200.json',
+): JevResponse {
+  const recorded = JSON.parse(readFileSync(join(fixtures, fixture), 'utf8')) as RecordedReply;
+  const questions = Object.fromEntries(
+    Object.entries(recorded.body.answers).map(([name, wire]) => [
+      name,
+      { choice: wire.choice, probabilities: wire.probabilities, confidence: wire.confidence },
+    ]),
+  );
+  if (overrides.field) questions.field.choice = overrides.field;
+  if (overrides.direction) questions.direction.choice = overrides.direction;
+  return { questions, usage: { inputTokens: recorded.body.usage.input_tokens } };
 }
 
 /** `askJev` replaced by a recorder; the tests never reach the network (design §9). */
@@ -257,6 +278,8 @@ describe('typeLinkAtCursor', () => {
       target: 'B',
       probability: 0.82,
       inputTokens: 1873,
+      // 記録は実測の usage を持つので、見積もりの印は立たない（client.ts）。
+      estimatedTokens: undefined,
       logged: true,
     });
     expect(vault.vault.notes.get('A.md')).toBe(`${note}\n## Relations\nup:: [[B]]`);
@@ -344,8 +367,9 @@ describe('typeLinkAtCursor', () => {
   });
 
   it('writes nothing when the field and the direction disagree', async () => {
+    // 実機 E18 で記録した応答そのもの: Q1 が up（親の領域）なのに Q2 が child。
     const vault = makeVault({ 'A.md': { content: note }, 'B.md': {} });
-    const jev = asking(answer({ direction: 'child' }));
+    const jev = asking(answer({}, 'two-choice-200.json'));
 
     const result = await typeLinkAtCursor(
       vault.plugin,

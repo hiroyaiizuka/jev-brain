@@ -37,12 +37,12 @@ const request: JevRequest = {
     field: {
       kind: 'choice',
       instructions: 'このリンクに付けるフィールド',
-      criteria: { up: 'より抽象的な相手', origin: '出典', similar: '似た話' },
+      criteria: { up: 'より抽象的な相手', down: 'より具体的な相手', similar: '似た話', next: '次に来る話' },
     },
     direction: {
       kind: 'choice',
       instructions: 'このリンクの方向',
-      criteria: { parent: '親', child: '子' },
+      criteria: { parent: '親', child: '子', leftFriend: '左友', rightFriend: '右友' },
     },
   },
 };
@@ -86,22 +86,24 @@ describe('askJev', () => {
         field: {
           type: 'choice',
           instructions: 'このリンクに付けるフィールド',
-          criteria: { up: 'より抽象的な相手', origin: '出典', similar: '似た話' },
+          criteria: { up: 'より抽象的な相手', down: 'より具体的な相手', similar: '似た話', next: '次に来る話' },
         },
         direction: {
           type: 'choice',
           instructions: 'このリンクの方向',
-          criteria: { parent: '親', child: '子' },
+          criteria: { parent: '親', child: '子', leftFriend: '左友', rightFriend: '右友' },
         },
       },
     });
+    // 応答の `answers` を質問の名前で引く辞書にし、`type` は読まない。実応答の形（2026-09-22、E18）。
     expect(response?.questions.field).toEqual({
       choice: 'up',
-      probabilities: { up: 0.82, origin: 0.11, similar: 0.04, down: 0.03 },
-      confidence: 0.82,
+      probabilities: { up: 0.39, next: 0.14, similar: 0.17, down: 0.3 },
+      confidence: 0.19,
     });
-    expect(response?.questions.direction.choice).toBe('parent');
-    expect(response?.usage).toEqual({ inputTokens: 1873 });
+    expect(response?.questions.direction.choice).toBe('child');
+    // usage は `{ input_tokens, output_tokens }`。出力は無料なので入力だけを持つ（設計 §7）。
+    expect(response?.usage).toEqual({ inputTokens: 515 });
     expect(Notice.messages).toEqual([]);
     expect(warnings).toEqual([]);
   });
@@ -113,7 +115,8 @@ describe('askJev', () => {
 
     expect(response?.questions.field.choice).toBe('origin');
     // The criteria travel with the state, so the estimate counts the whole request, not just the state.
-    expect(response?.usage).toEqual({ inputTokens: requestUrlMock.calls[0].body?.length });
+    // `estimated` says so, and it travels to the Notice, so a record cannot read it as measured.
+    expect(response?.usage).toEqual({ inputTokens: requestUrlMock.calls[0].body?.length, estimated: true });
     expect(response?.usage?.inputTokens).toBeGreaterThan((request.state as string).length);
   });
 
@@ -169,12 +172,23 @@ describe('askJev', () => {
     expect(warnings[0]).toMatchObject({ message: expect.stringContaining('unreadable') as unknown });
   });
 
-  it('treats a 200 whose body is not the documented shape as unreadable', async () => {
+  it('treats a 200 whose body is not the recorded shape as unreadable', async () => {
     requestUrlMock.respond = () => Promise.resolve(recorded('wrong-shape-200.json'));
 
     expect(await askJev(config, request)).toBeNull();
     expect(requestUrlMock.calls).toHaveLength(1);
     expect(Notice.messages).toHaveLength(1);
+  });
+
+  it('refuses the shape the public documentation described, which the real API does not use', async () => {
+    // 設計 §7・§11: 実応答は `answers`。`questions` だけの応答はもう受けない（両方受けると、どちらの
+    // 形で動いているのか分からなくなる）。
+    requestUrlMock.respond = () => Promise.resolve(recorded('legacy-questions-200.json'));
+
+    expect(await askJev(config, request)).toBeNull();
+    expect(requestUrlMock.calls).toHaveLength(1);
+    expect(Notice.messages).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ message: expect.stringContaining('unreadable') as unknown });
   });
 
   it('fails when the reply answers only one of the two questions', async () => {

@@ -13,11 +13,11 @@ describe('noticeFor', () => {
         status: 'written',
         field: 'up',
         target: 'B',
-        probability: 0.82,
-        inputTokens: 1873,
+        probability: 0.39,
+        inputTokens: 515,
         logged: true,
       }),
-    ).toBe('Jev wrote up:: [[B]] (82%, 1873 tokens).');
+    ).toBe('Jev wrote up:: [[B]] (39%, 515 tokens).');
   });
 
   it('keeps a note name with $ in it intact', () => {
@@ -36,9 +36,18 @@ describe('noticeFor', () => {
 
   it('says a written line cannot be undone when the record could not be written', () => {
     const message = noticeFor({
-      status: 'written', field: 'up', target: 'B', probability: 0.82, inputTokens: 1873, logged: false,
+      status: 'written', field: 'up', target: 'B', probability: 0.39, inputTokens: 515, logged: false,
     });
     expect(message).toContain('cannot be undone');
+  });
+
+  it('marks an estimated token count with a tilde so a record cannot read it as measured', () => {
+    expect(
+      noticeFor({
+        status: 'written', field: 'up', target: 'B', probability: 0.39, inputTokens: 3200,
+        estimatedTokens: true, logged: true,
+      }),
+    ).toBe('Jev wrote up:: [[B]] (39%, ~3200 tokens).');
   });
 
   it('shows a question mark when the response gave no probability for its own answer', () => {
