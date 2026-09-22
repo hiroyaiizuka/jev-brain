@@ -12,6 +12,7 @@ import { FieldSuggester } from './Suggesters/OntologySuggester';
 import { URLParser } from './graph/URLParser';
 import { AddToOntologyModal, Ontology } from './Components/AddToOntologyModal';
 import { registerJevTypeLinkCommand } from './Components/JevTypeLinkCommand';
+import { JEV_QUEUE_VIEW_TYPE, JevQueueView, activateJevQueue } from './Components/JevQueueView';
 import { NavigationHistory } from './Components/NavigationHistory';
 import { getDailyNoteSettings, IPeriodicNoteSettings } from './utils/datehelpers';
 import { ExcalidrawAutomate, Literal, destroyViewEA, getEA, waitForExcalidrawViewReady } from './utils/ExcalidrawAutomateCompatibility';
@@ -177,7 +178,15 @@ export default class ExcaliBrain extends Plugin {
    * a key never sees any of it. The parts themselves arrive with their own tickets.
    */
   private registerJev() {
+    // JEV-2 コマンド「カーソルのリンクに型を付ける」（docs/jev-link-typer-design.md §4-1）。
     registerJevTypeLinkCommand(this);
+    // JEV-3 型付け待ちキュー（docs/jev-link-typer-design.md §4-2）。ツールパネルのボタンは LEV-175。
+    this.registerView(JEV_QUEUE_VIEW_TYPE, (leaf) => new JevQueueView(leaf, this));
+    this.addCommand({
+      id: "excalibrain-jev-open-queue",
+      name: t("JEV_QUEUE_OPEN"),
+      callback: () => { void activateJevQueue(this.app); },
+    });
   }
 
   private registerEvents() {
