@@ -114,34 +114,30 @@ describe('judge', () => {
     expect(result.field).toBe('origin');
     expect(result.direction).toBe('parent');
     expect(result.directionProbability).toBe(0.95);
-    expect(result.ordered.slice(0, 3)).toEqual([
+    expect(result.ordered).toEqual([
       { field: 'origin', probability: 0.7 },
       { field: 'up', probability: 0.2 },
       { field: 'child', probability: 0.1 },
     ]);
   });
 
-  it('still offers the fields the answer left out, after the ranked ones', () => {
+  it('leaves out the fields the answer said nothing about (LEV-187)', () => {
     const result = judge(response('origin', 'parent', { origin: 0.7, up: 0.2, child: 0.1 }), hierarchy);
 
-    expect(result.ordered.map((candidate) => candidate.field)).toEqual(
-      ['origin', 'up', 'child', 'part of', 'down', 'example', 'jump', 'similar', 'previous', 'next'],
-    );
-    expect(result.ordered.slice(3).every((candidate) => candidate.probability === undefined)).toBe(true);
+    expect(result.ordered.map((candidate) => candidate.field)).toEqual(['origin', 'up', 'child']);
+    expect(result.ordered.every((candidate) => candidate.probability !== undefined)).toBe(true);
   });
 
   it('does not offer a label the ontology does not carry', () => {
     const result = judge(response('origin', 'parent', { origin: 0.6, Origins: 0.4 }), hierarchy);
 
-    expect(result.ordered.map((candidate) => candidate.field)).not.toContain('Origins');
-    expect(result.ordered).toHaveLength(settingsOrder.length);
+    expect(result.ordered).toEqual([{ field: 'origin', probability: 0.6 }]);
   });
 
   it('ignores a probability that is not a number', () => {
     const result = judge(response('origin', 'parent', { origin: Number.NaN, up: 0.2 }), hierarchy);
 
-    expect(result.ordered[0]).toEqual({ field: 'up', probability: 0.2 });
-    expect(result.ordered.find((candidate) => candidate.field === 'origin')?.probability).toBeUndefined();
+    expect(result.ordered).toEqual([{ field: 'up', probability: 0.2 }]);
   });
 
   it('breaks a tie with the settings’ order', () => {
@@ -171,13 +167,13 @@ describe('judge', () => {
     expect(judge(response('down', 'parent'), hierarchy).confident).toBe(false);
   });
 
-  it('falls back to the settings’ order without probabilities when they disagree', () => {
+  it('keeps the same order and the same probabilities when they disagree (LEV-187)', () => {
     const result = judge(response('origin', 'leftFriend', { origin: 0.9, jump: 0.1 }), hierarchy);
 
     expect(result.confident).toBe(false);
     expect(result.probabilities).toEqual({ origin: 0.9, jump: 0.1 });
-    expect(result.ordered.map((candidate) => candidate.field)).toEqual(settingsOrder);
-    expect(result.ordered.every((candidate) => candidate.probability === undefined)).toBe(true);
+    // 自信なしでも並びは確率順のまま。無くなるのは既定の選択だけで、それは呼び出し側が決める。
+    expect(result.ordered).toEqual([{ field: 'origin', probability: 0.9 }, { field: 'jump', probability: 0.1 }]);
   });
 
   it('is not confident about a field the ontology does not carry', () => {
@@ -189,10 +185,10 @@ describe('judge', () => {
     const result = judge(
       response('origin', 'parent', { origin: 0.7, up: 0.2, child: 0.1 }),
       hierarchy,
-      'up',
+      { currentField: 'up' },
     );
 
-    expect(result.ordered.slice(0, 3)).toEqual([
+    expect(result.ordered).toEqual([
       { field: 'up', probability: 0.2 },
       { field: 'origin', probability: 0.7 },
       { field: 'child', probability: 0.1 },
@@ -201,12 +197,23 @@ describe('judge', () => {
   });
 
   it('puts the current field first when it is not confident too', () => {
-    const result = judge(response('origin', 'child'), hierarchy, 'similar');
+    const result = judge(response('origin', 'child'), hierarchy, { currentField: 'similar' });
     const fields = result.ordered.map((candidate) => candidate.field);
 
-    expect(fields[0]).toBe('similar');
+    // 応答が確率を返さなかった現在のフィールドは、確率なしのまま先頭に置く（付け替えの入口）。
+    expect(result.ordered).toEqual([{ field: 'similar' }, { field: 'origin', probability: 0.9 }]);
     expect(fields.filter((field) => field === 'similar')).toHaveLength(1);
-    expect(fields).toHaveLength(settingsOrder.length);
+  });
+
+  it('gives the current field one of the five places', () => {
+    const result = judge(
+      response('origin', 'parent', { origin: 0.5, up: 0.2, child: 0.1, jump: 0.09, similar: 0.08, next: 0.03 }),
+      hierarchy,
+      { currentField: 'previous' },
+    );
+
+    expect(result.ordered.map((candidate) => candidate.field))
+      .toEqual(['previous', 'origin', 'up', 'child', 'jump']);
   });
 
   it('offers nothing but the current field when the ontology is empty', () => {
@@ -214,6 +221,57 @@ describe('judge', () => {
 
     expect(result.confident).toBe(false);
     expect(result.ordered).toEqual([]);
-    expect(judge(response('origin', 'parent'), emptyHierarchy, 'origin').ordered).toEqual([{ field: 'origin' }]);
+    expect(judge(response('origin', 'parent'), emptyHierarchy, { currentField: 'origin' }).ordered)
+      .toEqual([{ field: 'origin' }]);
+  });
+});
+
+/** 本人の決定（2026-09-22）: 確率順の上位 5 件まで、四捨五入で 0% になる候補は出さない。 */
+describe('judge の候補の数（LEV-187）', () => {
+  /** Eight candidates with a probability, so the cut has something to cut. */
+  const eight = { origin: 0.3, up: 0.2, child: 0.15, jump: 0.12, similar: 0.1, next: 0.07, down: 0.04, example: 0.02 };
+
+  it('offers the five most likely of eight candidates', () => {
+    const result = judge(response('origin', 'parent', eight), hierarchy);
+
+    expect(result.ordered).toEqual([
+      { field: 'origin', probability: 0.3 },
+      { field: 'up', probability: 0.2 },
+      { field: 'child', probability: 0.15 },
+      { field: 'jump', probability: 0.12 },
+      { field: 'similar', probability: 0.1 },
+    ]);
+  });
+
+  it('cuts to the same five when Jev is not confident', () => {
+    const result = judge(response('origin', 'leftFriend', eight), hierarchy);
+
+    expect(result.confident).toBe(false);
+    expect(result.ordered.map((candidate) => candidate.field)).toEqual(['origin', 'up', 'child', 'jump', 'similar']);
+  });
+
+  it('leaves out a candidate that would read 0%, and keeps the one that rounds to 1%', () => {
+    const result = judge(response('origin', 'parent', { origin: 0.9, up: 0.09, child: 0.005, jump: 0.004 }), hierarchy);
+
+    expect(result.ordered.map((candidate) => candidate.field)).toEqual(['origin', 'up', 'child']);
+  });
+
+  it('offers all of them when there are fewer than five', () => {
+    const result = judge(response('origin', 'parent', { origin: 0.6, up: 0.3, child: 0.1 }), hierarchy);
+
+    expect(result.ordered).toHaveLength(3);
+  });
+
+  it('lets the caller ask for another number and another floor', () => {
+    const result = judge(response('origin', 'parent', eight), hierarchy, { maxCandidates: 2, minProbability: 0.2 });
+
+    expect(result.ordered).toEqual([{ field: 'origin', probability: 0.3 }, { field: 'up', probability: 0.2 }]);
+    expect(judge(response('origin', 'parent', eight), hierarchy, { maxCandidates: 0 }).ordered).toEqual([]);
+  });
+
+  it('reads the thresholds off the whole answer, not off the five it offers', () => {
+    const result = judge(response('origin', 'parent', eight), hierarchy);
+
+    expect(result.probabilities).toEqual(eight);
   });
 });

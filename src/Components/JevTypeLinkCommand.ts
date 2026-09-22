@@ -12,9 +12,6 @@ import { errorlog } from "src/utils/utils";
  * 登録は `excalibrain-main.ts` の `registerJev()` から。キーと有効化が揃わない Vault では呼ばれない。
  */
 
-/** 自信なしのときに名前を並べる候補の数。全部並べると Notice が読めなくなる。 */
-const CANDIDATES_SHOWN = 3;
-
 export const registerJevTypeLinkCommand = (plugin: ExcaliBrain): void => {
   // 判定は 1 回 0.1〜10 秒かかり、その間コマンドは何も出さない。押し直しを放っておくと、同じリンクに
   // 有料の問い合わせが何本も飛び、どれもまだ行の無いノートを読むので `## Relations` に同じ行が並ぶ。
@@ -94,7 +91,9 @@ export const noticeFor = (result: TypeLinkResult): string | null => {
         {
           target: result.target,
           answer: result.answer,
-          candidates: result.candidates.slice(0, CANDIDATES_SHOWN).join(", "),
+          // 全部。`judge` が確率順の上位 5 件に絞ってあるので、Notice もサジェスターとキューと同じ
+          // 並びの同じ候補になる（設計 §2-3）。
+          candidates: result.candidates.join(", "),
         },
       );
     case "unchanged":

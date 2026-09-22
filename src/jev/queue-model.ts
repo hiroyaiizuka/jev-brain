@@ -60,13 +60,13 @@ export type JevQueueUsage = { calls: number; inputTokens: number; costJpy: numbe
 
 /**
  * 既定にするフィールド。Q1 の答え（`judgement.field`）であって `ordered[0]` ではない（`judge.ts`）。
- * `ordered` はオントロジーの綴りなので、Dataview のキーで突き合わせて綴りを揃える。応答の語が
- * オントロジーに無ければ（`confident` なら起きないが）先頭に落とす。
+ * `ordered` はオントロジーの綴りなので、Dataview のキーで突き合わせて綴りを揃える。候補に無い答え
+ * （オントロジーの外、または `judge` が上位 5 件で切った先）には既定を作らない: 別のフィールドを
+ * 選んだ状態にすると、本人が押すだけで Jev が答えていない型が入る。
  */
 const firstChoice = (judgement: Judgement): string | null => {
   const key = toHierarchyKey(judgement.field ?? "");
-  const found = judgement.ordered.find((candidate) => toHierarchyKey(candidate.field) === key);
-  return found?.field ?? judgement.ordered[0]?.field ?? null;
+  return judgement.ordered.find((candidate) => toHierarchyKey(candidate.field) === key)?.field ?? null;
 };
 
 /** 「あとで」の鍵。ノートが違えば別のカードなので、パスと相手の組で覚える。 */

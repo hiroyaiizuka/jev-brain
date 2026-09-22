@@ -333,27 +333,57 @@ describe('JevLinkSuggest.getSuggestions', () => {
     return { ...harness, suggestions: harness.suggester.getSuggestions(contextOf(info, editor, file)) };
   }
 
-  it('lists every field by probability when Q1 and Q2 agree (自信あり)', async () => {
+  it('lists the answered fields by probability when Q1 and Q2 agree (自信あり)', async () => {
     const { suggestions } = await answered('two-choice-agree-200.json');
+    // 応答が確率を返した 4 件だけ。確率の無いオントロジーの残り（steps・opposes・before・after）は出ない。
     expect(suggestions).toEqual([
       { kind: 'candidate', field: 'up', probability: 0.82, direction: 'parent', confident: true },
       { kind: 'candidate', field: 'origin', probability: 0.11, direction: 'parent', confident: true },
       { kind: 'candidate', field: 'similar', probability: 0.04, direction: 'leftFriend', confident: true },
       { kind: 'candidate', field: 'down', probability: 0.03, direction: 'child', confident: true },
-      { kind: 'candidate', field: 'steps', probability: undefined, direction: 'child', confident: true },
-      { kind: 'candidate', field: 'opposes', probability: undefined, direction: 'rightFriend', confident: true },
-      { kind: 'candidate', field: 'before', probability: undefined, direction: 'previous', confident: true },
-      { kind: 'candidate', field: 'after', probability: undefined, direction: 'next', confident: true },
     ]);
   });
 
-  it('hides the probabilities and keeps the settings order when they disagree (自信なし)', async () => {
+  it('keeps the same order and the same probabilities when they disagree (自信なし、LEV-187)', async () => {
     // 実機 E18 で記録した応答そのもの: Q1 が up（親の領域）なのに Q2 が child。
     const { suggestions } = await answered('two-choice-200.json');
+    // 応答の確率は up 0.39・down 0.3・similar 0.17・next 0.14（`next` はこのオントロジーの
+    // フィールド名ではない＝出さない）。自信なしでも並びは確率順のまま。
+    expect(suggestions).toEqual([
+      { kind: 'candidate', field: 'up', probability: 0.39, direction: 'parent', confident: false },
+      { kind: 'candidate', field: 'down', probability: 0.3, direction: 'child', confident: false },
+      { kind: 'candidate', field: 'similar', probability: 0.17, direction: 'leftFriend', confident: false },
+    ]);
+  });
+
+  it('shows five candidates at most (LEV-187)', async () => {
+    // オントロジーの 8 フィールド全部に確率が返った応答。
+    requestUrlMock.respond = () => Promise.resolve({
+      status: 200,
+      text: JSON.stringify({
+        model: 'jev-1.13.0',
+        answers: {
+          field: {
+            type: 'choice',
+            choice: 'up',
+            confidence: 0.3,
+            probabilities: {
+              up: 0.3, down: 0.2, origin: 0.16, steps: 0.14, similar: 0.1, opposes: 0.06, before: 0.04, after: 0.004,
+            },
+          },
+          direction: { type: 'choice', choice: 'parent', confidence: 0.6, probabilities: { parent: 0.6 } },
+        },
+        usage: { input_tokens: 1000, output_tokens: 10 },
+      }),
+    });
+    const harness = setup(TWO_NOTES);
+    const file = harness.file('A.md');
+    const { editor, info } = typeClosing(harness.suggester, file, TWO_NOTES['A.md'].content ?? '', CURSOR);
+    await flush();
+
+    const suggestions = harness.suggester.getSuggestions(contextOf(info, editor, file));
     expect(suggestions.map((suggestion) => suggestion.kind === 'candidate' && suggestion.field))
-      .toEqual(SETTINGS_ORDER);
-    expect(suggestions.every((suggestion) =>
-      suggestion.kind === 'candidate' && suggestion.probability === undefined && !suggestion.confident)).toBe(true);
+      .toEqual(['up', 'down', 'origin', 'steps', 'similar']);
   });
 
   it('closes the popup when the request fails (client.ts has already said so)', async () => {
@@ -502,9 +532,14 @@ describe('JevLinkSuggest.renderSuggestion', () => {
       .toEqual([{ tag: 'code', text: 'up' }, { tag: 'span', text: ' 82% · parent' }]);
   });
 
-  it('says so instead of showing a probability when Jev is not confident', () => {
-    expect(render({ kind: 'candidate', field: 'up', direction: 'parent', confident: false }))
-      .toEqual([{ tag: 'code', text: 'up' }, { tag: 'span', text: ' parent · Jev is not confident' }]);
+  it('keeps the probability and adds the note when Jev is not confident (LEV-187)', () => {
+    expect(render({ kind: 'candidate', field: 'up', probability: 0.39, direction: 'parent', confident: false }))
+      .toEqual([{ tag: 'code', text: 'up' }, { tag: 'span', text: ' 39% · parent · Jev is not confident' }]);
+  });
+
+  it('writes no percentage for a candidate the answer gave no probability', () => {
+    expect(render({ kind: 'candidate', field: 'up', direction: 'parent', confident: true }))
+      .toEqual([{ tag: 'code', text: 'up' }, { tag: 'span', text: ' parent' }]);
   });
 
   it('shows one line while the answer is on its way', () => {

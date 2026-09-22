@@ -32,7 +32,7 @@ export type JevSuggestion =
   | {
     kind: "candidate";
     field: string;
-    /** 自信のある判定のときだけ付く（設計 §2-3）。 */
+    /** Q1 が付けた確率。`judge` が確率のある候補だけを返すので、無いのは付け替えの現在のフィールドだけ（設計 §2-3）。 */
     probability?: number;
     direction: Direction | null;
     confident: boolean;
@@ -203,7 +203,10 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     return { start, end: cursor, query: closed.linkpath };
   }
 
-  /** 待つ間は 1 行、答えが届いたら `judge` の並び、失敗したら空＝ポップアップを閉じる（Notice は `client.ts` が出す）。 */
+  /**
+   * 待つ間は 1 行、答えが届いたら `judge` の並び（確率順の上位 5 件。ここでは並べ替えも絞り込みも
+   * しない）、失敗したら空＝ポップアップを閉じる（Notice は `client.ts` が出す）。
+   */
   getSuggestions(_context: EditorSuggestContext): JevSuggestion[] {
     const ask = this.ask;
     if (!ask || ask.status === "failed") return [];
@@ -225,7 +228,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
       return;
     }
     el.createEl("code", { text: suggestion.field });
-    // 自信なしのときは確率を伏せ、そのことを書く（設計 §2-3）。
+    // 自信なしでも並びと確率は同じで、食い違っていることだけを書き足す（設計 §2-3）。
     const note = [
       suggestion.probability === undefined ? null : `${Math.round(suggestion.probability * 100)}%`,
       suggestion.direction ? DIRECTION_TEXT[suggestion.direction] : null,

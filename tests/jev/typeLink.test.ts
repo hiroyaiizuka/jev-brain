@@ -377,13 +377,14 @@ describe('typeLinkAtCursor', () => {
       jev.deps,
     );
 
-    // 自信なしは確率を伏せ、候補は設定の順（judge.ts）。ノートも記録も触らない。
+    // 自信なしでも候補は確率順の上位 5 件（judge.ts、LEV-187）。応答の確率は up 0.39・down 0.3・
+    // similar 0.17 で、origin には付いていないので出ない。ノートも記録も触らない。
     expect(result).toEqual({
       status: 'unconfident',
       reason: 'direction',
       target: 'B',
       answer: 'up',
-      candidates: ['up', 'down', 'origin', 'similar'],
+      candidates: ['up', 'down', 'similar'],
     });
     expect(vault.vault.notes.get('A.md')).toBe(note);
     expect(vault.log()).toEqual([]);

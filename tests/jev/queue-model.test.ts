@@ -21,9 +21,9 @@ const judgement = (field: string, confident = true): Judgement => ({
   direction: 'parent',
   directionProbability: 0.95,
   confident,
-  ordered: confident
-    ? [{ field, probability: 0.92 }, { field: 'origin', probability: 0.05 }]
-    : [{ field: 'up' }, { field: 'origin' }],
+  // 自信ありでも自信なしでも `judge` が返す候補は同じ（確率順の上位 5 件、LEV-187）。
+  // 変わるのはカードの既定の選択だけ。
+  ordered: [{ field, probability: 0.92 }, { field: 'origin', probability: 0.05 }],
 });
 
 const card = (model: JevQueueModel, target: string): JevQueueCard => {
@@ -99,13 +99,15 @@ describe('open → done → 取り消し', () => {
     expect(card(model, 'a.md').selected).toBe('part of');
   });
 
-  it('falls back to the first candidate when the answer is outside the ontology', () => {
+  it('preselects nothing when the answer is not among the candidates (LEV-187)', () => {
+    // 上位 5 件の外か、オントロジーの外。別のフィールドを選んだ状態にすると、本人が確定を
+    // 押すだけで Jev が答えていない型が入る。
     model.judged('a.md', {
       ...judgement('invented'),
       ordered: [{ field: 'up', probability: 0.5 }, { field: 'origin', probability: 0.2 }],
     });
 
-    expect(card(model, 'a.md').selected).toBe('up');
+    expect(card(model, 'a.md').selected).toBeNull();
   });
 
   it('preselects nothing when the field and the direction disagree', () => {
@@ -113,6 +115,14 @@ describe('open → done → 取り消し', () => {
 
     expect(card(model, 'a.md').status).toBe('open');
     expect(card(model, 'a.md').selected).toBeNull();
+  });
+
+  it('keeps the candidates and their probabilities when it is not confident (LEV-187)', () => {
+    model.judged('a.md', judgement('up', false));
+
+    // 出す候補は自信ありのときと同じ並び。カードは `ordered` をそのまま描く。
+    expect(card(model, 'a.md').judgement?.ordered)
+      .toEqual([{ field: 'up', probability: 0.92 }, { field: 'origin', probability: 0.05 }]);
   });
 
   it('writes down what was confirmed', () => {

@@ -460,6 +460,7 @@ export class JevQueueView extends ItemView {
     if (!judgement) return;
     el.createDiv({ cls: "jevbrain-queue-card-note", text: summarise(judgement) });
     const candidates = el.createDiv({ cls: "jevbrain-queue-candidates" });
+    // `judge` が確率順の上位 5 件に絞ってある（設計 §2-3）。ここでは並べ替えも絞り込みもしない。
     for (const candidate of judgement.ordered) {
       const button = candidates.createEl("button", {
         cls: "jevbrain-queue-candidate",
@@ -513,7 +514,10 @@ const toJevQuestion = (choice: Choice): JevQuestion => ({
 
 const percent = (probability: number): string => `${Math.round(probability * 100)}%`;
 
-/** カード 1 行の要約。自信なしは確率を伏せるので、方向が食い違っていることだけ言う（設計 §2-3）。 */
+/**
+ * カード 1 行の要約。確率は候補のボタンに出るので、自信なしのときここで言うのは
+ * 方向が食い違っていて既定が無いことだけ（設計 §2-3）。
+ */
 const summarise = (judgement: Judgement): string =>
   judgement.confident
     ? t("JEV_QUEUE_DIRECTION")
