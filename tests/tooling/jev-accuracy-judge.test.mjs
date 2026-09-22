@@ -5,13 +5,25 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_OUT, JUDGE_DEFAULTS, RECORD_NAME, extractTruth, projectRoot, writeOutputs } from '../../scripts/jev-accuracy.mjs';
 import {
+  DIRECTION_NOTES,
+  EXAMPLE_LEAD,
   RESPONSES_NAME,
+  SUMMARY_NAME,
+  SUMMARY_VERSION,
+  buildCriteriaPlan,
   buildJudgeState,
+  comparisonFile,
+  criteriaLabel,
+  criteriaOptionsFor,
+  estimateAsks,
+  exampleText,
   loadJevSource,
   maskEntry,
   parseFrontmatter,
   readAnswers,
   readResponses,
+  renderComparison,
+  runCompare,
   runJudge,
   scoreRow,
   selectEntries,
@@ -435,6 +447,41 @@ describe('the command', () => {
     expect(readResponses(responsesPath).size).toBe(5);
   });
 
+  // LEV-186: two conditions run back to back must not overwrite each other's record.
+  it('names the record, the responses and the summary after the condition', async () => {
+    stubJev();
+    const artifacts = join(root, 'artifacts', 'jev-accuracy');
+
+    const plain = await runJudge(root, options);
+    const narrowed = await runJudge(root, { ...options, criteria: 'narrow,directions' });
+
+    expect(plain.recordPath).toBe(join(artifacts, RECORD_NAME));
+    expect(plain.responsesPath).toBe(join(artifacts, RESPONSES_NAME));
+    expect(plain.summaryPath).toBe(join(artifacts, SUMMARY_NAME));
+    expect(narrowed.recordPath).toBe(join(artifacts, 'record-narrow-directions.md'));
+    expect(narrowed.responsesPath).toBe(join(artifacts, 'responses-narrow-directions.jsonl'));
+    expect(narrowed.summaryPath).toBe(join(artifacts, 'summary-narrow-directions.json'));
+    // Both records survive, which is what compare then reads.
+    expect(existsSync(plain.recordPath)).toBe(true);
+    expect(existsSync(narrowed.recordPath)).toBe(true);
+    expect(JSON.parse(readFileSync(narrowed.summaryPath, 'utf8')).criteria).toBe('narrow,directions');
+  });
+
+  it('prices a dry run without asking, and says it wrote no summary', async () => {
+    stubJev();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await runJudge(root, { ...options, dryRun: true, summary: 'artifacts/jev-accuracy/s.json' });
+
+    expect(calls).toHaveLength(0);
+    expect(result.estimate).toMatchObject({ calls: 6, missing: 6 });
+    expect(result.summary).toBeNull();
+    expect(result.summaryPath).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('--summary'));
+    expect(existsSync(join(root, 'artifacts', 'jev-accuracy', 's.json'))).toBe(false);
+    expect(existsSync(join(root, 'artifacts', 'jev-accuracy', RESPONSES_NAME))).toBe(false);
+  });
+
   it('asks again for a link whose saved answer was to a different question', async () => {
     stubJev();
     await runJudge(root, options);
@@ -443,5 +490,252 @@ describe('the command', () => {
     await runJudge(root, { ...options, mask: 'off' });
 
     expect(calls).toHaveLength(6);
+  });
+});
+
+// ---- LEV-186: criteria の 3 つのつまみ（絞る・用例・方向の 1 文）と、条件を並べる比較表 ----
+
+describe('the criteria conditions', () => {
+  /** Truth-shaped records: `up` is used often, `origin` twice, `down` once. */
+  const entry = (id, note, field, before, after = '。') => ({
+    id, note, field, fieldKey: field, marker: field,
+    linkText: `[[${id}]]`, contextBefore: `${before}${field}:: `, contextAfter: after,
+  });
+  const entries = [
+    entry('1', 'A.md', 'up', 'アの前。'),
+    entry('2', 'A.md', 'up', 'アの二本目。'),
+    entry('3', 'B.md', 'up', 'イの前。'),
+    entry('4', 'C.md', 'up', 'ウの前。'),
+    entry('5', 'D.md', 'up', 'エの前。'),
+    entry('6', 'A.md', 'origin', 'アの出典。'),
+    entry('7', 'B.md', 'origin', 'イの出典。'),
+    entry('8', 'E.md', 'down', 'オの前。'),
+  ];
+
+  it('names the levers of each condition, and refuses one it does not know', () => {
+    expect(buildCriteriaPlan('default', entries).levers).toEqual([]);
+    expect(buildCriteriaPlan('narrow', entries).levers).toEqual(['narrow']);
+    expect(buildCriteriaPlan('verbose', entries).levers).toEqual(['examples', 'directions']);
+    expect(buildCriteriaPlan('both', entries).levers).toEqual(['narrow', 'examples', 'directions']);
+    // 案 E の 3 本目: 絞ったうえで、方向の 1 文だけ足す（用例は付けない）。
+    expect(buildCriteriaPlan('directions,narrow', entries).levers).toEqual(['narrow', 'directions']);
+    expect(() => buildCriteriaPlan('thicker', entries)).toThrow(/criteria/);
+  });
+
+  it('leaves the questions alone for the default condition', () => {
+    const plan = buildCriteriaPlan('default', entries);
+
+    expect(criteriaOptionsFor(plan, 'A.md')).toEqual({});
+    expect(criteriaLabel(plan.levers)).toContain('既定');
+  });
+
+  it('keeps only the fields the vault uses often enough, counted over the whole vault', () => {
+    const plan = buildCriteriaPlan('narrow', entries, { minUses: 2 });
+
+    expect(plan.fields).toEqual(['up', 'origin']);
+    expect(criteriaOptionsFor(plan, 'A.md')).toEqual({ fields: ['up', 'origin'] });
+    expect(buildCriteriaPlan('narrow', entries, { minUses: 5 }).fields).toEqual(['up']);
+    // The record must not file a minUses:2 run under a label that says 5.
+    expect(plan.label).toContain('2 件以上');
+    expect(plan.settings).toEqual({ minUses: 2, chars: 60, perField: 2 });
+  });
+
+  it('adds the six direction sentences without touching the candidates', () => {
+    const options = criteriaOptionsFor(buildCriteriaPlan('directions', entries), 'A.md');
+
+    expect(options.fields).toBeUndefined();
+    expect(options.fieldNotes).toBeUndefined();
+    expect(options.directionNotes).toEqual(DIRECTION_NOTES);
+    // A copy, so nothing downstream can rewrite the module constant for the rest of the process.
+    expect(options.directionNotes).not.toBe(DIRECTION_NOTES);
+    expect(Object.keys(DIRECTION_NOTES)).toEqual(
+      ['parent', 'child', 'leftFriend', 'rightFriend', 'previous', 'next'],
+    );
+  });
+
+  it('puts the note around an example link on one line', () => {
+    expect(exampleText({ contextBefore: 'ア\nの前。up:: ', linkText: '[[X]]', contextAfter: '\n\n後。' }, 60))
+      .toBe('ア の前。up:: [[X]] 後。');
+    expect(exampleText({ contextBefore: '一二三四五up:: ', linkText: '[[X]]', contextAfter: '六七八九十' }, 3))
+      .toBe(':: [[X]]六七八');
+  });
+
+  it('gives each field examples from other notes, never from the note being judged', () => {
+    const plan = buildCriteriaPlan('examples', entries, { perField: 2 });
+    const notesFor = (note) => criteriaOptionsFor(plan, note).fieldNotes;
+
+    // A.md holds an `up` example itself, so its own passage is left out of the description it reads.
+    expect(notesFor('A.md').up).toBe(`${EXAMPLE_LEAD}「イの前。up:: [[3]]。」／「ウの前。up:: [[4]]。」`);
+    expect(notesFor('E.md').up).toBe(`${EXAMPLE_LEAD}「アの前。up:: [[1]]。」／「イの前。up:: [[3]]。」`);
+    // One note per example: A.md has two `up` links but only contributes one passage.
+    expect(notesFor('E.md').up).not.toContain('アの二本目');
+    // `down` is only used by E.md, so E.md gets no example for it rather than its own.
+    expect(notesFor('E.md')).not.toHaveProperty('down');
+    expect(notesFor('A.md').down).toBe(`${EXAMPLE_LEAD}「オの前。down:: [[8]]。」`);
+  });
+
+  it('narrows the example pool too, so a dropped field costs nothing', () => {
+    const plan = buildCriteriaPlan('both', entries, { minUses: 2 });
+
+    expect([...plan.examples.keys()]).toEqual(['up', 'origin']);
+    expect(criteriaOptionsFor(plan, 'A.md').fields).toEqual(['up', 'origin']);
+  });
+});
+
+describe('the links a condition cannot answer', () => {
+  it('marks a truth field the question never offered, and the summary caps the rate on it', () => {
+    const { hierarchy } = jev.buildHierarchyLowerCase(HIERARCHY);
+    const entry = entryFor(truthOf(), '親ノート');
+    const answered = readAnswers({
+      answers: {
+        field: { choice: 'origin', confidence: 0.6, probabilities: { origin: 0.6, up: 0.4 } },
+        direction: { choice: 'parent', confidence: 0.7, probabilities: { parent: 0.7 } },
+      },
+    }, ['field', 'direction']);
+    const offered = new Set(['origin', 'down']);
+
+    // `up` is the note's own field and Q1 never offered it: the answer could not have been right.
+    expect(scoreRow(jev, hierarchy, entry, answered, offered)).toMatchObject({ truthField: 'up', offerable: false });
+    expect(scoreRow(jev, hierarchy, entry, answered, new Set(['up', 'origin']))).toMatchObject({ offerable: true });
+    // Left null when the caller says nothing, so an unnarrowed run reports no ceiling.
+    expect(scoreRow(jev, hierarchy, entry, answered).offerable).toBeNull();
+  });
+
+  it('reports the ceiling and the rate over the answerable links only', () => {
+    const row = (fieldMatch, offerable) => ({
+      truthField: 'up', field: fieldMatch ? 'up' : 'origin', probability: 0.4, confident: false,
+      truthDirection: 'parent', direction: 'parent', fieldMatch, directionMatch: true, offerable,
+    });
+    const summary = summarizeJudgements(
+      [row(true, true), row(false, true), row(false, true), row(false, false)],
+      {
+        failures: [], selection: { total: 10, eligible: 4, skipped: 6 },
+        tokens: { calls: 4, input: [], output: [], requestChars: [], stateChars: [] },
+        price: 0.042, rate: 150,
+      },
+    );
+
+    expect(summary.unofferable).toBe(1);
+    expect(summary.ceiling).toBe(3 / 4);
+    // 1 of 4 overall, but 1 of the 3 the condition could actually answer.
+    expect(summary.overall.fieldRate).toBe(1 / 4);
+    expect(summary.offerableFieldRate).toBe(1 / 3);
+  });
+});
+
+describe('what a run would cost before it spends anything', () => {
+  it('prices the requests it has built, and only the ones it still has to ask', () => {
+    const asks = [
+      { body: '0'.repeat(4000), state: '0'.repeat(1000) },
+      { body: '0'.repeat(6000), state: '0'.repeat(1400) },
+    ];
+
+    const estimate = estimateAsks(asks, { candidates: 52, missing: 2, price: 0.042, rate: 150 });
+
+    expect(estimate).toMatchObject({ calls: 2, missing: 2, candidates: 52, averageChars: 5000, maxChars: 6000 });
+    // 5,000 字 × 0.745 トークン/字 ≒ 3,726 トークン。
+    expect(estimate.averageTokens).toBeCloseTo(3726, 0);
+    expect(estimate.totalYen).toBeCloseTo(estimate.perCallYen * 2, 8);
+    expect(estimateAsks(asks, { candidates: 52, missing: 0, price: 0.042, rate: 150 }).totalYen).toBe(0);
+  });
+});
+
+describe('the comparison of the conditions', () => {
+  const summaryOf = (fieldRate, { reportedCalls = 500, unofferable = 14 } = {}) => ({
+    judged: 500,
+    failures: [],
+    selection: { total: 2647, eligible: 2448, skipped: 199 },
+    unofferable,
+    ceiling: (500 - unofferable) / 500,
+    offerableFieldRate: (fieldRate * 500) / (500 - unofferable),
+    overall: { count: 500, fieldRate, directionRate: 0.4 },
+    directionOnly: 0.3,
+    consistency: { confident: { count: 200, fieldRate: 0.2, directionRate: 1 }, unconfident: { count: 300, fieldRate: 0.1, directionRate: 0 } },
+    thresholds: [{ threshold: 0.8, coverage: 0.1, precision: 0.5, count: 50, confidentCoverage: 0.05, confidentPrecision: 0.6, confidentCount: 25 }],
+    ranks: [{ rank: 1, hit: fieldRate }, { rank: 3, hit: 0.5 }, { rank: 5, hit: 0.6 }, { rank: 10, hit: 0.7 }],
+    confusion: Array.from({ length: 8 }, (_, index) => ({ truth: 'up', answer: `x${index}`, count: 8 - index, sameDirection: 0 })),
+    directions: [{ direction: 'leftFriend', count: 105, fieldRate: 0.1, directionRate: 0 }],
+    tokens: { averageTokens: 2299, reportedCalls },
+    cost: { perCallYen: 0.0145, totalYen: 7.24 },
+  });
+  const context = {
+    criteria: 'narrow', criteriaLabel: '候補を絞る', levers: ['narrow'], candidates: 52,
+    at: '2026-09-22T05:00:00.000Z', endpoint: 'e', model: 'm', seed: 1, limit: 500, mask: 'on', contextChars: 500,
+  };
+
+  it('keeps one comparison row per run, with the top five confusions', () => {
+    const file = comparisonFile(summaryOf(0.24), context);
+
+    expect(file).toMatchObject({ version: SUMMARY_VERSION, criteria: 'narrow', label: '候補を絞る', levers: ['narrow'] });
+    expect(file.row).toMatchObject({
+      candidates: 52, eligible: 2448, judged: 500, failures: 0, fieldRate: 0.24, top3: 0.5, top5: 0.6, top10: 0.7,
+      confidentShare: 0.4, confidentFieldRate: 0.2, averageTokens: 2299, unofferable: 14,
+    });
+    expect(file.row.confusion).toHaveLength(5);
+  });
+
+  it('puts the conditions side by side and reads a hand-written baseline the same way', () => {
+    const measured = comparisonFile(summaryOf(0.24), context);
+    const baseline = {
+      version: SUMMARY_VERSION, criteria: 'default', label: '既定', at: '2026-09-22T00:35:07.487Z',
+      note: 'LEV-163 から転記', row: { fieldRate: 0.13, top3: 0.402, judged: 500 },
+    };
+
+    const record = renderComparison([baseline, measured], { at: '2026-09-22T06:00:00.000Z', notes: ['## 推奨', '', 'narrow を採る。'] });
+
+    expect(record).toContain('| 指標 | default | narrow |');
+    expect(record).toContain('| フィールド一致率 | 13.0% | 24.0% |');
+    // A baseline row that carries no threshold table or token count is shown as unmeasured, not as zero.
+    expect(record).toContain('| 平均入力トークン | — | 2299 |');
+    expect(record).toContain('| オントロジー内を一括したら | — | 35.50 円（2448 本） |');
+    // What the condition costs in use, not what the measurement cost.
+    expect(record).toContain('| 1 判定の費用 | — | 0.0145 円 |');
+    // The narrowed condition cannot answer 14 of the 500, so the field rate has a ceiling.
+    expect(record).toContain('| 　うちこの条件では当たらない正解 | — | 14 件（上限 97.2%、候補内だけなら 24.7%） |');
+    // Title and row labels follow the files that were passed, not a fixed 4 conditions / 500 links.
+    expect(record).toContain('criteria の 2 条件');
+    expect(record).toContain('| この実行の費用（500 本） |');
+    expect(record).toContain('（LEV-163 から転記）');
+    expect(record).toContain('| 左友 | — | 10.0% / 0.0%（105） |');
+    expect(record).toContain('## 推奨');
+  });
+
+  it('writes the comparison from the summary files, inside artifacts/ only', () => {
+    const directory = join(root, 'artifacts', 'jev-accuracy');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, 'summary-narrow.json'), JSON.stringify(comparisonFile(summaryOf(0.24), context)));
+    writeFileSync(join(directory, 'summary-both.json'), JSON.stringify(comparisonFile(summaryOf(0.31), { ...context, criteria: 'both' })));
+
+    const { outPath, record } = runCompare(root, {
+      summaries: 'artifacts/jev-accuracy/summary-narrow.json, artifacts/jev-accuracy/summary-both.json',
+      out: 'artifacts/jev-accuracy/record-v2.md',
+      notes: null,
+    });
+
+    expect(outPath).toBe(join(directory, 'record-v2.md'));
+    expect(readFileSync(outPath, 'utf8')).toBe(`${record}\n`);
+    expect(record).toContain('| フィールド一致率 | 24.0% | 31.0% |');
+    expect(() => runCompare(root, { summaries: 'artifacts/jev-accuracy/summary-narrow.json', out: '../escape.md' }))
+      .toThrow(/artifacts/);
+  });
+
+  it('refuses a summary from another row shape instead of rendering it as unmeasured', () => {
+    const directory = join(root, 'artifacts', 'jev-accuracy');
+    mkdirSync(directory, { recursive: true });
+    const stale = { ...comparisonFile(summaryOf(0.24), context), version: SUMMARY_VERSION - 1 };
+    writeFileSync(join(directory, 'summary-stale.json'), JSON.stringify(stale));
+
+    expect(() => runCompare(root, { summaries: 'artifacts/jev-accuracy/summary-stale.json', out: 'artifacts/x.md' }))
+      .toThrow(/version/);
+  });
+
+  it('shows a run whose responses carried no usage as unmeasured, not as free', () => {
+    const file = comparisonFile(summaryOf(0.24, { reportedCalls: 0 }), context);
+
+    expect(file.row).toMatchObject({ averageTokens: null, perCallYen: null, totalYen: null });
+    const record = renderComparison([file], { at: 'now' });
+    expect(record).toContain('| 平均入力トークン | — |');
+    expect(record).toContain('| 1 判定の費用 | — |');
+    expect(record).toContain('| オントロジー内を一括したら | — |');
   });
 });

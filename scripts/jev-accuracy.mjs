@@ -79,6 +79,10 @@ export const JUDGE_DEFAULTS = {
   seed: 1,
   /** `off` leaves the field marker (`up:: `) in the window, which tells Jev the answer: a control run only. */
   mask: 'on',
+  /** How Q1's candidates and their descriptions are built (see {@link CRITERIA_MODES}). */
+  criteria: 'default',
+  /** `--dry-run`: build every request and price it, send nothing. */
+  dryRun: false,
   endpoint: 'https://api.typesafe.ai/v1/systemone',
   model: 'jev-latest',
   /** USD per million input tokens, and yen per USD (design §7). */
@@ -86,13 +90,52 @@ export const JUDGE_DEFAULTS = {
   rate: 150,
 };
 
+/**
+ * The three levers the JEV-0 re-measurement can pull on the criteria (LEV-186, design §10), in the
+ * order they are applied. They are separate because they cost wildly different amounts: `examples`
+ * is 11,498 input tokens a judgement and `directions` is 110, so a run that thickens both at once
+ * cannot say which of them earned the change.
+ */
+export const CRITERIA_LEVERS = ['narrow', 'examples', 'directions'];
+
+/**
+ * The conditions of the ticket, as names for lever sets. `default` is what LEV-163 asked and what
+ * the plugin sends; `verbose` is 「説明文を厚くする」 (examples and direction sentences together) and
+ * `both` adds the narrowing. Any other combination is written out: `--criteria narrow,directions`.
+ */
+export const CRITERIA_ALIASES = {
+  default: [],
+  narrow: ['narrow'],
+  verbose: ['examples', 'directions'],
+  both: ['narrow', 'examples', 'directions'],
+};
+
+export const CRITERIA_MODES = Object.keys(CRITERIA_ALIASES);
+
+/**
+ * The levers a `--criteria` value asks for, in {@link CRITERIA_LEVERS} order, or null when it names
+ * neither an alias nor a list of levers. `scripts/jev-accuracy-judge.mjs` builds them; the parsing
+ * lives here so a typo fails before the vault is read.
+ */
+export function parseCriteria(value) {
+  // A copy: the result becomes `plan.levers` and is serialised into the summary file, and the
+  // exported alias table must not be reachable, writable state from there.
+  if (Object.prototype.hasOwnProperty.call(CRITERIA_ALIASES, value)) return [...CRITERIA_ALIASES[value]];
+  const asked = String(value ?? '').split(',').map((lever) => lever.trim()).filter((lever) => lever !== '');
+  if (asked.length === 0 || asked.some((lever) => !CRITERIA_LEVERS.includes(lever))) return null;
+  return CRITERIA_LEVERS.filter((lever) => asked.includes(lever));
+}
+
 const USAGE = [
   'Usage:',
   `  node scripts/jev-accuracy.mjs extract --vault <path> [--out ${DEFAULT_OUT}] [--hierarchy <data.json>]`,
   `  node scripts/jev-accuracy.mjs judge [--truth ${DEFAULT_OUT}] [--limit 500] [--concurrency 5]`,
-  '      [--hierarchy <data.json>] [--responses <jsonl>] [--record <md>] [--seed 1] [--mask on|off]',
+  '      [--hierarchy <data.json>] [--responses <jsonl>] [--record <md>] [--summary <json>] [--seed 1]',
+  `      [--mask on|off] [--criteria ${CRITERIA_MODES.join('|')} | ${CRITERIA_LEVERS.join(',')}] [--dry-run]`,
   '      [--endpoint <url>] [--model <name>] [--price <usd/Mtok>] [--rate <yen/usd>]',
-  '  judge needs JEV_API_KEY unless every answer is already in the responses file.',
+  '  node scripts/jev-accuracy.mjs compare --summaries <json>[,<json>...] --out <md> [--notes <md>]',
+  '  judge needs JEV_API_KEY unless every answer is already in the responses file; --dry-run never asks.',
+  '  compare only reads the summary files judge wrote.',
 ].join('\n');
 
 /**
@@ -496,10 +539,14 @@ const EXTRACT_FLAGS = { '--vault': 'vault', '--out': 'out', '--hierarchy': 'hier
 const JUDGE_FLAGS = {
   '--truth': 'truth', '--hierarchy': 'hierarchy', '--responses': 'responses', '--record': 'record', '--limit': 'limit',
   '--concurrency': 'concurrency', '--seed': 'seed', '--mask': 'mask', '--endpoint': 'endpoint',
-  '--model': 'model', '--price': 'price', '--rate': 'rate',
+  '--model': 'model', '--price': 'price', '--rate': 'rate', '--criteria': 'criteria', '--summary': 'summary',
+  '--dry-run': 'dryRun',
 };
+const COMPARE_FLAGS = { '--summaries': 'summaries', '--out': 'out', '--notes': 'notes' };
 
 const NUMERIC = new Set(['limit', 'concurrency', 'seed', 'price', 'rate']);
+/** Flags that stand alone: they take the next argument as a flag, not as a value. */
+const BOOLEAN = new Set(['dryRun']);
 
 const asNumber = (flag, value) => {
   const parsed = Number(value);
@@ -507,28 +554,47 @@ const asNumber = (flag, value) => {
   return parsed;
 };
 
+const SUBCOMMANDS = { extract: EXTRACT_FLAGS, judge: JUDGE_FLAGS, compare: COMPARE_FLAGS };
+
+const defaultsFor = (subcommand) => {
+  if (subcommand === 'extract') return { vault: null, out: DEFAULT_OUT, hierarchy: null };
+  if (subcommand === 'compare') return { summaries: null, out: join('artifacts', 'jev-accuracy', 'record-v2.md'), notes: null };
+  return { truth: DEFAULT_OUT, hierarchy: null, responses: null, record: null, summary: null, ...JUDGE_DEFAULTS };
+};
+
 export function parseArguments(argv) {
   const [subcommand, ...rest] = argv;
-  if (subcommand !== 'extract' && subcommand !== 'judge') {
-    throw new Error(`Expected the subcommand extract or judge.\n${USAGE}`);
+  const flags = Object.prototype.hasOwnProperty.call(SUBCOMMANDS, subcommand) ? SUBCOMMANDS[subcommand] : null;
+  if (flags === null) {
+    throw new Error(`Expected the subcommand ${Object.keys(SUBCOMMANDS).join(', ')}.\n${USAGE}`);
   }
-  const flags = subcommand === 'extract' ? EXTRACT_FLAGS : JUDGE_FLAGS;
-  const options = subcommand === 'extract'
-    ? { subcommand, vault: null, out: DEFAULT_OUT, hierarchy: null }
-    : { subcommand, truth: DEFAULT_OUT, hierarchy: null, responses: null, record: null, ...JUDGE_DEFAULTS };
-  for (let index = 0; index < rest.length; index += 2) {
+  const options = { subcommand, ...defaultsFor(subcommand) };
+  for (let index = 0; index < rest.length;) {
     const flag = rest[index];
-    const value = rest[index + 1];
     const name = Object.prototype.hasOwnProperty.call(flags, flag) ? flags[flag] : null;
     if (name === null) throw new Error(`Unknown argument: ${flag}.\n${USAGE}`);
+    if (BOOLEAN.has(name)) {
+      options[name] = true;
+      index += 1;
+      continue;
+    }
+    const value = rest[index + 1];
     if (value === undefined) throw new Error(`Missing value for ${flag}.\n${USAGE}`);
     options[name] = NUMERIC.has(name) ? asNumber(flag, value) : value;
+    index += 2;
   }
   if (subcommand === 'extract' && options.vault === null) {
     throw new Error(`extract needs --vault <path>.\n${USAGE}`);
   }
+  if (subcommand === 'compare' && options.summaries === null) {
+    throw new Error(`compare needs --summaries <json>[,<json>...].\n${USAGE}`);
+  }
   if (subcommand === 'judge' && options.mask !== 'on' && options.mask !== 'off') {
     throw new Error(`--mask takes on or off: ${options.mask}.\n${USAGE}`);
+  }
+  if (subcommand === 'judge' && parseCriteria(options.criteria) === null) {
+    throw new Error(`--criteria takes ${CRITERIA_MODES.join(', ')} or a list of `
+      + `${CRITERIA_LEVERS.join(', ')}: ${options.criteria}.\n${USAGE}`);
   }
   return options;
 }
@@ -551,6 +617,7 @@ async function main(argv) {
     // The import has to happen after this module finishes evaluating — judge imports it back, and a
     // top-level await here would leave the two waiting for each other.
     if (options.subcommand === 'judge') await (await import('./jev-accuracy-judge.mjs')).runJudge(root, options);
+    else if (options.subcommand === 'compare') (await import('./jev-accuracy-judge.mjs')).runCompare(root, options);
     else runExtract(root, options);
   } catch (error) {
     console.error(`jev-accuracy failed: ${error.message}`);

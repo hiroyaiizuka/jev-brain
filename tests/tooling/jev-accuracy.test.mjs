@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
+  CRITERIA_MODES,
   DEFAULT_OUT,
   JUDGE_DEFAULTS,
   RECORD_NAME,
@@ -271,6 +272,7 @@ describe('arguments', () => {
       hierarchy: null,
       responses: null,
       record: null,
+      summary: null,
       ...JUDGE_DEFAULTS,
     });
     expect(parseArguments(['judge', '--limit', '500', '--concurrency', '5', '--seed', '7'])).toMatchObject({
@@ -278,9 +280,30 @@ describe('arguments', () => {
     });
   });
 
+  // LEV-186: 再測の 3 条件と、費用を先に見るための旗。
+  it('takes the criteria conditions, and --dry-run without a value', () => {
+    expect(parseArguments(['judge'])).toMatchObject({ criteria: 'default', dryRun: false });
+    expect(parseArguments(['judge', '--criteria', 'both', '--dry-run', '--limit', '20'])).toMatchObject({
+      criteria: 'both', dryRun: true, limit: 20,
+    });
+    expect(CRITERIA_MODES).toEqual(['default', 'narrow', 'verbose', 'both']);
+    expect(() => parseArguments(['judge', '--criteria', 'thicker'])).toThrow(/--criteria/);
+  });
+
+  it('takes the summary files of compare and defaults its output to record-v2.md', () => {
+    expect(parseArguments(['compare', '--summaries', 'a.json,b.json'])).toEqual({
+      subcommand: 'compare',
+      summaries: 'a.json,b.json',
+      out: join('artifacts', 'jev-accuracy', 'record-v2.md'),
+      notes: null,
+    });
+    expect(() => parseArguments(['compare'])).toThrow(/--summaries/);
+    expect(() => parseArguments(['compare', '--summaries', 'a.json', '--limit', '5'])).toThrow(/Unknown argument/);
+  });
+
   it('needs a vault for extract, a known subcommand and the flags of that subcommand', () => {
     expect(() => parseArguments(['extract'])).toThrow(/--vault/);
-    expect(() => parseArguments(['measure', '--vault', '/tmp/vault'])).toThrow(/extract or judge/);
+    expect(() => parseArguments(['measure', '--vault', '/tmp/vault'])).toThrow(/Expected the subcommand/);
     expect(() => parseArguments(['extract', '--vault', '/tmp/vault', '--all', 'yes'])).toThrow(/Unknown argument/);
     expect(() => parseArguments(['extract', '--vault'])).toThrow(/Missing value/);
     // judge の旗を extract には渡せない（その逆も）。
