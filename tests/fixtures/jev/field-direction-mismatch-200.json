@@ -1,0 +1,19 @@
+{
+  "note": "Q1 が up（設定では Up ＝方向は親）、Q2 が子。整合性が取れないので確率を伏せて設定の順で出す枝（設計 §2-3）。実物の記録ではない。",
+  "status": 200,
+  "body": {
+    "questions": {
+      "field": {
+        "choice": "up",
+        "probabilities": { "up": 0.44, "origin": 0.31, "similar": 0.25 },
+        "confidence": 0.44
+      },
+      "direction": {
+        "choice": "child",
+        "probabilities": { "child": 0.53, "parent": 0.47 },
+        "confidence": 0.53
+      }
+    },
+    "usage": { "inputTokens": 1620 }
+  }
+}
