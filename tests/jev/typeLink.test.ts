@@ -128,7 +128,10 @@ class Vault extends VaultStub {
 }
 
 /** A vault of markdown notes with the relations `Pages.addResolvedLinks` has already inferred. */
-function makeVault(notes: Record<string, Note>, options: { excludeFilepaths?: string[] } = {}) {
+function makeVault(
+  notes: Record<string, Note>,
+  options: { excludeFilepaths?: string[]; writeMode?: 'relations' | 'inline' } = {},
+) {
   const files = new Map(
     Object.keys(notes).map((path) => [path, Object.assign(new TFile(), { path, stat: { mtime: 0 } })]),
   );
@@ -158,7 +161,11 @@ function makeVault(notes: Record<string, Note>, options: { excludeFilepaths?: st
   const resolve = (linkpath: string) =>
     files.get(linkpath) ?? files.get(`${linkpath}.md`) ?? byName(linkpath) ?? null;
   const plugin = {
-    settings: { ...settingsStub, excludeFilepaths: options.excludeFilepaths ?? [] },
+    settings: {
+      ...settingsStub,
+      excludeFilepaths: options.excludeFilepaths ?? [],
+      jev: { ...settingsStub.jev, writeMode: options.writeMode ?? settingsStub.jev.writeMode },
+    },
     hierarchyLowerCase: regions,
     manifest: { dir: '.obsidian/plugins/jevbrain' },
     pages: pagesStub,
@@ -458,6 +465,87 @@ describe('typeLinkAtCursor', () => {
 
     expect(result).toMatchObject({ status: 'written', field: 'up', target: 'notes/B.md' });
     expect(vault.vault.notes.get('x/A.md')).toBe(`${content}\n\n## Relations\nup:: [[notes/B.md]]`);
+  });
+
+  it('types the occurrence the cursor is on, not the first one to the same note (LEV-185)', async () => {
+    // 再現 1: 同じ相手への `[[B]]` が 2 つある本文で、2 つ目にカーソルを置く。
+    const content = ['本文で [[B]] に触れる。', 'もう一度 [[B]] と書く。'].join('\n');
+    const vault = makeVault({ 'A.md': { content }, 'B.md': {} }, { writeMode: 'inline' });
+    const jev = asking(answer());
+
+    const result = await typeLinkAtCursor(
+      vault.plugin,
+      { file: vault.file('A.md'), content, cursor: { line: 1, ch: 5 } },
+      jev.deps,
+    );
+
+    expect(result).toMatchObject({ status: 'written', field: 'up', target: 'B' });
+    expect(vault.vault.notes.get('A.md')).toBe(['本文で [[B]] に触れる。', 'もう一度 (up:: [[B]]) と書く。'].join('\n'));
+    expect(vault.log()).toMatchObject([
+      { file: 'A.md', line: 1, before: 'もう一度 [[B]] と書く。', after: 'もう一度 (up:: [[B]]) と書く。' },
+    ]);
+  });
+
+  it('writes no brackets when the link is the whole line', async () => {
+    const content = '# A\n\n[[B]]\n';
+    const vault = makeVault({ 'A.md': { content }, 'B.md': {} }, { writeMode: 'inline' });
+
+    const result = await typeLinkAtCursor(
+      vault.plugin,
+      { file: vault.file('A.md'), content, cursor: { line: 2, ch: 0 } },
+      asking(answer()).deps,
+    );
+
+    expect(result).toMatchObject({ status: 'written' });
+    expect(vault.vault.notes.get('A.md')).toBe('# A\n\nup:: [[B]]\n');
+  });
+
+  it('drops a markdown link into the Relations section, inline mode and all (LEV-185)', async () => {
+    // 再現 2: `(up:: [B](…))` は書かず、`[[…]]` で節に 1 行足す（設計 §3）。
+    const content = 'テンプレートは [B](../notes/B.md) に寄せる。';
+    const vault = makeVault(
+      { 'x/A.md': { content }, 'notes/B.md': { content: 'B の冒頭。' } },
+      { writeMode: 'inline' },
+    );
+
+    const result = await typeLinkAtCursor(
+      vault.plugin,
+      { file: vault.file('x/A.md'), content, cursor: cursorAt(content, '[B](../notes/B.md)', 0) },
+      asking(answer()).deps,
+    );
+
+    expect(result).toMatchObject({ status: 'written', field: 'up', target: 'notes/B.md' });
+    expect(vault.vault.notes.get('x/A.md')).toBe(`${content}\n\n## Relations\nup:: [[notes/B.md]]`);
+  });
+
+  it('writes nothing when the link left the cursor while Jev was answering', async () => {
+    const vault = makeVault({ 'A.md': { content: note }, 'B.md': {} }, { writeMode: 'inline' });
+    // 読むのはバッファ、書くのはファイル。判定を待つ間にその行が書き換わった状態にする。
+    vault.vault.notes.set('A.md', '# A\n\n書き直した本文。\n');
+
+    const result = await typeLinkAtCursor(
+      vault.plugin,
+      { file: vault.file('A.md'), content: note, cursor: cursorAt(note, '[[B]]') },
+      asking(answer()).deps,
+    );
+
+    expect(result).toEqual({ status: 'link-gone', field: 'up', target: 'B' });
+    expect(vault.vault.notes.get('A.md')).toBe('# A\n\n書き直した本文。\n');
+    expect(vault.log()).toEqual([]);
+  });
+
+  it('writes nothing when the cursor is on a link that already carries a field', async () => {
+    const content = '本文で (origin:: [[B]]) に触れる。';
+    const vault = makeVault({ 'A.md': { content }, 'B.md': {} }, { writeMode: 'inline' });
+
+    const result = await typeLinkAtCursor(
+      vault.plugin,
+      { file: vault.file('A.md'), content, cursor: cursorAt(content, '[[B]]') },
+      asking(answer()).deps,
+    );
+
+    expect(result).toEqual({ status: 'unchanged', field: 'up', target: 'B' });
+    expect(vault.vault.notes.get('A.md')).toBe(content);
   });
 
   it('writes the ontology spelling of the field, not the answer as Jev spelled it', async () => {

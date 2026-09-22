@@ -13,7 +13,8 @@ import type { JevQuestion, JevResponse as JevClientResponse } from "src/jev/clie
 import { buildQuestions, directionOfField, judge, percentOf } from "src/jev/judge";
 import type { Direction, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry } from "src/jev/log";
-import { appendRelation } from "src/jev/relations";
+import { appendRelation, isRelationEdit } from "src/jev/relations";
+import type { LinkPosition, RelationResult } from "src/jev/relations";
 import { buildState } from "src/jev/state";
 import { getDVFieldLinksForPage } from "src/utils/dataview";
 import { HIERARCHY_REGIONS } from "src/utils/hierarchy";
@@ -75,6 +76,8 @@ type LinkAsk = {
   /** ノート本文の中の `[[` の位置と `[[…]]` の長さ（state の窓、設計 §2-2）。 */
   offset: number;
   length: number;
+  /** 行と桁での同じ位置。確定はこの出現だけを書き換える（設計 §3、LEV-185）。 */
+  at: LinkPosition;
   status: "asking" | "answered" | "failed";
   judgement?: Judgement;
 };
@@ -197,6 +200,8 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
         linkpath: closed.linkpath,
         offset: editor.posToOffset(start),
         length: cursor.ch - closed.start,
+        // `onTrigger` が通すのは閉じた `[[…]]` だけなので、指しているのは必ず wiki リンク。
+        at: { ...start, wiki: true },
         status: "asking",
       }, editor.getValue());
     }
@@ -328,27 +333,35 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     );
   }
 
-  /** 確定は設計 §3 のまま: `## Relations` に 1 行足し、取り消せるよう `jev-log.json` に記録する。 */
+  /**
+   * 確定は設計 §3 のまま: いま閉じたその `[[X]]` にフィールドを付け（設定が `relations` なら節に
+   * 1 行足し）、取り消せるよう `jev-log.json` に記録する。同じ相手が本文に 2 つあっても、
+   * 書き換えるのはサジェストを出したこの出現だけ（LEV-185）。
+   */
   private async confirm(ask: LinkAsk, field: string): Promise<void> {
     const { app, manifest, settings } = this.plugin;
     const written = `${field}:: [[${ask.linkpath}]]`;
-    let edit;
+    let outcome: RelationResult;
     try {
       // 読んだのはエディタのバッファ、書くのは `vault.process`＝ファイル。書く直前にバッファを
       // 流して、次の自動保存が追記した行を巻き戻さないようにする（`src/jev/typeLink.ts` の flush と同じ）。
       const view = app.workspace.getActiveViewOfType(MarkdownView);
       if (view?.file?.path === ask.file.path) await view.save();
-      edit = await appendRelation(app, ask.file, field, ask.linkpath, {
+      outcome = await appendRelation(app, ask.file, field, ask.linkpath, {
         heading: normalizeRelationsHeading(settings.jev.relationsHeading),
         mode: settings.jev.writeMode,
+        at: ask.at,
       });
     } catch (error) {
       console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
       new Notice(`Jev could not write ${written}. See the developer console for details.`);
       return;
     }
-    if (!edit) {
-      new Notice(`Jev: ${written} is already there.`);
+    if (!isRelationEdit(outcome)) {
+      // 「既に付いている」と「指していたリンクが動いた」は直し方が違うので、同じ言い方にしない。
+      new Notice(outcome.skipped === "already-typed"
+        ? `Jev: ${written} is already there.`
+        : `Jev did not write ${written}: the link is no longer where it was closed.`);
       return;
     }
     // 書いたあとに記録が残せなかったときは、取り消せないことを黙って隠さない（設計 §3）。
@@ -358,9 +371,9 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
         // `undoBatch` が巻き込まないよう、`log.ts` の id と同じく乱数を足す。
         batchId: `suggest-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         file: ask.file.path,
-        line: edit.line,
-        before: edit.before,
-        after: edit.after,
+        line: outcome.line,
+        before: outcome.before,
+        after: outcome.after,
         source: "suggest",
       }).then(() => true, (error: unknown) => {
         console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });

@@ -74,6 +74,12 @@ describe('noticeFor', () => {
     expect(noticeFor({ status: 'excluded' })).toContain('left out of the graph');
     expect(noticeFor({ status: 'no-untyped-link' })).toContain('cursor');
     expect(noticeFor({ status: 'unchanged', field: 'up', target: 'B' }))
-      .toBe('Nothing was written for up:: [[B]]: the line is already there, or inline writing could not find the link in the body.');
+      .toBe('Nothing was written for up:: [[B]]: that link already carries a field.');
+  });
+
+  it('tells a link that already carries a field apart from one that moved away (LEV-185)', () => {
+    const gone = noticeFor({ status: 'link-gone', field: 'up', target: 'B' });
+    expect(gone).toBe('Nothing was written for up:: [[B]]: the link is no longer where the cursor was. Put the cursor on it again.');
+    expect(gone).not.toBe(noticeFor({ status: 'unchanged', field: 'up', target: 'B' }));
   });
 });

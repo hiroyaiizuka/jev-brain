@@ -3,8 +3,8 @@ import type { App, TFile } from 'obsidian';
 // The stubs by their own path: Vitest serves the same module for `obsidian`, and their test-only
 // members (`Notice.messages`, `VaultStub.notes`) are not on the real typings.
 import { Notice, VaultStub } from '../mocks/obsidian';
-import { appendRelation, replaceRelation } from 'src/jev/relations';
-import type { RelationEdit } from 'src/jev/relations';
+import { appendRelation, isRelationEdit, replaceRelation } from 'src/jev/relations';
+import type { LinkPosition, RelationEdit, RelationResult } from 'src/jev/relations';
 import { appendLogEntry, undo, undoBatch } from 'src/jev/log';
 
 const MANIFEST_DIR = '.obsidian/plugins/jevbrain';
@@ -19,17 +19,28 @@ function setup(notes: Record<string, string>) {
   return { vault, app, file, log };
 }
 
+/** A wiki link the entry point pointed at: the `[` of a `[[…]]`, 0-based (LEV-185). */
+const at = (line: number, ch: number): LinkPosition => ({ line, ch, wiki: true });
+
+/** The same for a markdown link `[B](notes/B.md)`, which cannot hold the field itself. */
+const markdownAt = (line: number, ch: number): LinkPosition => ({ line, ch, wiki: false });
+
+/** The edit of a result that wrote something; a test that expects a write fails loudly otherwise. */
+function edited(result: RelationResult): RelationEdit {
+  if (!isRelationEdit(result)) throw new Error(`nothing was written (${result.skipped})`);
+  return result;
+}
+
 /** What the entry points (JEV-2〜4) do with one link: write the line, then record where it went. */
 async function writeAndLog(
   app: App,
   file: TFile,
   field: string,
   target: string,
-  options: { heading: string; mode?: 'relations' | 'inline' },
+  options: { heading: string; mode?: 'relations' | 'inline'; at?: LinkPosition },
   meta: { batchId: string; source: string },
 ) {
-  const edit = await appendRelation(app, file, field, target, options);
-  if (!edit) throw new Error('nothing was written');
+  const edit = edited(await appendRelation(app, file, field, target, options));
   return appendLogEntry(app, MANIFEST_DIR, { ...edit, file: file.path, ...meta });
 }
 
@@ -81,8 +92,8 @@ describe('appendRelation into the Relations section', () => {
     const note = '## Relations\nup::[[A]]\nOrigin:: [[B|ビー]]\n';
     const { app, file, vault } = setup({ 'Note.md': note });
 
-    expect(await appendRelation(app, file('Note.md'), 'up', 'A', HEADING)).toBeNull();
-    expect(await appendRelation(app, file('Note.md'), 'origin', 'B', HEADING)).toBeNull();
+    expect(await appendRelation(app, file('Note.md'), 'up', 'A', HEADING)).toEqual({ skipped: 'already-typed' });
+    expect(await appendRelation(app, file('Note.md'), 'origin', 'B', HEADING)).toEqual({ skipped: 'already-typed' });
     expect(vault.notes.get('Note.md')).toBe(note);
   });
 
@@ -111,52 +122,199 @@ describe('appendRelation into the Relations section', () => {
 });
 
 describe('appendRelation with writeMode inline', () => {
-  it('types the first bare link in the prose and leaves the rest of the line as it is', async () => {
-    const { app, file, vault } = setup({ 'Note.md': '# Note\n\n昨日 [[A]] を読んだ。[[A]] はよい。\n' });
-    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...HEADING, mode: 'inline' });
+  const INLINE = { ...HEADING, mode: 'inline' as const };
 
-    expect(vault.notes.get('Note.md')).toBe('# Note\n\n昨日 (origin:: [[A]]) を読んだ。[[A]] はよい。\n');
+  it('wraps a link in the middle of a sentence and leaves the rest of the line as it is', async () => {
+    const note = '# Note\n\n昨日 [[A]] を読んだ。\n';
+    const { app, file, vault } = setup({ 'Note.md': note });
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...INLINE, at: at(2, 3) });
+
+    expect(vault.notes.get('Note.md')).toBe('# Note\n\n昨日 (origin:: [[A]]) を読んだ。\n');
     expect(edit).toEqual<RelationEdit>({
       line: 2,
-      before: '昨日 [[A]] を読んだ。[[A]] はよい。',
-      after: '昨日 (origin:: [[A]]) を読んだ。[[A]] はよい。',
+      before: '昨日 [[A]] を読んだ。',
+      after: '昨日 (origin:: [[A]]) を読んだ。',
     });
   });
 
-  it('skips links that already carry a field, inline or on their own line', async () => {
-    const { app, file, vault } = setup({ 'Note.md': 'up:: [[A]]\nsee (similar:: [[A]])\nand [[A]] here\n' });
-    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...HEADING, mode: 'inline' });
+  it('writes no brackets when the link is the whole line, keeping the indentation and the list marker', async () => {
+    const { app, file, vault } = setup({
+      'Bare.md': '[[A]]\n',
+      'List.md': '- [[A]]\n',
+      'Ordered.md': '  1. [[A]]  \n',
+    });
 
-    expect(vault.notes.get('Note.md')).toBe('up:: [[A]]\nsee (similar:: [[A]])\nand (origin:: [[A]]) here\n');
-    expect(edit?.line).toBe(2);
+    expect(await appendRelation(app, file('Bare.md'), 'up', 'A', { ...INLINE, at: at(0, 0) }))
+      .toEqual<RelationEdit>({ line: 0, before: '[[A]]', after: 'up:: [[A]]' });
+    expect(vault.notes.get('Bare.md')).toBe('up:: [[A]]\n');
+
+    await appendRelation(app, file('List.md'), 'up', 'A', { ...INLINE, at: at(0, 2) });
+    expect(vault.notes.get('List.md')).toBe('- up:: [[A]]\n');
+
+    await appendRelation(app, file('Ordered.md'), 'up', 'A', { ...INLINE, at: at(0, 5) });
+    expect(vault.notes.get('Ordered.md')).toBe('  1. up:: [[A]]  \n');
   });
 
-  it('does nothing when the note already has the same inline field, or no bare link at all', async () => {
-    const note = 'see (origin:: [[A]]) and [[B]]\n';
+  it('brackets a link that shares its line with anything else, a checkbox included', async () => {
+    const { app, file, vault } = setup({ 'Task.md': '- [ ] [[A]]\n' });
+
+    await appendRelation(app, file('Task.md'), 'up', 'A', { ...INLINE, at: at(0, 6) });
+    expect(vault.notes.get('Task.md')).toBe('- [ ] (up:: [[A]])\n');
+  });
+
+  it('leaves a heading alone and writes into the section instead, so [[Note#heading]] keeps working', async () => {
+    const { app, file, vault } = setup({ 'Head.md': '# [[A]] のまとめ\n\n本文。\n' });
+    const edit = await appendRelation(app, file('Head.md'), 'up', 'A', { ...INLINE, at: at(0, 2) });
+
+    expect(vault.notes.get('Head.md')).toBe('# [[A]] のまとめ\n\n本文。\n\n## Relations\nup:: [[A]]');
+    expect(edit).toMatchObject({ line: 4, after: '## Relations\nup:: [[A]]' });
+  });
+
+  it('types the occurrence the entry point pointed at, not the first one to the same note', async () => {
+    // 再現 1（LEV-185）: 同じ相手への `[[A]]` が 2 つある本文で、2 つ目にカーソルを置く。
+    const note = '昨日 [[A]] を読んだ。\n今日も [[A]] を読む。\n';
     const { app, file, vault } = setup({ 'Note.md': note });
 
-    expect(await appendRelation(app, file('Note.md'), 'origin', 'A', { ...HEADING, mode: 'inline' })).toBeNull();
-    expect(await appendRelation(app, file('Note.md'), 'up', 'C', { ...HEADING, mode: 'inline' })).toBeNull();
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...INLINE, at: at(1, 4) });
+
+    expect(vault.notes.get('Note.md')).toBe('昨日 [[A]] を読んだ。\n今日も (origin:: [[A]]) を読む。\n');
+    expect(edit).toMatchObject({ line: 1 });
+  });
+
+  it('takes the occurrence the position falls inside, and the nearer one at a border', async () => {
+    const { app, file, vault } = setup({ 'Inside.md': 'x [[A]] y\n', 'Border.md': '[[A]][[A|エー]]\n' });
+
+    // `[` ではなくリンクの中を指してもその出現。
+    await appendRelation(app, file('Inside.md'), 'up', 'A', { ...INLINE, at: at(0, 4) });
+    expect(vault.notes.get('Inside.md')).toBe('x (up:: [[A]]) y\n');
+
+    // 隣り合う 2 つの境目（5）は、そこから始まる 2 つ目のもの。
+    await appendRelation(app, file('Border.md'), 'up', 'A', { ...INLINE, at: at(0, 5) });
+    expect(vault.notes.get('Border.md')).toBe('[[A]](up:: [[A|エー]])\n');
+  });
+
+  it('keeps how the link was written, aliases and headings included', async () => {
+    const { app, file, vault } = setup({ 'Note.md': 'see [[A|エー]] today\n' });
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...INLINE, at: at(0, 4) });
+
+    expect(vault.notes.get('Note.md')).toBe('see (origin:: [[A|エー]]) today\n');
+    expect(edited(edit).after).toBe('see (origin:: [[A|エー]]) today');
+  });
+
+  it('says already-typed when that occurrence carries a field, whichever field it is', async () => {
+    const note = 'see (origin:: [[A]]) here\nup:: [[B]]\n';
+    const { app, file, vault } = setup({ 'Note.md': note });
+
+    // 同じフィールドでも別のフィールドでも、付け替え（replaceRelation）の仕事なのでここでは書かない。
+    expect(await appendRelation(app, file('Note.md'), 'origin', 'A', { ...INLINE, at: at(0, 14) }))
+      .toEqual({ skipped: 'already-typed' });
+    expect(await appendRelation(app, file('Note.md'), 'similar', 'B', { ...INLINE, at: at(1, 5) }))
+      .toEqual({ skipped: 'already-typed' });
     expect(vault.notes.get('Note.md')).toBe(note);
   });
 
-  it('types a link written with an alias or a heading, keeping how it was written', async () => {
-    const { app, file, vault } = setup({ 'Note.md': 'see [[A|エー]] today\n' });
-    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...HEADING, mode: 'inline' });
+  it('still finds the link when the line grew while Jev was answering, as long as one is left', async () => {
+    // 同じ行の前のリンクに型が付くと、後ろのリンクは右へずれる。行の中で 1 つに決まるなら拾う。
+    const { app, file, vault } = setup({ 'Note.md': '[[A]] と [[B]] の話。\n' });
+    await appendRelation(app, file('Note.md'), 'up', 'A', { ...INLINE, at: at(0, 0) });
 
-    expect(vault.notes.get('Note.md')).toBe('see (origin:: [[A|エー]]) today\n');
-    expect(edit?.after).toBe('see (origin:: [[A|エー]]) today');
+    // カードが持っているのは集めたときの桁（8）で、そこにはもう `[[A]]` の側がある。
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'B', { ...INLINE, at: at(0, 8) });
+
+    expect(vault.notes.get('Note.md')).toBe('(up:: [[A]]) と (origin:: [[B]]) の話。\n');
+    expect(edit).toMatchObject({ line: 0 });
   });
 
-  it('leaves frontmatter, code blocks and embeds alone, and types the link in the prose', async () => {
+  it('writes nothing when the position misses and the line holds two untyped links to the same note', async () => {
+    // どちらを指していたのか分からないので、同じ相手が 2 つある行では位置が合うことを求める。
+    const note = '[[A]] と [[A]] を比べる。\n';
+    const { app, file, vault } = setup({ 'Note.md': note });
+
+    // 6 は 2 つのリンクのあいだ。どちらの中でもないので、位置では決まらない。
+    expect(await appendRelation(app, file('Note.md'), 'up', 'A', { ...INLINE, at: at(0, 6) }))
+      .toEqual({ skipped: 'not-found' });
+    expect(vault.notes.get('Note.md')).toBe(note);
+  });
+
+  it('says not-found when the line holds no link to that note at all', async () => {
+    const note = '書き直した本文。\n';
+    const { app, file, vault } = setup({ 'Note.md': note });
+
+    // 行が別物になった・行そのものが無い・frontmatter やコードブロックの中、のどれも。
+    expect(await appendRelation(app, file('Note.md'), 'up', 'A', { ...INLINE, at: at(0, 3) }))
+      .toEqual({ skipped: 'not-found' });
+    expect(await appendRelation(app, file('Note.md'), 'up', 'A', { ...INLINE, at: at(9, 3) }))
+      .toEqual({ skipped: 'not-found' });
+    expect(vault.notes.get('Note.md')).toBe(note);
+
+    const fenced = setup({ 'Note.md': '```md\nsample [[A]]\n```\n' });
+    expect(await appendRelation(fenced.app, fenced.file('Note.md'), 'up', 'A', { ...INLINE, at: at(1, 7) }))
+      .toEqual({ skipped: 'not-found' });
+    expect(fenced.vault.notes.get('Note.md')).toBe('```md\nsample [[A]]\n```\n');
+  });
+
+  it('leaves an embed alone: it is not a link to type', async () => {
+    const note = '![[A]] を貼る。\n';
+    const { app, file, vault } = setup({ 'Note.md': note });
+
+    expect(await appendRelation(app, file('Note.md'), 'up', 'A', { ...INLINE, at: at(0, 1) }))
+      .toEqual({ skipped: 'not-found' });
+    expect(vault.notes.get('Note.md')).toBe(note);
+  });
+
+  it('finds a link written with spaces inside the brackets', async () => {
+    const { app, file, vault } = setup({ 'Note.md': 'see [[ A ]] today\n' });
+    await appendRelation(app, file('Note.md'), 'up', 'A', { ...INLINE, at: at(0, 4) });
+
+    expect(vault.notes.get('Note.md')).toBe('see (up:: [[ A ]]) today\n');
+  });
+
+  it('drops a markdown link into the Relations section, where a wikilink can reach the note', async () => {
+    // 再現 2（LEV-185）: `(up:: [B](notes/B.md))` は書かず、節に `[[…]]` で 1 行足す（設計 §3）。
+    const note = 'テンプレートは [B](notes/B.md) に寄せる。';
+    const { app, file, vault } = setup({ 'Note.md': note });
+    const edit = await appendRelation(app, file('Note.md'), 'up', 'notes/B.md', { ...INLINE, at: markdownAt(0, 8) });
+
+    expect(vault.notes.get('Note.md')).toBe(`${note}\n\n## Relations\nup:: [[notes/B.md]]`);
+    expect(edit).toEqual<RelationEdit>({ line: 1, before: '', after: '\n## Relations\nup:: [[notes/B.md]]' });
+  });
+
+  it('types the first untyped occurrence when no position is given (the bulk run has no cursor)', async () => {
+    const { app, file, vault } = setup({
+      'Note.md': 'up:: [[A]]\nsee (similar:: [[A]])\nand [[A]] here\nand [[A]] again\n',
+    });
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', INLINE);
+
+    expect(vault.notes.get('Note.md'))
+      .toBe('up:: [[A]]\nsee (similar:: [[A]])\nand (origin:: [[A]]) here\nand [[A]] again\n');
+    expect(edit).toMatchObject({ line: 2 });
+  });
+
+  it('says already-typed without a position when the same field is already on a link', async () => {
+    const note = 'see (origin:: [[A]]) and [[B]]\n';
+    const { app, file, vault } = setup({ 'Note.md': note });
+
+    expect(await appendRelation(app, file('Note.md'), 'origin', 'A', INLINE)).toEqual({ skipped: 'already-typed' });
+    expect(await appendRelation(app, file('Note.md'), 'up', 'C', INLINE)).toEqual({ skipped: 'not-found' });
+    expect(vault.notes.get('Note.md')).toBe(note);
+  });
+
+  it('leaves frontmatter, code blocks and embeds alone without a position too', async () => {
     const note = '---\nrelated: "[[A]]"\n---\n\n```md\nsample [[A]]\n```\n\n![[A]]\nabout [[A]] here\n';
     const { app, file, vault } = setup({ 'Note.md': note });
-    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', { ...HEADING, mode: 'inline' });
+    const edit = await appendRelation(app, file('Note.md'), 'origin', 'A', INLINE);
 
     expect(vault.notes.get('Note.md')).toBe(
       '---\nrelated: "[[A]]"\n---\n\n```md\nsample [[A]]\n```\n\n![[A]]\nabout (origin:: [[A]]) here\n',
     );
-    expect(edit?.line).toBe(9);
+    expect(edit).toMatchObject({ line: 9 });
+  });
+
+  it('keeps the line endings of a note written on Windows', async () => {
+    const { app, file, vault } = setup({ 'Note.md': '# Note\r\n\r\n昨日 [[A]] を読んだ。\r\n' });
+    await appendRelation(app, file('Note.md'), 'up', 'A', { ...INLINE, at: at(2, 3) });
+
+    expect(vault.notes.get('Note.md')).toBe('# Note\r\n\r\n昨日 (up:: [[A]]) を読んだ。\r\n');
   });
 });
 
@@ -194,7 +352,7 @@ describe('replaceRelation', () => {
   it('does nothing when the note has no such field for the target', async () => {
     const { app, file, vault } = setup({ 'Note.md': '## Relations\nup:: [[B]]\n' });
 
-    expect(await replaceRelation(app, file('Note.md'), 'up', 'origin', 'A')).toBeNull();
+    expect(await replaceRelation(app, file('Note.md'), 'up', 'origin', 'A')).toEqual({ skipped: 'not-found' });
     expect(vault.notes.get('Note.md')).toBe('## Relations\nup:: [[B]]\n');
   });
 });
@@ -227,7 +385,9 @@ describe('jev-log.json and undo', () => {
     const before = '昨日 [[A]] を読んだ。\n';
     const { app, file, vault } = setup({ 'Note.md': before });
     const entry = await writeAndLog(
-      app, file('Note.md'), 'origin', 'A', { ...HEADING, mode: 'inline' }, { batchId: 'b1', source: 'suggester' },
+      app, file('Note.md'), 'origin', 'A',
+      { ...HEADING, mode: 'inline', at: at(0, 3) },
+      { batchId: 'b1', source: 'suggester' },
     );
 
     expect(await undo(app, MANIFEST_DIR, entry.id)).toBe('undone');
@@ -302,9 +462,8 @@ describe('jev-log.json and undo', () => {
     const { app, file, vault, log } = setup({ 'Note.md': '## Relations\n' });
     const meta = { batchId: 'bulk', source: 'bulk' };
     // 一括は判定を並列に走らせるので、書いた順と記録の順は入れ替わりうる（設計 §4-3）。
-    const upper = await appendRelation(app, file('Note.md'), 'up', 'A', HEADING);
-    const lower = await appendRelation(app, file('Note.md'), 'origin', 'B', HEADING);
-    if (!upper || !lower) throw new Error('nothing was written');
+    const upper = edited(await appendRelation(app, file('Note.md'), 'up', 'A', HEADING));
+    const lower = edited(await appendRelation(app, file('Note.md'), 'origin', 'B', HEADING));
     await appendLogEntry(app, MANIFEST_DIR, { ...lower, file: 'Note.md', ...meta });
     await appendLogEntry(app, MANIFEST_DIR, { ...upper, file: 'Note.md', ...meta });
 

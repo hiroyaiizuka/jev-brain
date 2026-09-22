@@ -23,7 +23,7 @@ export type JevQueueStatus = "pending" | "open" | "failed" | "later" | "done";
 /** 確定で書いた内容。`logId` は `jev-log.json` の記録の id で、取り消し（`undo`）の handle。 */
 export type JevQueueWrite = {
   field: string;
-  /** 実際にノートに入った塊（見出しごと作ったときは複数行）。カードにそのまま出す。 */
+  /** 入ったフィールド（`up:: [[B]]`）。書き換えた行そのものではなく、足したぶんだけをカードに出す。 */
   text: string;
   /** `appendLogEntry` が付けた id。記録できなかったときは空文字で、取り消しは出さない。 */
   logId: string;
@@ -36,6 +36,9 @@ export type JevQueueCard = {
   /** リンクの位置と長さ（`collectUntypedLinks` が `metadataCache` から持ってきたもの）。state に渡す。 */
   readonly offset: number;
   readonly length: number;
+  /** 同じ位置を行と桁で。確定はこの出現だけを書き換える（設計 §3、LEV-185）。 */
+  readonly line: number;
+  readonly ch: number;
   readonly context: string;
   status: JevQueueStatus;
   judgement: Judgement | null;
@@ -97,6 +100,8 @@ export class JevQueueModel {
         displayText: link.displayText,
         offset: link.offset,
         length: link.length,
+        line: link.line,
+        ch: link.ch,
         context: link.context,
         status: this.deferred.has(deferKey(path, link.target)) ? "later" : "pending",
         judgement: null,

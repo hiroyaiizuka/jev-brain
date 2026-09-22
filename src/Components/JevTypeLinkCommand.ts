@@ -99,6 +99,8 @@ export const noticeFor = (result: TypeLinkResult): string | null => {
       );
     case "unchanged":
       return fill(t("JEV_COMMAND_UNCHANGED"), { field: result.field, target: result.target });
+    case "link-gone":
+      return fill(t("JEV_COMMAND_LINK_GONE"), { field: result.field, target: result.target });
     default:
       return fill(t(result.logged ? "JEV_COMMAND_WROTE" : "JEV_COMMAND_WROTE_UNLOGGED"), {
         field: result.field,

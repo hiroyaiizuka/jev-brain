@@ -176,9 +176,9 @@ export type JevSettings = {
   suggestOnLinkClose: boolean;
   /** Characters sent from either side of the link as context. */
   contextChars: number;
-  /** Heading of the section a confirmed `field:: [[X]]` line is appended to. */
+  /** Heading of the section a confirmed `field:: [[X]]` line is appended to in `relations` mode. */
   relationsHeading: string;
-  /** Where a confirmed field goes: the Relations section, or the inline link in the body. */
+  /** Where a confirmed field goes: the link in the body it was pointed at (the default), or the Relations section. */
   writeMode: "relations" | "inline";
   /** Smallest probability at which a bulk run confirms the first candidate on its own (JEV-4). */
   autoConfirmThreshold: number;

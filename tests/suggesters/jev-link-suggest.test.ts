@@ -421,7 +421,7 @@ describe('JevLinkSuggest.getSuggestions', () => {
 describe('JevLinkSuggest.selectSuggestion', () => {
   const UP: JevSuggestion = { kind: 'candidate', field: 'up', probability: 0.82, direction: 'parent', confident: true };
 
-  it('appends the field to the Relations section and records it so it can be undone', async () => {
+  it('types the link it was opened on and records it so it can be undone', async () => {
     const { suggester, vault, file } = setup(TWO_NOTES);
     typeClosing(suggester, file('A.md'), TWO_NOTES['A.md'].content ?? '', CURSOR);
     await flush();
@@ -429,11 +429,56 @@ describe('JevLinkSuggest.selectSuggestion', () => {
     suggester.selectSuggestion(UP);
     await flush();
 
-    expect(vault.notes.get('A.md')).toBe(`${TWO_NOTES['A.md'].content ?? ''}\n\n## Relations\nup:: [[B]]`);
+    // 既定はインライン（LEV-185）。文中のリンクなので括弧付きで、`## Relations` は増えない。
+    expect(vault.notes.get('A.md')).toBe('習慣はトリガー固定で続く。関連: (up:: [[B]])');
     const log = JSON.parse(vault.dataFiles.get(`${MANIFEST_DIR}/jev-log.json`) ?? '[]') as { source: string; file: string; after: string }[];
     expect(log).toHaveLength(1);
-    expect(log[0]).toMatchObject({ source: 'suggest', file: 'A.md', line: 1, after: '\n## Relations\nup:: [[B]]' });
+    expect(log[0]).toMatchObject({
+      source: 'suggest',
+      file: 'A.md',
+      line: 0,
+      before: '習慣はトリガー固定で続く。関連: [[B]]',
+      after: '習慣はトリガー固定で続く。関連: (up:: [[B]])',
+    });
     expect(Notice.messages).toEqual(['Jev: added up:: [[B]]']);
+  });
+
+  it('types the occurrence it was opened on, not the first one to the same note (LEV-185)', async () => {
+    const content = '[[B]] の話。もう一度 [[B]]';
+    const { suggester, vault, file } = setup({ ...TWO_NOTES, 'A.md': { content } });
+    typeClosing(suggester, file('A.md'), content, endOf(content));
+    await flush();
+
+    suggester.selectSuggestion(UP);
+    await flush();
+
+    expect(vault.notes.get('A.md')).toBe('[[B]] の話。もう一度 (up:: [[B]])');
+  });
+
+  it('appends to the Relations section when the settings choose it', async () => {
+    const { suggester, vault, file } = setup(TWO_NOTES, { jev: { writeMode: 'relations' } });
+    typeClosing(suggester, file('A.md'), TWO_NOTES['A.md'].content ?? '', CURSOR);
+    await flush();
+
+    suggester.selectSuggestion(UP);
+    await flush();
+
+    expect(vault.notes.get('A.md')).toBe(`${TWO_NOTES['A.md'].content ?? ''}\n\n## Relations\nup:: [[B]]`);
+  });
+
+  it('writes nothing and says so when the link moved away while Jev was answering', async () => {
+    const { suggester, vault, file } = setup(TWO_NOTES);
+    typeClosing(suggester, file('A.md'), TWO_NOTES['A.md'].content ?? '', CURSOR);
+    await flush();
+    // 判定を待つ間に本文が書き換わり、閉じた `]]` の位置にはもうリンクが無い。
+    vault.notes.set('A.md', '別の文。');
+
+    suggester.selectSuggestion(UP);
+    await flush();
+
+    expect(vault.notes.get('A.md')).toBe('別の文。');
+    expect(vault.dataFiles.size).toBe(0);
+    expect(Notice.messages).toEqual(['Jev did not write up:: [[B]]: the link is no longer where it was closed.']);
   });
 
   it('flushes the editor buffer before it writes, so the next autosave keeps the line', async () => {
@@ -445,9 +490,9 @@ describe('JevLinkSuggest.selectSuggestion', () => {
     suggester.selectSuggestion(UP);
     await flush();
 
-    // Saved once, and before the line was appended: `vault.process` reads the file, not the buffer.
+    // Saved once, and before the field was written: `vault.process` reads the file, not the buffer.
     expect(saves).toEqual([content]);
-    expect(vault.notes.get('A.md')).toContain('up:: [[B]]');
+    expect(vault.notes.get('A.md')).toContain('(up:: [[B]])');
   });
 
   it('says so when the line was written but could not be recorded', async () => {

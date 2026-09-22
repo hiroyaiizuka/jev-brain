@@ -1,16 +1,17 @@
 import { TFile } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
+import { normalizeRelationsHeading } from "src/Settings";
 import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev, type JevQuestion, type JevRequest } from "./client";
 import { collectUntypedLinks } from "./collect";
 import { buildQuestions, judge, type Questions } from "./judge";
 import { appendLogEntry } from "./log";
-import { appendRelation } from "./relations";
+import { appendRelation, isRelationEdit } from "./relations";
 import { buildState } from "./state";
 
 /**
  * 1 リンクの通し（docs/jev-link-typer-design.md §2〜§3）: カーソルのリンクを取り、未型付けか確かめ、
- * state と 2 問を組んで Jev に聞き、整合したら `## Relations` に 1 行足して記録する。
+ * state と 2 問を組んで Jev に聞き、整合したらそのリンクにフィールドを付けて記録する。
  *
  * ここには Notice も Obsidian の UI も無い。何が起きたかは {@link TypeLinkResult} で返し、文言は
  * `src/Components/JevTypeLinkCommand.ts` が付ける。中核（collect／state／judge／relations／log）は
@@ -53,8 +54,10 @@ export type TypeLinkResult =
    * `reason` は Q1 と Q2 の食い違い（`direction`）か、Q1 の答えがオントロジーに無い語（`unknown-field`）。
    */
   | { status: "unconfident"; reason: "direction" | "unknown-field"; target: string; answer: string; candidates: string[] }
-  /** 同じ行が既にあった（`appendRelation` が何も変えなかった）。 */
+  /** そのリンクに既にフィールドが付いていた（`relations` なら同じ行が既にあった）。 */
   | { status: "unchanged"; field: string; target: string }
+  /** カーソルが指した出現がその位置に無かった（判定を待つ間に本文が動いた・消えた）。 */
+  | { status: "link-gone"; field: string; target: string }
   | {
       status: "written";
       field: string;
@@ -70,8 +73,9 @@ export type TypeLinkResult =
     };
 
 /**
- * カーソルのリンクに型を付ける。書くのは `## Relations`（設定 `writeMode` が `inline` なら本文）の 1 行だけで、
- * 本文の `[[X]]` は触らない。描画は Obsidian の `metadataCache` の更新に任せる（設計 §3）。
+ * カーソルのリンクに型を付ける。書くのはカーソルが指した本文のリンク 1 つだけ（設定 `writeMode` が
+ * `relations` なら `## Relations` の 1 行だけ）で、同じ相手が本文に 2 つあっても他は触らない。
+ * 描画は Obsidian の `metadataCache` の更新に任せる（設計 §3）。
  */
 export const typeLinkAtCursor = async (
   plugin: ExcaliBrain,
@@ -144,11 +148,18 @@ export const typeLinkAtCursor = async (
   const field = chosen?.field ?? judgement.field;
 
   await deps.flush?.();
-  const edit = await appendRelation(app, file, field, name, {
-    heading: settings.jev.relationsHeading,
+  const outcome = await appendRelation(app, file, field, name, {
+    // 設定タブを開いたまま見出しを打ち替えている最中は `## Notes` のような値が入っているので、
+    // 節を作る側と同じ正規化を通す（`normalizeSettings` はタブを閉じたときにしか走らない）。
+    heading: normalizeRelationsHeading(settings.jev.relationsHeading),
     mode: settings.jev.writeMode,
+    // 書き換えるのはカーソルが指したその出現だけ（設計 §3、LEV-185）。markdown リンクは
+    // その中にフィールドを書けないので、`relations.ts` が節に落とす。
+    at: { line: cursor.line, ch: written.start, wiki: written.wiki },
   });
-  if (!edit) return { status: "unchanged", field, target: name };
+  if (!isRelationEdit(outcome)) {
+    return { status: outcome.skipped === "not-found" ? "link-gone" : "unchanged", field, target: name };
+  }
 
   return {
     status: "written",
@@ -158,7 +169,7 @@ export const typeLinkAtCursor = async (
     inputTokens: response.usage?.inputTokens,
     estimatedTokens: response.usage?.estimated,
     // 書いたあとに記録だけ落ちても、行は入っている。取り消せないことだけを呼び出し側に伝える。
-    logged: await logEdit(plugin, file.path, edit),
+    logged: await logEdit(plugin, file.path, outcome),
   };
 };
 
