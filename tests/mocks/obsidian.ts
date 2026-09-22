@@ -199,3 +199,14 @@ export class VaultStub {
     return Promise.resolve(data);
   }
 }
+
+// ---- LEV-170 ----
+
+/**
+ * `MarkdownView` as `src/Components/JevTypeLinkCommand.ts` uses it: only `ctx instanceof MarkdownView`
+ * and `save()`, which flushes the editor buffer to the file before Jev writes a line.
+ */
+export class MarkdownView {
+  file: TFile | null = null;
+  save(): Promise<void> { return Promise.resolve(); }
+}

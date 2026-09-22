@@ -1,4 +1,4 @@
-import { EditorSuggest, Notice } from "obsidian";
+import { EditorSuggest, MarkdownView, Notice } from "obsidian";
 import type {
   Editor,
   EditorPosition,
@@ -326,6 +326,10 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     const written = `${field}:: [[${ask.linkpath}]]`;
     let edit;
     try {
+      // 読んだのはエディタのバッファ、書くのは `vault.process`＝ファイル。書く直前にバッファを
+      // 流して、次の自動保存が追記した行を巻き戻さないようにする（`src/jev/typeLink.ts` の flush と同じ）。
+      const view = app.workspace.getActiveViewOfType(MarkdownView);
+      if (view?.file?.path === ask.file.path) await view.save();
       edit = await appendRelation(app, ask.file, field, ask.linkpath, {
         heading: normalizeRelationsHeading(settings.jev.relationsHeading),
         mode: settings.jev.writeMode,

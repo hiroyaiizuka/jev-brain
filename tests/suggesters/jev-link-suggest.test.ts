@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TFile } from 'obsidian';
+import type { MarkdownView } from 'obsidian';
 import type { Editor, EditorPosition, EditorSuggestContext, EditorSuggestTriggerInfo } from 'obsidian';
 // The stubs by their own path: Vitest serves the same module for `obsidian`, and their test-only
 // members (`Notice.messages`, `requestUrlMock`, `VaultStub.notes`) are not on the real typings.
@@ -72,6 +73,15 @@ function setup(
     files.get(linkpath) ?? files.get(`${linkpath}.md`) ?? null;
   const { hierarchy, hierarchyLowerCase } = buildHierarchyLowerCase(options.ontology ?? ONTOLOGY);
   const opened: ((file: TFile | null) => void)[] = [];
+  // The open editor of `A.md`: a confirmation flushes its buffer before writing to the file.
+  const saves: string[] = [];
+  const view = {
+    file: files.get('A.md'),
+    save: (): Promise<void> => {
+      saves.push(vault.notes.get('A.md') ?? '');
+      return Promise.resolve();
+    },
+  } as unknown as MarkdownView;
 
   const plugin = {
     settings: {
@@ -90,6 +100,7 @@ function setup(
           if (name === 'file-open') opened.push(callback);
           return { name };
         },
+        getActiveViewOfType: () => view,
       },
       metadataCache: {
         getFirstLinkpathDest: (linkpath: string) => resolve(linkpath),
@@ -106,6 +117,8 @@ function setup(
     plugin,
     vault,
     suggester,
+    /** What `A.md` held each time its editor was asked to save. */
+    saves,
     file: (path: string) => files.get(path),
     /** Tells the suggester another note was opened, as Obsidian's `file-open` would. */
     open: (path: string | null) => { opened.forEach((callback) => { callback(path ? files.get(path) : null); }); },
@@ -395,6 +408,20 @@ describe('JevLinkSuggest.selectSuggestion', () => {
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ source: 'suggest', file: 'A.md', line: 1, after: '\n## Relations\nup:: [[B]]' });
     expect(Notice.messages).toEqual(['Jev: added up:: [[B]]']);
+  });
+
+  it('flushes the editor buffer before it writes, so the next autosave keeps the line', async () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const { suggester, vault, file, saves } = setup(TWO_NOTES);
+    typeClosing(suggester, file('A.md'), content, CURSOR);
+    await flush();
+
+    suggester.selectSuggestion(UP);
+    await flush();
+
+    // Saved once, and before the line was appended: `vault.process` reads the file, not the buffer.
+    expect(saves).toEqual([content]);
+    expect(vault.notes.get('A.md')).toContain('up:: [[B]]');
   });
 
   it('says so when the line was written but could not be recorded', async () => {
