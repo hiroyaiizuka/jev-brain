@@ -16,6 +16,14 @@ export type UntypedLink = {
   /** Where the `[[` starts, 0-based, as `metadataCache` reports it. */
   line: number;
   ch: number;
+  /**
+   * Where the link starts and how long it is written, counted over the whole note as
+   * `metadataCache` counts it — `[[X|alias]]` whole, `![[X]]` without the `!`. The judgement's
+   * state needs the span (`buildState`), and rederiving it from `line`/`ch` cannot be done
+   * safely: a line holds more than one link, and a `[text](note.md)` has no `]]` to find.
+   */
+  offset: number;
+  length: number;
   /** The line the link sits on, as written: `ch` indexes into it. */
   context: string;
 };
@@ -114,6 +122,8 @@ const occurrencesOf = (app: App, page: Page, file: TFile, content: string): Occu
         displayText: link.displayText || linkpath,
         line: link.position.start.line,
         ch: link.position.start.col,
+        offset: link.position.start.offset,
+        length: link.position.end.offset - link.position.start.offset,
         context: lines[link.position.start.line] ?? "",
       },
       relation: page.neighbours.get(target),

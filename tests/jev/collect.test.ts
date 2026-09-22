@@ -159,6 +159,8 @@ describe('collectUntypedLinks', () => {
       displayText: 'B',
       line: 2,
       ch: 4,
+      offset: 9,
+      length: 5,
       context: '本文で [[B]] と [[C]] に触れる。',
     });
     expect(untyped[2]).toMatchObject({ line: 3, ch: 0, context: '[[D]] は段落を変えて置く。' });
@@ -170,15 +172,21 @@ describe('collectUntypedLinks', () => {
       { regions },
     );
     expect(collectUntypedLinks(...argsFor(vault, 'A.md'))).toEqual([
-      { target: 'B.md', displayText: 'B', line: 0, ch: 8, context: '[[A]] と [[B]]。' },
+      { target: 'B.md', displayText: 'B', line: 0, ch: 8, offset: 8, length: 5, context: '[[A]] と [[B]]。' },
     ]);
   });
 
   it('reads an alias and a heading link as one target, and an unresolved link by its name', () => {
     const vault = makeVault({ 'A.md': { content: '[[B#節|別名]] と [[まだ無いノート]]。' }, 'B.md': {} }, { regions });
     expect(collectUntypedLinks(...argsFor(vault, 'A.md'))).toEqual([
-      { target: 'B.md', displayText: '別名', line: 0, ch: 0, context: '[[B#節|別名]] と [[まだ無いノート]]。' },
-      { target: 'まだ無いノート', displayText: 'まだ無いノート', line: 0, ch: 13, context: '[[B#節|別名]] と [[まだ無いノート]]。' },
+      {
+        target: 'B.md', displayText: '別名', line: 0, ch: 0, offset: 0, length: 10,
+        context: '[[B#節|別名]] と [[まだ無いノート]]。',
+      },
+      {
+        target: 'まだ無いノート', displayText: 'まだ無いノート', line: 0, ch: 13, offset: 13, length: 11,
+        context: '[[B#節|別名]] と [[まだ無いノート]]。',
+      },
     ]);
   });
 
@@ -186,8 +194,8 @@ describe('collectUntypedLinks', () => {
     const content = '[ラベル](Some%20Note.md) と [](B.md) と [外部](http://example.com)。';
     const vault = makeVault({ 'A.md': { content }, 'Some Note.md': {}, 'B.md': {} }, { regions });
     expect(collectUntypedLinks(...argsFor(vault, 'A.md'))).toEqual([
-      { target: 'Some Note.md', displayText: 'ラベル', line: 0, ch: 0, context: content },
-      { target: 'B.md', displayText: 'B.md', line: 0, ch: 24, context: content },
+      { target: 'Some Note.md', displayText: 'ラベル', line: 0, ch: 0, offset: 0, length: 21, context: content },
+      { target: 'B.md', displayText: 'B.md', line: 0, ch: 24, offset: 24, length: 8, context: content },
     ]);
   });
 
@@ -228,6 +236,25 @@ describe('collectUntypedLinks', () => {
     expect(link).toMatchObject({ line: 1, ch: 11, context: '    - 入れ子で [[B]] に触れる' });
     expect(link.context.slice(link.ch)).toMatch(/^\[\[B\]\]/u);
   });
+
+  it('spans the link over the whole note, so the state can be cut around it', () => {
+    // The span has to come from metadataCache: the second link of a line cannot be measured
+    // by looking for the next `]]`, and a markdown link has none at all.
+    const content = '[ラベル](Some%20Note.md) と [[B|別名]] と [[C#節]]。';
+    const vault = makeVault(
+      { 'A.md': { content }, 'Some Note.md': {}, 'B.md': {}, 'C.md': {} },
+      { regions },
+    );
+
+    const links = collectUntypedLinks(...argsFor(vault, 'A.md'));
+
+    expect(links.map((link) => [link.offset, link.length])).toEqual([[0, 21], [24, 8], [35, 7]]);
+    for (const link of links) {
+      expect(content.slice(link.offset, link.offset + link.length)).toBe(
+        link.context.slice(link.ch, link.ch + link.length),
+      );
+    }
+  });
 });
 
 describe('collectTypedLinks', () => {
@@ -246,8 +273,14 @@ describe('collectTypedLinks', () => {
       { regions },
     );
     expect(collectTypedLinks(...argsFor(vault, 'A.md'))).toEqual([
-      { target: 'B.md', displayText: 'B', line: 0, ch: 9, context: 'origin:: [[B]]', fields: ['origin'] },
-      { target: 'C.md', displayText: 'C', line: 1, ch: 10, context: 'similar:: [[C]]', fields: ['origin', 'similar'] },
+      {
+        target: 'B.md', displayText: 'B', line: 0, ch: 9, offset: 9, length: 5,
+        context: 'origin:: [[B]]', fields: ['origin'],
+      },
+      {
+        target: 'C.md', displayText: 'C', line: 1, ch: 10, offset: 25, length: 5,
+        context: 'similar:: [[C]]', fields: ['origin', 'similar'],
+      },
     ]);
     expect(collectUntypedLinks(...argsFor(vault, 'A.md')).map((link) => link.target)).toEqual(['D.md']);
   });
