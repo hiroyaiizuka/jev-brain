@@ -1,5 +1,7 @@
 {
-  "note": "200 だが questions を持たない応答（モデル名の誤りなど）。読めない応答として扱う。実物の記録ではない。",
+  "note": "200 だが answers を持たない応答（モデル名の誤りなど）。読めない応答として扱う。実物の記録ではない。",
   "status": 200,
-  "body": { "error": "no such model" }
+  "body": {
+    "error": "no such model"
+  }
 }

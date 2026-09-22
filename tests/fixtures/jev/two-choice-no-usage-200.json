@@ -1,17 +1,27 @@
 {
-  "note": "usage を返さない 2 問 Choice の応答。トークン数を state の文字数から見積もる枝のため。出自は two-choice-200.json と同じ（実物の記録ではない）。",
+  "note": "usage を返さない 2 問 Choice の応答。トークン数を送った本文の文字数から見積もる枝のため。形は two-choice-200.json（実応答）に合わせ、答えと確率だけ変えた。",
   "status": 200,
   "body": {
-    "questions": {
+    "model": "jev-1.13.0",
+    "answers": {
       "field": {
+        "type": "choice",
         "choice": "origin",
-        "probabilities": { "origin": 0.64, "up": 0.28, "similar": 0.08 },
-        "confidence": 0.64
+        "confidence": 0.64,
+        "probabilities": {
+          "origin": 0.64,
+          "up": 0.28,
+          "similar": 0.08
+        }
       },
       "direction": {
+        "type": "choice",
         "choice": "parent",
-        "probabilities": { "parent": 0.71, "child": 0.29 },
-        "confidence": 0.71
+        "confidence": 0.71,
+        "probabilities": {
+          "parent": 0.71,
+          "child": 0.29
+        }
       }
     }
   }

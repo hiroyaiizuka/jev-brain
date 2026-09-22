@@ -1,14 +1,22 @@
 {
-  "note": "2 問聞いたのに 1 問（direction）しか返らなかった応答。半端な応答を呼び出し側に渡さないための枝。実物の記録ではない。",
+  "note": "2 問聞いたのに 1 問（field）しか返らなかった応答。半端な応答を呼び出し側に渡さないための枝。形は実応答に合わせた作り物。",
   "status": 200,
   "body": {
-    "questions": {
+    "model": "jev-1.13.0",
+    "answers": {
       "field": {
+        "type": "choice",
         "choice": "up",
-        "probabilities": { "up": 0.79, "origin": 0.21 },
-        "confidence": 0.79
+        "confidence": 0.79,
+        "probabilities": {
+          "up": 0.79,
+          "origin": 0.21
+        }
       }
     },
-    "usage": { "inputTokens": 1512 }
+    "usage": {
+      "input_tokens": 1512,
+      "output_tokens": 44
+    }
   }
 }

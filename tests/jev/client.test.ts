@@ -95,13 +95,15 @@ describe('askJev', () => {
         },
       },
     });
+    // 応答の `answers` を質問の名前で引く辞書にし、`type` は読まない。実応答の形（2026-09-22、E18）。
     expect(response?.questions.field).toEqual({
       choice: 'up',
-      probabilities: { up: 0.82, origin: 0.11, similar: 0.04, down: 0.03 },
-      confidence: 0.82,
+      probabilities: { up: 0.39, next: 0.14, similar: 0.17, down: 0.3 },
+      confidence: 0.19,
     });
-    expect(response?.questions.direction.choice).toBe('parent');
-    expect(response?.usage).toEqual({ inputTokens: 1873 });
+    expect(response?.questions.direction.choice).toBe('child');
+    // usage は `{ input_tokens, output_tokens }`。出力は無料なので入力だけを持つ（設計 §7）。
+    expect(response?.usage).toEqual({ inputTokens: 515 });
     expect(Notice.messages).toEqual([]);
     expect(warnings).toEqual([]);
   });
@@ -169,7 +171,7 @@ describe('askJev', () => {
     expect(warnings[0]).toMatchObject({ message: expect.stringContaining('unreadable') as unknown });
   });
 
-  it('treats a 200 whose body is not the documented shape as unreadable', async () => {
+  it('treats a 200 whose body is not the recorded shape as unreadable', async () => {
     requestUrlMock.respond = () => Promise.resolve(recorded('wrong-shape-200.json'));
 
     expect(await askJev(config, request)).toBeNull();

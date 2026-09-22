@@ -92,12 +92,23 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 | `endpoint` | `https://api.typesafe.ai/v1/systemone` | 変更可 |
 | `model` | `jev-latest` | 変更可 |
 
-## 7. Jev の API と費用（2026-09-22、公開情報）
+## 7. Jev の API と費用（2026-09-22。要求は公開情報どおり、応答は実機 E18 の記録）
 
-- `POST https://api.typesafe.ai/v1/systemone`、Bearer キー、モデル `jev-latest`。`state`（文字列か JSON）と `questions`（名前 → Choice／Score／Noul）。Choice の `criteria` はラベル→説明文の辞書で 255 候補まで。Score は 2〜10 段階、Noul は yes の確率。返り値は質問ごとの `choice`・`probabilities`・`confidence`。複数の質問は並列に評価される。
+- 要求: `POST https://api.typesafe.ai/v1/systemone`、Bearer キー、モデル `jev-latest`。本文は `model`・`state`（文字列か JSON）・`questions`（名前 → `{ type, instructions, criteria }`）。Choice の `criteria` はラベル→説明文の辞書で 255 候補まで。Score は 2〜10 段階、Noul は yes の確率。複数の質問は並列に評価される。公開情報のとおりで通った（2026-09-22、E18）。
+- 応答: トップレベルは `model`・`answers`・`usage`。`answers` は**質問の名前 → `{ type, choice, confidence, probabilities }`**、`usage` は `input_tokens`／`output_tokens`（snake_case）。公開情報から起こしていた形との差は 3 点で、(1) `questions` ではなく `answers`、(2) 各回答に `type`、(3) usage が snake_case。`src/jev/client.ts` の `parseResponseBody` はこの形だけを読み、質問の名前で引く辞書（`JevResponse.questions`）と `usage.inputTokens` に直す。出力は無料なので `output_tokens` は読まない。
+
+```json
+{"model":"jev-1.13.0",
+ "answers":{"field":{"type":"choice","choice":"up","confidence":0.19,
+                     "probabilities":{"up":0.39,"next":0.14,"similar":0.17,"down":0.3}},
+            "direction":{"type":"choice","choice":"child","confidence":0.18,
+                         "probabilities":{"leftFriend":0.12,"parent":0.31,"rightFriend":0.18,"child":0.39}}},
+ "usage":{"input_tokens":515,"output_tokens":92}}
+```
+
 - 上限: 1 回 64k トークン、state＋最長の質問で 32k。1,200 req/分。前払い残高制。
-- 料金: $0.042/M 入力トークン、出力無料。1 判定 2,000 トークン ≈ 0.013 円（150 円/$）。月 600 判定で約 8 円、3,000 リンクの一括で約 40 円。
-- 出典: OpenRouter の `typesafe/jev-1.13`、DEV Community「How to Use Jev」。正式な SDK・レスポンスの形は TypeSafe のドキュメントが正で、キー発行時に照合して差があれば本節と `client.ts`・`tests/fixtures/jev/` を直す。
+- 料金: $0.042/M 入力トークン、出力無料。1 判定 2,000 トークン ≈ 0.013 円（150 円/$）。月 600 判定で約 8 円、3,000 リンクの一括で約 40 円。実測は 1 判定 515 入力トークン ≈ 0.003 円（2026-09-22、E18。state は fixture のノート 1 本ぶんで `contextChars` は既定）。本人の Vault の長いノートでは増えるので、見積もりの 2,000 はそのまま残す。
+- 出典: 要求の形と料金・上限は OpenRouter の `typesafe/jev-1.13` と DEV Community「How to Use Jev」。応答の形は 2026-09-22 の実機 E18 の記録（`artifacts/jev-1-e2e/e18-raw-response.json`、`tests/fixtures/jev/two-choice-200.json` に同じものを置いた。state は `tests/fixtures/` のノートだけで作ったので Vault の内容は入っていない）。ここから先も差が出たら本節と `client.ts`・`tests/fixtures/jev/` を直す。
 - 呼び出しは `src/jev/client.ts` だけ。Obsidian の `requestUrl` を使う（CORS を避け、モバイルでも同じ）。
 
 ## 8. 第 2 段階: 関連候補（JEV-5、Backlog）
@@ -130,4 +141,5 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 | しきい値 | 既定 0.8／0.9。JEV-0 で確定 |
 | API キー | 設定（`data.json`）。README に送信内容を明記。コミュニティ登録するならネットワーク利用の開示が要る |
 | BRAT | JEV-3 の後 |
-| 未確認 | Jev の正式 SDK とレスポンスの正確な形（キー発行後に照合）、日本語の state のトークン数、`requestUrl` のタイムアウト挙動 |
+| レスポンスの形 | 実機 E18（2026-09-22）で照合し、`answers`・回答の `type`・`usage` の snake_case に合わせた（§7）。以前の `questions` の形は受けない |
+| 未確認 | Jev の正式 SDK、エラー応答（4xx・5xx）の本文の形、日本語の state のトークン数の実測（E18 の 1 判定は入力 515 トークン）、`requestUrl` のタイムアウト挙動 |
