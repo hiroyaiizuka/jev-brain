@@ -14,6 +14,7 @@ import { isEmbedFileType } from "./utils/fileUtils";
 import { Page } from "./graph/Page";
 import { FLOOR_LEVEL, FloorPlan, Point, Projected, ProjectionParams, bandShift, compareDrawOrder, floorDrop, floorEdgesNorthSouth, floorOf, floorPlan, friendBandShift, groundGapNorthSouth, isOnAxis, levelOf, limitByAxis, project, regridBand, verticalRow } from "./graph/Projection";
 import { zoomTargets } from "./graph/zoom";
+import { JEV_CENTRAL_PAGE_CHANGED } from "./utils/jevEvents";
 import { t } from "./lang/helpers";
 import { ExcalidrawAutomate, ExcalidrawElement, ExcalidrawImperativeAPI, addElementsToViewTransient, applyEAStyle, configureExcaliBrainView, getEA, destroyViewEA, releaseViewEA, updateViewSceneTransient, waitForExcalidrawViewReady } from "./utils/ExcalidrawAutomateCompatibility";
  
@@ -824,6 +825,10 @@ export class Scene {
       if(!centralPage) return;
       this.centralPageFile = centralPage.file;
     }
+
+    //中心が決まったことを知らせる唯一の接点（docs/jev-link-typer-design.md §4-2）。受け取るのは
+    //JevQueueView で、渡すのはパスだけ。Scene も graph も jev を import せず、描画 API も渡さない。
+    this.app.workspace.trigger(JEV_CENTRAL_PAGE_CHANGED, this.centralPagePath);
 
     const ea = this.ea;
     retainCentralNode = 

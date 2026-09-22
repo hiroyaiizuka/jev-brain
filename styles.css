@@ -396,3 +396,55 @@
 .excalibrain-ontology-setting .setting-item-control > button {
   flex: 1 0 calc(33.33% - var(--size-4-2));
 }
+
+/* ---------------------
+   JEV TYPING QUEUE (LEV-174)
+   最小限だけ。本格的なスタイルは LEV-175。
+  --------------------- */
+
+.jevbrain-queue-header,
+.jevbrain-queue-footer {
+  padding: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.jevbrain-queue-note {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.jevbrain-queue-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-2);
+  margin-bottom: var(--size-4-2);
+}
+
+.jevbrain-queue-card-target {
+  font-weight: var(--font-semibold);
+}
+
+.jevbrain-queue-card-context,
+.jevbrain-queue-card-note,
+.jevbrain-queue-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.jevbrain-queue-card-written {
+  white-space: pre-wrap;
+  font-size: var(--font-ui-smaller);
+}
+
+.jevbrain-queue-candidates,
+.jevbrain-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  margin-top: var(--size-4-2);
+}
+
+.jevbrain-queue-candidate-selected {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
+}
