@@ -1,6 +1,7 @@
 import { TFile } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
 import { toHierarchyKey } from "src/utils/hierarchy";
+import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev, type JevQuestion, type JevRequest } from "./client";
 import { collectUntypedLinks } from "./collect";
 import { buildQuestions, judge, type Questions } from "./judge";
@@ -28,18 +29,31 @@ export type TypeLinkRequest = {
   cursor: { line: number; ch: number };
 };
 
-/** Jev の呼び出し。既定は `client.ts` の `askJev` で、テストだけがここを差し替える。 */
-export type TypeLinkDeps = { ask: typeof askJev };
+export type TypeLinkDeps = {
+  /** Jev の呼び出し。既定は `client.ts` の `askJev` で、テストだけがここを差し替える。 */
+  ask?: typeof askJev;
+  /**
+   * 書く直前にエディタのバッファをファイルへ流す（`MarkdownView.save()`）。読むのはバッファ、書くのは
+   * `vault.process`＝ファイルなので、揃えないと次の自動保存で追記した行が消える。判定を待つ間ではなく
+   * 書く直前に呼ぶので、取りこぼす窓はミリ秒で済む。エディタが無い呼び出し（テスト）では何もしない。
+   */
+  flush?: () => Promise<void>;
+};
 
 export type TypeLinkResult =
   /** インデックスがまだ無い（このノートの `Page` が取れない）。 */
   | { status: "no-index" }
   /** カーソルの位置に未型付けのリンクが無い（リンクが無い・埋め込み・既に型が付いている・除外）。 */
   | { status: "no-untyped-link" }
+  /** このノート自身が除外パスか図面ファイル（設定 `excludeFilepaths`・`excalibrainFilepath`）。 */
+  | { status: "excluded" }
   /** Jev に届かなかった。Notice は `client.ts` が既に 1 回出している。 */
   | { status: "failed" }
-  /** Q1 と Q2 が食い違った（設計 §2-3）。確率は伏せ、候補は設定の順。何も書かない。 */
-  | { status: "unconfident"; target: string; candidates: string[] }
+  /**
+   * `judge` が自信なしとしたとき（設計 §2-3）。確率は伏せ、候補は設定の順で、何も書かない。
+   * `reason` は Q1 と Q2 の食い違い（`direction`）か、Q1 の答えがオントロジーに無い語（`unknown-field`）。
+   */
+  | { status: "unconfident"; reason: "direction" | "unknown-field"; target: string; answer: string; candidates: string[] }
   /** 同じ行が既にあった（`appendRelation` が何も変えなかった）。 */
   | { status: "unchanged"; field: string; target: string }
   | {
@@ -61,29 +75,34 @@ export type TypeLinkResult =
 export const typeLinkAtCursor = async (
   plugin: ExcaliBrain,
   request: TypeLinkRequest,
-  deps: TypeLinkDeps = { ask: askJev },
+  deps: TypeLinkDeps = {},
 ): Promise<TypeLinkResult> => {
   const { app, settings } = plugin;
   const { file, content, cursor } = request;
+  // `collect` は除外パスと図面ファイルを「リンクの相手」としてだけ落とす（collect.ts）。書き込む先は
+  // このノート自身なので、同じ除外をこちら側にも掛ける。図面ファイルは JevBrain の生成物でもある。
+  if (file.path === settings.excalibrainFilepath) return { status: "excluded" };
+  if (settings.excludeFilepaths.some((path) => file.path.startsWith(path))) return { status: "excluded" };
   const page = plugin.pages?.get(file.path);
   if (!page) return { status: "no-index" };
 
   const written = writtenLinkAt(content.split("\n")[cursor.line] ?? "", cursor.ch);
   if (!written) return { status: "no-untyped-link" };
   // 本文の書き方（`[[X|別名]]`・`[[X#見出し]]`・markdown リンク）と、`collect` が使う鍵（解決したパス）は
-  // 別物。聞くのと書くのは本文のとおりの `X` で、未型付けかどうかだけを解決したパスで確かめる。
-  const target = app.metadataCache.getFirstLinkpathDest(written.linkpath, file.path)?.path ?? written.linkpath;
-  const untyped = collectUntypedLinks(app, page, file, content).find((link) => link.target === target);
-  if (!untyped) return { status: "no-untyped-link" };
+  // 別物。未型付けかどうかは解決したパスで確かめる。
+  const targetFile = app.metadataCache.getFirstLinkpathDest(written.linkpath, file.path);
+  const target = targetFile?.path ?? written.linkpath;
+  if (!collectUntypedLinks(app, page, file, content).some((link) => link.target === target)) {
+    return { status: "no-untyped-link" };
+  }
+  // 聞くのも書くのも本文のとおりの `X`。ただし markdown リンクの相手は相対パス（`../notes/B.md`）が
+  // ありうるので、`[[…]]` に入れて意味が変わらない解決後のパスを使う。
+  const name = written.wiki ? written.linkpath : targetFile?.path ?? written.linkpath;
 
-  const targetFile = app.vault.getAbstractFileByPath(target);
   const state = buildState({
     note: { frontmatter: app.metadataCache.getFileCache(file)?.frontmatter, text: content },
-    link: {
-      target: written.linkpath,
-      offset: offsetOf(content, cursor.line, written.start),
-      length: written.length,
-    },
+    link: { target: name, offset: offsetOf(content, cursor.line, written.start), length: written.length },
+    // ファイルの無い未解決リンクは名前だけを送る（設計 §2-2）。
     targetNote: targetFile instanceof TFile
       ? {
           frontmatter: app.metadataCache.getFileCache(targetFile)?.frontmatter,
@@ -93,7 +112,7 @@ export const typeLinkAtCursor = async (
     contextChars: settings.jev.contextChars,
   });
 
-  const response = await deps.ask(
+  const response = await (deps.ask ?? askJev)(
     {
       apiKey: settings.jev.apiKey,
       endpoint: settings.jev.endpoint,
@@ -105,37 +124,47 @@ export const typeLinkAtCursor = async (
   if (!response) return { status: "failed" };
 
   const judgement = judge(response, settings.hierarchy);
+  // `judge` の `field` は Jev の答えそのままなので、書くのは設定に書いてある綴り（`ordered` は設定から
+  // 組まれている）。応答が "Up" と返しても Vault には `up::` が入る。
+  const chosen = chosenCandidate(judgement.ordered, judgement.field);
   if (!judgement.confident) {
     return {
       status: "unconfident",
-      target: written.linkpath,
+      // オントロジーに無い語が返ったときは方向の食い違いではない（judge.ts の `confident` は両方を
+      // まとめて false にする）。E18 で原因を取り違えないよう分ける。
+      reason: chosen ? "direction" : "unknown-field",
+      target: name,
+      answer: judgement.field,
       candidates: judgement.ordered.map((candidate) => candidate.field),
     };
   }
+  // confident は「Q1 の答えがオントロジーの領域に在る」ことを含む（judge.ts）ので chosen は必ずある。
+  const field = chosen?.field ?? judgement.field;
 
-  const edit = await appendRelation(app, file, judgement.field, written.linkpath, {
+  await deps.flush?.();
+  const edit = await appendRelation(app, file, field, name, {
     heading: settings.jev.relationsHeading,
     mode: settings.jev.writeMode,
   });
-  if (!edit) return { status: "unchanged", field: judgement.field, target: written.linkpath };
+  if (!edit) return { status: "unchanged", field, target: name };
 
   return {
     status: "written",
-    field: judgement.field,
-    target: written.linkpath,
-    probability: probabilityOfChoice(judgement.ordered, judgement.field),
+    field,
+    target: name,
+    probability: chosen?.probability,
     inputTokens: response.usage?.inputTokens,
     // 書いたあとに記録だけ落ちても、行は入っている。取り消せないことだけを呼び出し側に伝える。
     logged: await logEdit(plugin, file.path, edit),
   };
 };
 
-/** Q1 の答えの確率。`judge` が並べた候補から引く（応答のキーの大文字小文字と空白は問わない）。 */
-const probabilityOfChoice = (
+/** Q1 の答えに当たる候補（設定の綴りと確率）。オントロジーに無い語なら undefined。 */
+const chosenCandidate = (
   ordered: { field: string; probability?: number }[],
   field: string,
-): number | undefined =>
-  ordered.find((candidate) => toHierarchyKey(candidate.field) === toHierarchyKey(field))?.probability;
+): { field: string; probability?: number } | undefined =>
+  ordered.find((candidate) => toHierarchyKey(candidate.field) === toHierarchyKey(field));
 
 /** `judge.ts` の 2 問を `client.ts` が送る形にする。どちらの側も相手の形を知らずに済むよう、変換はここだけ。 */
 const toRequestQuestions = (questions: Questions): JevRequest["questions"] =>
@@ -165,8 +194,7 @@ const logEdit = async (
     });
     return true;
   } catch (error) {
-    console.warn({
-      plugin: "ExcaliBrain",
+    errorlog({
       fn: "typeLinkAtCursor",
       where: "src/jev/typeLink.ts",
       message: error instanceof Error ? error.message : "could not write jev-log.json",
@@ -175,30 +203,37 @@ const logEdit = async (
   }
 };
 
-/** `[[X]]`・`[[X|別名]]`・`[[X#見出し]]`・`![[X]]`・`[ラベル](X)` を、行の中の順に。 */
-const LINK = /(!?)\[\[([^\][]+?)\]\]|\[([^\][]*)\]\(([^()\s]+)\)/gu;
+/** `[[X]]`・`[[X|別名]]`・`[[X#見出し]]`・`[ラベル](X)` と、その埋め込み（`!` 付き）を行の中の順に。 */
+const LINK = /(!?)\[\[([^\][]+?)\]\]|(!?)\[([^\][]*)\]\(([^()\s]+)\)/gu;
 
 type WrittenLink = {
-  /** 行の中の位置と長さ（`[[` から `]]` まで）。 */
+  /** 行の中の位置と長さ（リンク全体）。 */
   start: number;
   length: number;
   /** リンクの相手を本文が書いているとおりに（別名と `#見出し` を落としたもの）。 */
   linkpath: string;
+  /** `[[…]]` で書かれているか。markdown リンクは相手が相対パスのことがあるので書き戻しに使えない。 */
+  wiki: boolean;
 };
 
 /**
- * カーソルが乗っているリンク。乗っていなければ null。埋め込み `![[X]]` は型を付ける相手ではない（設計 §2-1）。
- * markdown リンクの percent 符号は `collect.ts` の `linkpathOf` と同じく戻す。
+ * カーソルが乗っているリンク。乗っていなければ null。埋め込み（`![[X]]`・`![ラベル](X)`）は型を付ける
+ * 相手ではない（設計 §2-1）。相手の読み取りは `collect.ts` の `linkpathOf` と同じ（markdown の percent 符号は
+ * 戻し、空白は落とさない）で、両方が同じ鍵に解決するようにしてある。
+ * 両端を含むので、`]]` の直後に置いたカーソルもそのリンクを指す。隣り合う 2 つの境目では先の（＝いま閉じた）
+ * リンクを取る。
  */
 const writtenLinkAt = (line: string, ch: number): WrittenLink | null => {
   for (const match of line.matchAll(LINK)) {
-    const [original, embed, wiki, , markdown] = match;
+    const [original, wikiEmbed, wiki, markdownEmbed, , markdown] = match;
     const start = match.index;
     if (ch < start || ch > start + original.length) continue;
-    if (embed === "!") return null;
+    if (wikiEmbed === "!" || markdownEmbed === "!") return null;
     const linkpath = wiki === undefined ? decodeLinkpath(markdown) : wiki.split("|")[0];
-    const withoutHeading = linkpath.split("#")[0].trim();
-    return withoutHeading === "" ? null : { start, length: original.length, linkpath: withoutHeading };
+    const withoutHeading = linkpath.split("#")[0];
+    return withoutHeading.trim() === ""
+      ? null
+      : { start, length: original.length, linkpath: withoutHeading, wiki: wiki !== undefined };
   }
   return null;
 };
