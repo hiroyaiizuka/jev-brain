@@ -218,25 +218,25 @@ type RecordedReply = {
 };
 
 /**
- * The response recorded from the real Jev on 2026-09-22 (`tests/fixtures/jev/two-choice-200.json`:
- * field `up` 0.39, direction `child`, 515 input tokens), converted exactly the way `client.ts` hands
- * it over: the answers keyed by question name, `type` dropped, `input_tokens` read as `inputTokens`.
- * Keep this in step with `parseResponseBody` when the wire shape changes.
+ * A recorded reply as `client.ts` hands it over: the answers keyed by question name, `type` dropped,
+ * `input_tokens` read as `inputTokens`. Keep this in step with `parseResponseBody` when the wire
+ * shape changes (it is the same conversion, written out for the stub).
  *
- * The recording answers `child` for a field in the parent region, so the default here overrides the
- * direction to the one that agrees; a test about the disagreement asks for `child` itself.
+ * The default is `two-choice-agree-200.json` (Q1 `up` 0.82, Q2 `parent`, 1873 tokens), because the
+ * response recorded from the real Jev on 2026-09-22 (`two-choice-200.json`) answers a field of the
+ * parent region with `child` — that one is what the disagreement test asks for by name.
  */
-function answer(overrides: { field?: string; direction?: string } = {}): JevResponse {
-  const recorded = JSON.parse(
-    readFileSync(join(fixtures, 'two-choice-200.json'), 'utf8'),
-  ) as RecordedReply;
+function answer(
+  overrides: { field?: string; direction?: string } = {},
+  fixture = 'two-choice-agree-200.json',
+): JevResponse {
+  const recorded = JSON.parse(readFileSync(join(fixtures, fixture), 'utf8')) as RecordedReply;
   const questions = Object.fromEntries(
     Object.entries(recorded.body.answers).map(([name, wire]) => [
       name,
       { choice: wire.choice, probabilities: wire.probabilities, confidence: wire.confidence },
     ]),
   );
-  questions.direction.choice = 'parent';
   if (overrides.field) questions.field.choice = overrides.field;
   if (overrides.direction) questions.direction.choice = overrides.direction;
   return { questions, usage: { inputTokens: recorded.body.usage.input_tokens } };
@@ -276,8 +276,8 @@ describe('typeLinkAtCursor', () => {
       status: 'written',
       field: 'up',
       target: 'B',
-      probability: 0.39,
-      inputTokens: 515,
+      probability: 0.82,
+      inputTokens: 1873,
       // 記録は実測の usage を持つので、見積もりの印は立たない（client.ts）。
       estimatedTokens: undefined,
       logged: true,
@@ -367,9 +367,9 @@ describe('typeLinkAtCursor', () => {
   });
 
   it('writes nothing when the field and the direction disagree', async () => {
-    // field は up（親の領域）のまま、Q2 だけ child に。実機 E18 の記録がまさにこの食い違いだった。
+    // 実機 E18 で記録した応答そのもの: Q1 が up（親の領域）なのに Q2 が child。
     const vault = makeVault({ 'A.md': { content: note }, 'B.md': {} });
-    const jev = asking(answer({ direction: 'child' }));
+    const jev = asking(answer({}, 'two-choice-200.json'));
 
     const result = await typeLinkAtCursor(
       vault.plugin,
@@ -469,7 +469,7 @@ describe('typeLinkAtCursor', () => {
       jev.deps,
     );
 
-    expect(result).toMatchObject({ status: 'written', field: 'up', probability: 0.39 });
+    expect(result).toMatchObject({ status: 'written', field: 'up', probability: 0.82 });
     expect(vault.vault.notes.get('A.md')).toContain('up:: [[B]]');
   });
 

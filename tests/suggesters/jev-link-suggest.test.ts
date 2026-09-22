@@ -171,7 +171,9 @@ beforeEach(() => {
   // `client.ts` races the request against `window.setTimeout`; this suite runs on the node environment.
   vi.stubGlobal('window', globalThis);
   requestUrlMock.reset();
-  requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-200.json'));
+  // 既定は整合する応答。実機 E18 の記録（two-choice-200.json）は Q1 と Q2 が食い違う組み合わせなので、
+  // それを測るテストだけが名前で指す。
+  requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-agree-200.json'));
   Notice.messages = [];
 });
 
@@ -332,7 +334,7 @@ describe('JevLinkSuggest.getSuggestions', () => {
   }
 
   it('lists every field by probability when Q1 and Q2 agree (自信あり)', async () => {
-    const { suggestions } = await answered('two-choice-200.json');
+    const { suggestions } = await answered('two-choice-agree-200.json');
     expect(suggestions).toEqual([
       { kind: 'candidate', field: 'up', probability: 0.82, direction: 'parent', confident: true },
       { kind: 'candidate', field: 'origin', probability: 0.11, direction: 'parent', confident: true },
@@ -346,7 +348,8 @@ describe('JevLinkSuggest.getSuggestions', () => {
   });
 
   it('hides the probabilities and keeps the settings order when they disagree (自信なし)', async () => {
-    const { suggestions } = await answered('field-direction-mismatch-200.json');
+    // 実機 E18 で記録した応答そのもの: Q1 が up（親の領域）なのに Q2 が child。
+    const { suggestions } = await answered('two-choice-200.json');
     expect(suggestions.map((suggestion) => suggestion.kind === 'candidate' && suggestion.field))
       .toEqual(SETTINGS_ORDER);
     expect(suggestions.every((suggestion) =>
@@ -369,7 +372,7 @@ describe('JevLinkSuggest.getSuggestions', () => {
     await flush();
 
     // A failed ask does not count as asked, so writing the link again asks once more.
-    requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-200.json'));
+    requestUrlMock.respond = () => Promise.resolve(recorded('two-choice-agree-200.json'));
     expect(typeClosing(suggester, file('A.md'), content, endOf(content, 1)).info).not.toBeNull();
     await flush();
     expect(requestUrlMock.calls).toHaveLength(2);
