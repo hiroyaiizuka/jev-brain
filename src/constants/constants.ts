@@ -65,7 +65,9 @@ export const DEFAULT_JEV_SETTINGS: Readonly<JevSettings> = {
   suggestOnLinkClose: true,
   contextChars: 500,
   relationsHeading: "Relations",
-  writeMode: "relations",
+  // 既定は本文のリンクに付ける（設計 §3、本人の決定 2026-09-22。LEV-185）。`data.json` に
+  // `relations` が保存されている Vault は移行せず、そのまま節に書き続ける。
+  writeMode: "inline",
   autoConfirmThreshold: 0.8,
   reviewThreshold: 0.9,
   endpoint: "https://api.typesafe.ai/v1/systemone",

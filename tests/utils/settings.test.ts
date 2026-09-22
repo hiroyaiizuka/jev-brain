@@ -14,7 +14,7 @@ describe('Jev settings defaults (docs/jev-link-typer-design.md §6)', () => {
       suggestOnLinkClose: true,
       contextChars: 500,
       relationsHeading: 'Relations',
-      writeMode: 'relations',
+      writeMode: 'inline',
       autoConfirmThreshold: 0.8,
       reviewThreshold: 0.9,
       endpoint: 'https://api.typesafe.ai/v1/systemone',
@@ -31,6 +31,11 @@ describe('Jev settings defaults (docs/jev-link-typer-design.md §6)', () => {
 describe('withJevDefaults (what loadSettings does with a saved data.json)', () => {
   it('gives the defaults to a data.json that has no jev object at all', () => {
     expect(withJevDefaults(undefined)).toEqual(DEFAULT_JEV_SETTINGS);
+  });
+
+  it('leaves a data.json that already chose the Relations section on it (LEV-185 does not migrate)', () => {
+    expect(withJevDefaults({ writeMode: 'relations' }).writeMode).toBe('relations');
+    expect(withJevDefaults({}).writeMode).toBe('inline');
   });
 
   it('keeps the saved keys and fills in the ones the file lacks', () => {

@@ -3,6 +3,7 @@ import type { App } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
 import type { Page } from "src/graph/Page";
 import { t } from "src/lang/helpers";
+import { normalizeRelationsHeading } from "src/Settings";
 import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev } from "src/jev/client";
 import type { JevClientConfig, JevQuestion } from "src/jev/client";
@@ -13,8 +14,8 @@ import type { Choice, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry, undo } from "src/jev/log";
 import { JevQueueModel } from "src/jev/queue-model";
 import type { JevQueueCard } from "src/jev/queue-model";
-import { appendRelation } from "src/jev/relations";
-import type { RelationEdit } from "src/jev/relations";
+import { appendRelation, isRelationEdit } from "src/jev/relations";
+import type { RelationResult } from "src/jev/relations";
 import { buildState } from "src/jev/state";
 import { JEV_CENTRAL_PAGE_CHANGED } from "src/utils/jevEvents";
 
@@ -279,12 +280,26 @@ export class JevQueueView extends ItemView {
   }
 
   /**
-   * 書き込みと state に使うリンクの書き方。`[[folder/Note.md]]` ではなく Obsidian が
+   * state に使うリンクの書き方。`[[folder/Note.md]]` ではなく Obsidian が
    * そのノートから書くのと同じ最短の形にする。未解決のリンクはそのまま。
    */
   private linkTextOf(target: string): string {
     const file = this.targetFile(target);
     return file && this.note ? this.app.metadataCache.fileToLinktext(file, this.note.file.path) : target;
+  }
+
+  /**
+   * 本文がそのカードの出現をどう書いているか。`[[…]]` ならその綴りのまま（`relations.ts` は
+   * この綴りでその出現を見つけ、インラインはそのまま包む。最短の形に直すと `[[folder/Note]]`
+   * のような書き方を見つけられない）。markdown リンクなら、その中にフィールドは書けないので、
+   * `[[…]]` に入れて意味の変わらない解決したパスにして節に落とす（設計 §3）。
+   */
+  private writtenLinkOf(card: JevQueueCard): { text: string; wiki: boolean } {
+    const written = card.context.slice(card.ch, card.ch + card.length).match(/^\[\[([^[\]]+)\]\]$/u);
+    const linkpath = written?.[1].split("|")[0].split("#")[0];
+    return linkpath !== undefined && linkpath.trim() !== ""
+      ? { text: linkpath, wiki: true }
+      : { text: card.target, wiki: false };
   }
 
   // ---- 確定・あとで・取り消し ---------------------------------------------
@@ -296,15 +311,22 @@ export class JevQueueView extends ItemView {
     const batchId = this.batchId;
     if (!note || !field || card.status !== "open") return;
     const jev = this.plugin.settings.jev;
-    let edit: RelationEdit | null;
+    const written = this.writtenLinkOf(card);
+    // 節に足すだけの `relations` では、今までどおり Obsidian がそのノートから書くのと同じ最短の形。
+    const target = jev.writeMode === "inline" ? written.text : this.linkTextOf(card.target);
+    let outcome: RelationResult;
     let logId = "";
     try {
-      edit = await appendRelation(this.app, note.file, field, this.linkTextOf(card.target), {
-        heading: jev.relationsHeading,
+      outcome = await appendRelation(this.app, note.file, field, target, {
+        // 設定タブを開いたまま見出しを打ち替えている最中の値（`## Notes`）をそのまま使わない。
+        heading: normalizeRelationsHeading(jev.relationsHeading),
         mode: jev.writeMode,
+        // 書き換えるのはカードが持つその出現だけ。同じ相手が本文に 2 つあっても他は触らない（LEV-185）。
+        at: { line: card.line, ch: card.ch, wiki: written.wiki },
       });
-      if (!edit) {
-        new Notice(t("JEV_QUEUE_NO_CHANGE"));
+      if (!isRelationEdit(outcome)) {
+        // 「既に付いている」と「集めたときの位置にもう無い」は直し方が違うので、言い方を分ける。
+        new Notice(outcome.skipped === "already-typed" ? t("JEV_QUEUE_NO_CHANGE") : t("JEV_QUEUE_LINK_GONE"));
         return;
       }
       // 記録できるのはデータフォルダが分かるときだけ。無ければ書き込みは残し、取り消しは出さない。
@@ -313,9 +335,9 @@ export class JevQueueView extends ItemView {
         const entry = await appendLogEntry(this.app, dir, {
           batchId,
           file: note.file.path,
-          line: edit.line,
-          before: edit.before,
-          after: edit.after,
+          line: outcome.line,
+          before: outcome.before,
+          after: outcome.after,
           source: "queue",
         });
         logId = entry.id;
@@ -328,7 +350,9 @@ export class JevQueueView extends ItemView {
     }
     // 書いている間に中心が変わった。書き込みと記録は残すが、いまのカードはもう別のノートのもの。
     if (generation !== this.generation) return;
-    this.model.confirm(card.target, { field, text: edit.after, logId });
+    // カードに出すのは入ったフィールドだけ。インラインの `after` は書き換えた行そのものなので、
+    // そのまま渡すと段落 1 つがカードに流れ込む。
+    this.model.confirm(card.target, { field, text: `${field}:: [[${target}]]`, logId });
     this.renderCard(card);
   }
 

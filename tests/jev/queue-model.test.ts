@@ -5,10 +5,10 @@ import { JevQueueModel, estimateCostJpy, type JevQueueCard } from 'src/jev/queue
 
 const NOTE = 'notes/中心.md';
 
-const link = (target: string, offset = 4): UntypedLink => ({
+const link = (target: string, offset = 4, line = 0): UntypedLink => ({
   target,
   displayText: target.replace(/\.md$/u, ''),
-  line: 0,
+  line,
   ch: 4,
   offset,
   length: target.length + 4,
@@ -46,6 +46,12 @@ describe('setNote', () => {
     expect(model.notePath).toBe(NOTE);
     expect(model.list.map((c) => [c.target, c.status])).toEqual([['a.md', 'pending'], ['b.md', 'pending']]);
     expect(model.pending().map((c) => c.target)).toEqual(['a.md', 'b.md']);
+  });
+
+  it('keeps the line and the column of each occurrence, so a confirmation writes that one (LEV-185)', () => {
+    model.setNote(NOTE, [link('a.md'), link('b.md', 30, 2)]);
+
+    expect(model.list.map((c) => [c.line, c.ch])).toEqual([[0, 4], [2, 4]]);
   });
 
   it('empties the queue when no note is in the centre', () => {
