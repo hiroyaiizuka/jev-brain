@@ -20,7 +20,10 @@ import {
   usageOf,
 } from '../../scripts/jev-accuracy-judge.mjs';
 
-const recorded = JSON.parse(readFileSync(fileURLToPath(new URL('../fixtures/jev/systemone-answers-200.json', import.meta.url)), 'utf8'));
+/** 実機 E18 で受け取った応答そのもの（LEV-170 が置いた記録）と、公開情報から起こしていた古い形。 */
+const fixture = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`../fixtures/jev/${name}.json`, import.meta.url)), 'utf8'));
+const recorded = fixture('two-choice-200');
+const legacy = fixture('legacy-questions-200');
 
 /** The ontology of the test vault: one field per region, so a direction is easy to read off. */
 const HIERARCHY = {
@@ -186,12 +189,12 @@ describe('reading the answer', () => {
     const response = readAnswers(recorded.body, asked);
 
     expect(response.questions.field.choice).toBe('up');
-    expect(response.questions.field.probabilities.origin).toBe(0.21);
-    expect(response.questions.direction.choice).toBe('parent');
+    expect(response.questions.field.probabilities).toEqual({ up: 0.39, next: 0.14, similar: 0.17, down: 0.3 });
+    expect(response.questions.direction.choice).toBe('child');
   });
 
-  it('refuses the shape design §7 describes, so a silent half-reading cannot happen', () => {
-    expect(readAnswers({ questions: recorded.body.answers }, asked)).toBeNull();
+  it('refuses the shape that was guessed from public information, so a silent half-reading cannot happen', () => {
+    expect(readAnswers(legacy.body, asked)).toBeNull();
   });
 
   it('refuses a response that is missing a question or answers with the wrong types', () => {
@@ -202,7 +205,7 @@ describe('reading the answer', () => {
   });
 
   it('reads the token counts in either spelling, and reports none when there is no usage', () => {
-    expect(usageOf(recorded.body)).toEqual({ input: 4371, output: 1376 });
+    expect(usageOf(recorded.body)).toEqual({ input: 515, output: 92 });
     expect(usageOf({ usage: { inputTokens: 12 } })).toEqual({ input: 12, output: 0 });
     expect(usageOf({ answers: {} })).toBeNull();
   });
@@ -329,7 +332,7 @@ describe('the command', () => {
       field: { type: 'choice', choice: field, confidence: 0.6, probabilities: { [field]: 0.6, down: 0.2, similar: 0.2 } },
       direction: { type: 'choice', choice: direction, confidence: 0.7, probabilities: { [direction]: 0.7, child: 0.3 } },
     },
-    usage: { input_tokens: 4371, output_tokens: 1376 },
+    usage: { input_tokens: 515, output_tokens: 92 },
   });
 
   const options = {
@@ -389,7 +392,7 @@ describe('the command', () => {
     expect(record).toContain('# JEV-0 精度テスト: 正解の抽出（LEV-162）');
     expect(record).toContain('## Jev の判定（LEV-163）');
     expect(record).toContain('| フィールド一致率 | 33.3%（2 / 6） |');
-    expect(record).toContain('| 入力トークン | 平均 4371');
+    expect(record).toContain('| 入力トークン | 平均 515');
     expect(readFileSync(responsesPath, 'utf8').trim().split('\n')).toHaveLength(6);
   });
 

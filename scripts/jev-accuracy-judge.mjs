@@ -175,9 +175,11 @@ export function toWireRequest(model, state, questions) {
 /**
  * The answers of one response, in the shape `src/jev/judge.ts` reads.
  *
- * The live endpoint returns `{ model, answers: { <name>: { type, choice, confidence, probabilities } } }`
- * — `answers`, not the `questions` of design §7, and each answer carries its `type`. Reading it is
- * done here and only here; `client.ts` is corrected separately (LEV-170).
+ * The endpoint returns `{ model, answers: { <name>: { type, choice, confidence, probabilities } } }`
+ * (design §7, checked on the real endpoint by E18). `src/jev/client.ts` reads the same shape for the
+ * plugin, but it speaks through Obsidian's `requestUrl`, so Node cannot borrow it and the reading is
+ * repeated here. The two are held together by the recorded response both tests use,
+ * `tests/fixtures/jev/two-choice-200.json`.
  *
  * A response that is missing one of the two questions, or that answers with something other than a
  * choice and its numeric probabilities, is a failed call: §2-3 compares the two answers and half a
@@ -208,9 +210,9 @@ export function readAnswers(body, asked) {
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
- * The token counts of one response. The live endpoint reports `usage: { input_tokens, output_tokens }`
- * in snake case; `inputTokens` is read too because that is the name `src/jev/client.ts` still uses
- * (design §7, corrected in LEV-170). Only the input is charged.
+ * The token counts of one response: `usage: { input_tokens, output_tokens }` in snake case (design
+ * §7). The camel case spelling is read as well, since that is what the shape was taken for before a
+ * key existed and what `client.ts` hands on internally. Only the input is charged.
  */
 export function usageOf(body) {
   const usage = isRecord(body) && isRecord(body.usage) ? body.usage : null;
@@ -553,7 +555,7 @@ export function renderJudgeRecord(summary, context) {
  */
 function shapeNotes() {
   return [
-    '### 応答の形（設計 §7 との差）',
+    '### 応答の形',
     '',
     '送ったもの（200 が返る。§7 のとおり）:',
     '',
@@ -568,10 +570,11 @@ function shapeNotes() {
       + '"usage":{"input_tokens":4371,"output_tokens":1376}}',
     '```',
     '',
-    '- トップレベルは `questions` ではなく **`answers`**。各回答に `type` が付き、`usage` は snake_case の',
-    '  `input_tokens`／`output_tokens`（§7 と `src/jev/client.ts` は `questions`・`inputTokens`）。',
-    '- このスクリプトの `readAnswers` は実物の形で読む。`src/jev/client.ts` の `parseResponseBody` は `questions` を',
-    '  読むので実物の応答を取りこぼす。直すのは LEV-170（別 PR）。形の記録は `tests/fixtures/jev/systemone-answers-200.json`。',
+    '- 設計 §7 と実機 E18（LEV-170）の記録どおりの形。このスクリプトは Node から `fetch` するので',
+    '  `src/jev/client.ts`（Obsidian の `requestUrl`）は使えず、読み取りだけを持つ。突き合わせは両方のテストが',
+    '  使う `tests/fixtures/jev/two-choice-200.json`。',
+    '- §7 は「`probabilities` に送った候補が全部そろうとは限らない」と書いているが、この 600 回では',
+    '  Q1 162 候補・Q2 6 方向がすべて返り、欠けは 1 件も出ていない。',
     '- 1 回の呼び出しは 1.4 秒ほど。並列 5 で 500 件が数分。',
     '',
   ];

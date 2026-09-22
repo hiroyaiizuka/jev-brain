@@ -92,14 +92,24 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 | `endpoint` | `https://api.typesafe.ai/v1/systemone` | 変更可 |
 | `model` | `jev-latest` | 変更可 |
 
-## 7. Jev の API と費用（2026-09-22、公開情報）
+## 7. Jev の API と費用（2026-09-22。要求は公開情報どおり、応答は実機 E18 の記録）
 
-- `POST https://api.typesafe.ai/v1/systemone`、Bearer キー、モデル `jev-latest`。`state`（文字列か JSON）と `questions`（名前 → Choice／Score／Noul）。Choice の `criteria` はラベル→説明文の辞書で 255 候補まで。Score は 2〜10 段階、Noul は yes の確率。返り値は質問ごとの `choice`・`probabilities`・`confidence`。複数の質問は並列に評価される。
+- 要求: `POST https://api.typesafe.ai/v1/systemone`、Bearer キー、モデル `jev-latest`。本文は `model`・`state`（文字列か JSON）・`questions`（名前 → `{ type, instructions, criteria }`）。Choice の `criteria` はラベル→説明文の辞書で 255 候補まで。Score は 2〜10 段階、Noul は yes の確率。複数の質問は並列に評価される。公開情報のとおりで通った（2026-09-22、E18）。
+- 応答: トップレベルは `model`・`answers`・`usage`。`answers` は**質問の名前 → `{ type, choice, confidence, probabilities }`**、`usage` は `input_tokens`／`output_tokens`（snake_case）。公開情報から起こしていた形との差は 3 点で、(1) `questions` ではなく `answers`、(2) 各回答に `type`、(3) usage が snake_case。`src/jev/client.ts` の `parseResponseBody` はこの形だけを読み、質問の名前で引く辞書（`JevResponse.questions`）と `usage.inputTokens` に直す。出力は無料なので `output_tokens` は読まない。**`probabilities` は送った候補が全部揃うとは限らない**（E18 の記録では 6 方向のうち `previous`・`next` が無い）。`judge` の確率の読み取りは欠けたラベルを「確率なし」として扱い、`directionProbability` は 0 になる。しきい値（§2-4）をこの値に掛ける JEV-3／JEV-4 は、欠けを 0 と見るか対象外と見るかをそこで決める。ただし LEV-163 の 600 回（Q1 162 候補・Q2 6 方向）では 1 度も欠けなかったので、欠ける条件は分かっていない。読み取り側の「欠け＝確率なし」はそのまま残す。
+
+```json
+{"model":"jev-1.13.0",
+ "answers":{"field":{"type":"choice","choice":"up","confidence":0.19,
+                     "probabilities":{"up":0.39,"next":0.14,"similar":0.17,"down":0.3}},
+            "direction":{"type":"choice","choice":"child","confidence":0.18,
+                         "probabilities":{"leftFriend":0.12,"parent":0.31,"rightFriend":0.18,"child":0.39}}},
+ "usage":{"input_tokens":515,"output_tokens":92}}
+```
+
 - 上限: 1 回 64k トークン、state＋最長の質問で 32k。1,200 req/分。前払い残高制。
-- 料金: $0.042/M 入力トークン、出力無料。1 判定 2,000 トークン ≈ 0.013 円（150 円/$）。月 600 判定で約 8 円、3,000 リンクの一括で約 40 円。
-- 出典: OpenRouter の `typesafe/jev-1.13`、DEV Community「How to Use Jev」。正式な SDK・レスポンスの形は TypeSafe のドキュメントが正で、キー発行時に照合して差があれば本節と `client.ts`・`tests/fixtures/jev/` を直す。
-- 実測（2026-09-22、LEV-163。本人のキーで 600 回）: リクエストは上のとおりで 200 が返る。**返り値は上と違い**、トップレベルが `questions` ではなく `answers`、各回答に `type`（`"choice"`）が付き、`usage` は snake_case の `input_tokens`／`output_tokens`。`{"model":"jev-1.13.0","answers":{"<質問名>":{"type":"choice","choice":"up","confidence":0.19,"probabilities":{…}}},"usage":{"input_tokens":4371,"output_tokens":1376}}`。形の記録は `tests/fixtures/jev/systemone-answers-200.json`。`scripts/jev-accuracy-judge.mjs` はこの形で読む。`src/jev/client.ts` の `parseResponseBody` は `questions`／`inputTokens` のままなので実物の応答を取りこぼす（直すのは LEV-170）。
-- 実測の量（同上）: オントロジー 162 フィールドを criteria にした Q1 と 6 方向の Q2 を 1 回で聞くと、日本語の state 約 1,300 字を含めて入力 **平均 4,444 トークン**（上の見積もり 2,000 の 2.2 倍）、出力 1,375。1 判定 0.028 円で、2,448 リンクの一括は約 69 円。レイテンシは 1 回 1.4 秒。
+- 料金: $0.042/M 入力トークン、出力無料。1 判定 2,000 トークン ≈ 0.013 円（150 円/$）。月 600 判定で約 8 円、3,000 リンクの一括で約 40 円。実測は 1 判定 515 入力トークン ≈ 0.003 円（2026-09-22、E18。state は fixture のノート 1 本ぶんで `contextChars` は既定）。本人の Vault の長いノートでは増えるので、見積もりの 2,000 はそのまま残す。
+- 規模での実測（2026-09-22、LEV-163。本人の Vault に 600 回）: 本人のオントロジー **162 フィールド**を criteria にした Q1 と 6 方向の Q2 を 1 回で聞くと、日本語の state 約 1,300 字を含めて入力 **平均 4,444 トークン**・出力 1,375。E18 の 515 との差はノートの長さではなく候補の数（162 件ぶんの説明文）で、トークンの大半は criteria が占める。1 判定 0.028 円、2,448 リンクの一括で約 69 円。上の「3,000 リンクで約 40 円」はオントロジーが小さいときの値。レイテンシは 1 回 1.4 秒で、並列 5 なら 500 件が数分。
+- 出典: 要求の形と料金・上限は OpenRouter の `typesafe/jev-1.13` と DEV Community「How to Use Jev」。応答の形は 2026-09-22 の実機 E18 の記録（`artifacts/jev-1-e2e/e18-raw-response.json`、`tests/fixtures/jev/two-choice-200.json` に同じものを置いた。state は `tests/fixtures/` のノートだけで作ったので Vault の内容は入っていない）。ここから先も差が出たら本節と `client.ts`・`tests/fixtures/jev/` を直す。
 - 呼び出しは `src/jev/client.ts` だけ。Obsidian の `requestUrl` を使う（CORS を避け、モバイルでも同じ）。
 
 ## 8. 第 2 段階: 関連候補（JEV-5、Backlog）
@@ -121,6 +131,7 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 - 出す数字: フィールド一致率、方向一致率、しきい値（0.5／0.6／0.7／0.8／0.9）ごとの適合率と対象率、混同の多いフィールドの組、日本語 state のトークン数、費用の実績。500 件以上。
 - 判断: 一致率 7 割以上なら計画どおり。5 割なら criteria の説明文を厚くして再測。それ以下なら JEV-4 の自動確定をやめ、サジェスターとキューだけにする。
 - 記録: `artifacts/jev-accuracy/record.md`。Vault の内容と生の応答はコミットしない。
+- 例外（本人の決定、2026-09-22）: `tests/fixtures/` のノートだけで作った state に対する応答は、Vault の内容も鍵も含まないので `tests/fixtures/jev/` に実物のまま置いてよい。`two-choice-200.json` がそれ（E18 の記録）。本人の Vault を state にした応答は、JEV-0 の精度テストのものも含めてコミットしない。
 
 ## 11. 決定と残る課題
 
@@ -132,4 +143,6 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 | しきい値 | 既定 0.8／0.9。JEV-0 で確定 |
 | API キー | 設定（`data.json`）。README に送信内容を明記。コミュニティ登録するならネットワーク利用の開示が要る |
 | BRAT | JEV-3 の後 |
-| 未確認 | Jev の正式 SDK、`requestUrl` のタイムアウト挙動。レスポンスの形と日本語 state のトークン数は LEV-163 で実測し §7 に書いた（`client.ts` の読み取りは LEV-170 で直す） |
+| レスポンスの形 | 実機 E18（2026-09-22）で照合し、`answers`・回答の `type`・`usage` の snake_case に合わせた（§7）。以前の `questions` の形は受けない |
+| 日本語 state のトークン数 | LEV-163 で実測（本人の Vault に 600 回、1 判定 平均 4,444 入力トークン。§7） |
+| 未確認 | Jev の正式 SDK、エラー応答（4xx・5xx）の本文の形、`requestUrl` のタイムアウト挙動 |
