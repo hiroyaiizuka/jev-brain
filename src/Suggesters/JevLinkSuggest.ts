@@ -200,7 +200,8 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
         linkpath: closed.linkpath,
         offset: editor.posToOffset(start),
         length: cursor.ch - closed.start,
-        at: start,
+        // `onTrigger` が通すのは閉じた `[[…]]` だけなので、指しているのは必ず wiki リンク。
+        at: { ...start, wiki: true },
         status: "asking",
       }, editor.getValue());
     }

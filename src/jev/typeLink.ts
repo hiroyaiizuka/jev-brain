@@ -1,5 +1,6 @@
 import { TFile } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
+import { normalizeRelationsHeading } from "src/Settings";
 import { toHierarchyKey } from "src/utils/hierarchy";
 import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev, type JevQuestion, type JevRequest } from "./client";
@@ -148,10 +149,13 @@ export const typeLinkAtCursor = async (
 
   await deps.flush?.();
   const outcome = await appendRelation(app, file, field, name, {
-    heading: settings.jev.relationsHeading,
+    // 設定タブを開いたまま見出しを打ち替えている最中は `## Notes` のような値が入っているので、
+    // 節を作る側と同じ正規化を通す（`normalizeSettings` はタブを閉じたときにしか走らない）。
+    heading: normalizeRelationsHeading(settings.jev.relationsHeading),
     mode: settings.jev.writeMode,
-    // 書き換えるのはカーソルが指したその出現だけ（設計 §3、LEV-185）。
-    at: { line: cursor.line, ch: written.start },
+    // 書き換えるのはカーソルが指したその出現だけ（設計 §3、LEV-185）。markdown リンクは
+    // その中にフィールドを書けないので、`relations.ts` が節に落とす。
+    at: { line: cursor.line, ch: written.start, wiki: written.wiki },
   });
   if (!isRelationEdit(outcome)) {
     return { status: outcome.skipped === "not-found" ? "link-gone" : "unchanged", field, target: name };

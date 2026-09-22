@@ -327,7 +327,7 @@ export default {
   JEV_QUEUE_CONFIRM: "Confirm {field}",
   JEV_QUEUE_CONFIRM_NONE: "Pick a field first",
   JEV_QUEUE_NO_CHANGE: "Jev left the note alone: that link already carries a field.",
-  JEV_QUEUE_LINK_GONE: "Jev left the note alone: the link is no longer where it was when this card was collected. Open the note in JevBrain again to collect it afresh.",
+  JEV_QUEUE_LINK_GONE: "Jev left the note alone: the link is not where it was when this card was collected. Move the brain to another note and back to collect this one afresh.",
   JEV_QUEUE_UNDO: "Undo",
   JEV_QUEUE_UNDO_MISSING: "Jev no longer has a record of that line, so it was left as it is.",
   JEV_QUEUE_WRITE_FAILED: "Jev could not finish writing that field. The developer console has the reason, and the note may already hold the line.",

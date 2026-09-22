@@ -3,6 +3,7 @@ import type { App } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
 import type { Page } from "src/graph/Page";
 import { t } from "src/lang/helpers";
+import { normalizeRelationsHeading } from "src/Settings";
 import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev } from "src/jev/client";
 import type { JevClientConfig, JevQuestion } from "src/jev/client";
@@ -288,14 +289,17 @@ export class JevQueueView extends ItemView {
   }
 
   /**
-   * 書き込みに使うリンクの書き方。本文がそのカードの出現を `[[…]]` で書いていれば、その綴りの
-   * まま（`relations.ts` はこの綴りでその出現を見つけ、インラインはそのまま包む）。markdown
-   * リンクで書かれていれば `[[…]]` に入れて意味の変わらない最短の形にする（設計 §3）。
+   * 本文がそのカードの出現をどう書いているか。`[[…]]` ならその綴りのまま（`relations.ts` は
+   * この綴りでその出現を見つけ、インラインはそのまま包む。最短の形に直すと `[[folder/Note]]`
+   * のような書き方を見つけられない）。markdown リンクなら、その中にフィールドは書けないので、
+   * `[[…]]` に入れて意味の変わらない解決したパスにして節に落とす（設計 §3）。
    */
-  private writeTextOf(card: JevQueueCard): string {
-    const written = /^\[\[([^[\]]+)\]\]$/u.exec(card.context.slice(card.ch, card.ch + card.length));
-    const linkpath = written?.[1].split("|")[0].split("#")[0].trim();
-    return linkpath !== undefined && linkpath !== "" ? linkpath : this.linkTextOf(card.target);
+  private writtenLinkOf(card: JevQueueCard): { text: string; wiki: boolean } {
+    const written = card.context.slice(card.ch, card.ch + card.length).match(/^\[\[([^[\]]+)\]\]$/u);
+    const linkpath = written?.[1].split("|")[0].split("#")[0];
+    return linkpath !== undefined && linkpath.trim() !== ""
+      ? { text: linkpath, wiki: true }
+      : { text: card.target, wiki: false };
   }
 
   // ---- 確定・あとで・取り消し ---------------------------------------------
@@ -307,14 +311,18 @@ export class JevQueueView extends ItemView {
     const batchId = this.batchId;
     if (!note || !field || card.status !== "open") return;
     const jev = this.plugin.settings.jev;
+    const written = this.writtenLinkOf(card);
+    // 節に足すだけの `relations` では、今までどおり Obsidian がそのノートから書くのと同じ最短の形。
+    const target = jev.writeMode === "inline" ? written.text : this.linkTextOf(card.target);
     let outcome: RelationResult;
     let logId = "";
     try {
-      outcome = await appendRelation(this.app, note.file, field, this.writeTextOf(card), {
-        heading: jev.relationsHeading,
+      outcome = await appendRelation(this.app, note.file, field, target, {
+        // 設定タブを開いたまま見出しを打ち替えている最中の値（`## Notes`）をそのまま使わない。
+        heading: normalizeRelationsHeading(jev.relationsHeading),
         mode: jev.writeMode,
         // 書き換えるのはカードが持つその出現だけ。同じ相手が本文に 2 つあっても他は触らない（LEV-185）。
-        at: { line: card.line, ch: card.ch },
+        at: { line: card.line, ch: card.ch, wiki: written.wiki },
       });
       if (!isRelationEdit(outcome)) {
         // 「既に付いている」と「集めたときの位置にもう無い」は直し方が違うので、言い方を分ける。
@@ -342,7 +350,9 @@ export class JevQueueView extends ItemView {
     }
     // 書いている間に中心が変わった。書き込みと記録は残すが、いまのカードはもう別のノートのもの。
     if (generation !== this.generation) return;
-    this.model.confirm(card.target, { field, text: outcome.after, logId });
+    // カードに出すのは入ったフィールドだけ。インラインの `after` は書き換えた行そのものなので、
+    // そのまま渡すと段落 1 つがカードに流れ込む。
+    this.model.confirm(card.target, { field, text: `${field}:: [[${target}]]`, logId });
     this.renderCard(card);
   }
 

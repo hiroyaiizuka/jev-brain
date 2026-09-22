@@ -35,8 +35,14 @@ export type RelationResult = RelationEdit | RelationSkip;
 /** 書いたのか、書かなかったのか。 */
 export const isRelationEdit = (result: RelationResult): result is RelationEdit => !("skipped" in result);
 
-/** 入口が指した出現。0 始まりの行番号と、リンクの `[` の桁。 */
-export type LinkPosition = { line: number; ch: number };
+/**
+ * 入口が指した出現。0 始まりの行番号と、リンクの `[` の桁。
+ *
+ * `wiki` はそれが `[[…]]` かどうか。false（markdown リンク `[B](notes/B.md)`）なら本文は触らず
+ * `## <heading>` 節に落とす（設計 §3）。どちらかは入口が知っているのでここでは調べ直さない:
+ * 位置がずれたときに、たまたま重なった無関係な markdown リンクを相手と取り違えないため。
+ */
+export type LinkPosition = { line: number; ch: number; wiki: boolean };
 
 export type AppendRelationOptions = {
   /** `relations` のときに書き足す節の見出し（設定 `relationsHeading`）。 */
@@ -186,37 +192,52 @@ const isSameRelation = (line: string, field: string, target: string): boolean =>
 /** 行の中の 1 つの `[[…]]`: `[` の桁と、書かれているとおりのリンク全体。 */
 type Link = { at: number; text: string };
 
-/**
- * その行が `target` を指す `[[…]]`（別名・見出し付きを含む）を、前から順に。
- * 埋め込み `![[…]]` は型を付ける相手ではないので外す（設計 §2-1）。
- */
-const linksTo = (line: string, target: string): Link[] => {
-  const open = `[[${target}`;
-  const links: Link[] = [];
-  for (let at = line.indexOf(open); at !== -1; at = line.indexOf(open, at + 1)) {
-    const next = line.charAt(at + open.length);
-    if (next !== "]" && next !== "|" && next !== "#") continue;
-    if (at > 0 && line.charAt(at - 1) === "!") continue;
-    const close = line.indexOf("]]", at + open.length);
-    if (close !== -1) links.push({ at, text: line.slice(at, close + 2) });
-  }
-  return links;
-};
-
-/**
- * 入口が指した出現（LEV-185）。渡ってくる `ch` はリンクの `[` の桁だが、リンクの中を指していても
- * 同じ出現として扱う。隣り合う 2 つの境目では `[` の一致を先に見るので、どちらか一方に決まる。
- */
-const linkAt = (links: Link[], ch: number): Link | undefined =>
-  links.find((link) => link.at === ch)
-  ?? links.find((link) => ch > link.at && ch < link.at + link.text.length);
-
 /** `[[X]]` の直前に付いているフィールド（`up:: ` や `(up:: `）と、その名前が始まる位置。無ければ null。 */
 const fieldBefore = (line: string, at: number): { name: string; start: number } | null => {
   const written = line.slice(0, at).match(/(?:^|\()(\s*)([^()]*?)\s*::\s*$/u);
   if (!written || written.index === undefined) return null;
   const paren = line.charAt(written.index) === "(" ? 1 : 0;
   return { name: written[2], start: written.index + paren + written[1].length };
+};
+
+/** 行の中の `[[…]]`（入れ子の `[`・`]` は許さない。`typeLink.ts` の `writtenLinkAt` と同じ読み方）。 */
+const WIKI_LINK = /(!?)\[\[[^[\]]+?\]\]/gu;
+
+/**
+ * 見出しの行（`## …`）。ここにフィールドを書くと見出しの文言が変わり、その見出しを指す
+ * `[[Note#見出し]]` が Vault のどこかで壊れる。インラインの相手にはせず、節に落とす。
+ */
+const HEADING_LINE = /^#{1,6}\s/u;
+
+/** `[[X|別名]]`・`[[X#見出し]]` の X。前後の空白は詰める（本文が `[[ X ]]` でも同じ相手）。 */
+const linkpathOf = (text: string): string => text.slice(2, -2).split("|")[0].split("#")[0].trim();
+
+/**
+ * その行が `target` を指す `[[…]]`（別名・見出し付きを含む）を、前から順に。
+ * 埋め込み `![[…]]` は型を付ける相手ではないので外す（設計 §2-1）。
+ */
+const linksTo = (line: string, target: string): Link[] =>
+  Array.from(line.matchAll(WIKI_LINK))
+    .filter((match) => match[1] !== "!")
+    .map((match): Link => ({ at: match.index + match[1].length, text: match[0].slice(match[1].length) }))
+    .filter((link) => linkpathOf(link.text) === target.trim());
+
+/**
+ * 入口が指した出現（LEV-185）。渡ってくる `ch` はリンクの `[` の桁だが、リンクの中を指していても
+ * 同じ出現として扱う。隣り合う 2 つの境目では `[` の一致を先に見るので、どちらか一方に決まる。
+ *
+ * その桁に無ければ、同じ行にその相手の型の付いていない出現がちょうど 1 つあるときだけそれを使う。
+ * 判定を待つ間に同じ行の前のほうが伸びること（同じ行の別のリンクに型が付く、文字を足す）は
+ * ふつうに起きるので、行の中で 1 つに決まるなら拾う。2 つ以上あるなら、どれを指していたのか
+ * 分からないので何もしない（同じ相手が 2 つある本文でこそ位置が要る）。
+ */
+const pointedLink = (line: string, target: string, ch: number): Link | undefined => {
+  const links = linksTo(line, target);
+  const pointed = links.find((link) => link.at === ch)
+    ?? links.find((link) => ch > link.at && ch < link.at + link.text.length);
+  if (pointed) return pointed;
+  const untyped = links.filter((link) => !fieldBefore(line, link.at));
+  return untyped.length === 1 ? untyped[0] : undefined;
 };
 
 /** 行頭の字下げとリスト記号（`-`／`*`／`+`／`1.`／`1)`）だけでできた前置き。 */
@@ -235,22 +256,10 @@ const typedLine = (line: string, link: Link, field: string): string => {
   return `${line.slice(0, link.at)}${written}${line.slice(link.at + link.text.length)}`;
 };
 
-/** `[ラベル](パス)` の markdown リンク（埋め込み `![ラベル](…)` は除く）。 */
-const MARKDOWN_LINK = /(!?)\[[^[\]]*\]\([^()]*\)/gu;
-
-/**
- * その位置に markdown リンクがあるか。`linksTo` は `[[…]]` しか見つけられないので、入口が
- * `[B](notes/B.md)` を指したときの分かれ道になる（設計 §3: そのときは `## Relations` 節に落とす）。
- * 相手が合っているかは見ない: 入口はその出現が `target` のものだと確かめたうえで位置を渡す。
- */
-const markdownLinkAt = (line: string, ch: number): boolean =>
-  Array.from(line.matchAll(MARKDOWN_LINK)).some(
-    (match) => match[1] !== "!" && ch >= match.index && ch <= match.index + match[0].length,
-  );
-
 /**
  * 本文のリンクにフィールドを付ける（設計 §3）。`at` があるときはその出現だけを見て、そこに
- * `[[target]]` が無ければ何もしない（入口が markdown リンクを指していたときだけ節に落とす）。
+ * `[[target]]` が無ければ何もしない。入口が markdown リンクを指していた（`at.wiki` が false）ときは
+ * 本文を触らず節に落とす。
  */
 const writeInlineField = (
   data: string,
@@ -258,18 +267,17 @@ const writeInlineField = (
   target: string,
   options: AppendRelationOptions,
 ): Rewrite => {
-  const note = readNote(data);
   const { at } = options;
-  if (!at) return typeFirstLink(note, data, field, target);
+  if (!at) return typeFirstLink(readNote(data), data, field, target);
+  // markdown リンクの中にフィールドは書けない（設計 §3）。本文は触らず節に 1 行足す。
+  if (!at.wiki) return appendToSection(data, field, target, options.heading);
 
+  const note = readNote(data);
   const line = note.usable[at.line] ? note.lines[at.line] : undefined;
   if (line === undefined) return unchanged(data, "not-found");
-  const link = linkAt(linksTo(line, target), at.ch);
-  if (!link) {
-    return markdownLinkAt(line, at.ch)
-      ? appendToSection(data, field, target, options.heading)
-      : unchanged(data, "not-found");
-  }
+  if (HEADING_LINE.test(line)) return appendToSection(data, field, target, options.heading);
+  const link = pointedLink(line, target, at.ch);
+  if (!link) return unchanged(data, "not-found");
   // 既にフィールドが付いている出現は、同じものでも別のものでも付け替え（replaceRelation）の仕事。
   if (fieldBefore(line, link.at)) return unchanged(data, "already-typed");
   const after = typedLine(line, link, field);
@@ -280,7 +288,7 @@ const writeInlineField = (
 const typeFirstLink = (note: Note, data: string, field: string, target: string): Rewrite => {
   const { lines, usable } = note;
   for (let i = 0; i < lines.length; i++) {
-    if (!usable[i]) continue;
+    if (!usable[i] || HEADING_LINE.test(lines[i])) continue;
     for (const link of linksTo(lines[i], target)) {
       const written = fieldBefore(lines[i], link.at);
       if (written) {
