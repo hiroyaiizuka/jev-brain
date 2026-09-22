@@ -17,8 +17,8 @@ Linear は Team LEV の Project「Jevbrain」（2026-09-20 に本人が作成）
 | 3D-2 視点と設定 | LEV-100 | 3D-1 の実機確認後 |
 | 3D-3 実測と重なり | LEV-101 | 同上 |
 | H1 整地 | LEV-102 | 3D-1 の merge 後 |
-| JEV-0 精度テスト | LEV-157 | LEV-162（正解の抽出）→ LEV-163（Jev 判定と集計。本人のキーが要る）→ LEV-164（しきい値の決定、needs-human） |
-| JEV-1 判定の中核 | LEV-103 | LEV-165（設定と登録の分岐。`Settings.ts`・`excalibrain-main.ts` はこの子だけ）→ LEV-166（client）・LEV-167（state と judge）・LEV-168（collect）・LEV-169（relations と log）は並行可 → LEV-170（実機 E18、needs-human） |
+| JEV-0 精度テスト | LEV-157 | LEV-162（正解の抽出）→ LEV-163（Jev 判定と集計）は Done（500 件で第一候補 13%、上位 3 で 40%）→ LEV-186（候補絞りと説明文で再測）→ LEV-164（しきい値と自動確定の可否、needs-human） |
+| JEV-1 判定の中核 | LEV-103 | LEV-165（設定と登録の分岐）→ LEV-166（client）・LEV-167（state と judge）・LEV-168（collect）・LEV-169（relations と log）→ LEV-170（実機 E18）は全部 Done（2026-09-22）。追加: LEV-185（既定をインラインに、行だけなら括弧なし、入口が指した出現だけ。実機 E22）・LEV-187（候補を上位 5 件、0% 除外） |
 | JEV-2 エディタのサジェスター | LEV-158 | LEV-171（`]]` 直後の EditorSuggest）→ LEV-172（ホットキー、付け替え）→ LEV-173（実機 E19、needs-human）。JEV-1 の後 |
 | JEV-3 型付け待ちキュー | LEV-159 | LEV-174（JevQueueView）→ LEV-175（ツールパネルのボタンと styles.css）→ LEV-176（実機 E20、needs-human）。JEV-1 の後、JEV-2 と並行可 |
 | JEV-4 一括確定と見直し | LEV-160 | LEV-177（範囲と費用のモーダル）→ LEV-178（しきい値で自動確定、一括取り消し）→ LEV-179（見直しタブ）→ LEV-180（実機 E21、needs-human）。JEV-3 と JEV-0 の後 |
