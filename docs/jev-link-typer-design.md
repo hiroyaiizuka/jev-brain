@@ -33,7 +33,8 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 
 - Q1 Choice「このリンクに付けるフィールド」: criteria ＝ hierarchy の全フィールド（Up／Down／Parents／Children／左右の友／前後）。各候補の説明 ＝ 領域名＋方向＋（あれば）本人が設定に書いた説明文。
 - Q2 Choice「このリンクの方向」: 親／子／左友／右友／前／次。
-- 整合性: Q1 の第一候補が設定上持つ方向 ＝ Q2 の答え → 自信あり（確率つきで提示、第一候補を既定にする）。≠ → 自信なし（確率を伏せて設定の順で提示、既定なし）。
+- 整合性: Q1 の第一候補が設定上持つ方向 ＝ Q2 の答え → 自信あり（第一候補を既定にする）。≠ → 自信なし（既定なし。「自信なし」と注記する）。
+- 提示する候補（本人の決定、2026-09-22）: どちらの場合も Q1 の確率順の上位 5 件までで、四捨五入で 0% になる候補は出さない。サジェスターとキューで同じ。以前の「自信なしは確率を伏せて設定の順で全部出す」は、候補が 160 を超える Vault で一覧が読めなくなるので取り下げた。
 - 返り値: `{ field, probabilities: Record<string, number>, direction, directionProbability, confident }`。純関数で、Jev の応答は `client.ts` から受け取る。
 
 ### 2-4 しきい値（既定値。JEV-0 の結果で確定する）
@@ -44,8 +45,8 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 
 ## 3. 書き込みと取り消し（`relations.ts`、`log.ts`）
 
-- 書き先: ノート末尾の `## Relations` 節（見出しは設定 `relationsHeading`、無ければ末尾に作る）に `field:: [[X]]` を 1 行追記する。本文の `[[X]]` は触らない。同じ行があれば何もしない。
-- 理由: 可逆で diff が読みやすく、ExcaliBrain は Dataview のフィールドとして拾う（`Page.addDVFieldLinksToPage`）。本文のインライン `(field:: [[X]])` への書き換えは設定 `writeMode: inline` で選べる（既定は `relations`）。
+- 書き先（本人の決定、2026-09-22。既定を `inline` に変えた）: 入口が指した本文の `[[X]]` そのものにフィールドを付ける。行頭（字下げとリスト記号を除く）から行末までがそのリンク 1 つだけの行なら括弧なしの `field:: [[X]]`、文章の途中なら `(field:: [[X]])`。書き換えるのは入口（コマンドのカーソル、サジェスターの `]]`、キューのカード）が指した出現で、同じ相手が本文に 2 つあっても他は触らない（LEV-185）。同じ出現に既にフィールドが付いていれば何もしない。
+- 設定 `writeMode: relations` を選ぶと、代わりにノート末尾の `## Relations` 節（見出しは設定 `relationsHeading`、無ければ末尾に作る）に `field:: [[X]]` を 1 行追記し、本文は触らない。どちらも ExcaliBrain は Dataview のフィールドとして拾う（`Page.addDVFieldLinksToPage`）。
 - 見直しの確定: 既存の `field:: [[X]]` 行を置き換える。インラインなら `(old:: [[X]])` → `(new:: [[X]])`。
 - ログ: プラグインのデータフォルダの `jev-log.json` に `{ id, batchId, file, line, before, after, at, source }` を追記する（`data.json` とは別ファイル。gitignore 済み）。取り消しは行単位 `undo(id)` と一括単位 `undoBatch(batchId)`。対象の行が手で変わっていたら取り消さずに Notice を出す。
 - 反映: `metadataCache` の更新は Obsidian に任せ、JevBrain は既存の `indexUpdateInterval`（`Scene.setTimer()`）で次の描画に反映する。jev から `Scene` の描画 API は呼ばない。
@@ -86,7 +87,7 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 | `suggestOnLinkClose` | `true` | `]]` の直後にサジェスト |
 | `contextChars` | `500` | リンク前後の文字数 |
 | `relationsHeading` | `"Relations"` | 書き込み先の見出し |
-| `writeMode` | `"relations"` | `relations` ／ `inline` |
+| `writeMode` | `"inline"` | `inline`（本文のリンクに付ける。既定）／ `relations`（`## Relations` 節に追記） |
 | `autoConfirmThreshold` | `0.8` | 一括の自動確定 |
 | `reviewThreshold` | `0.9` | 見直しの提示 |
 | `endpoint` | `https://api.typesafe.ai/v1/systemone` | 変更可 |
@@ -138,7 +139,8 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 | 論点 | 判断 |
 | --- | --- |
 | 置き場所 | jevbrain 本体の `src/jev/`。別プラグイン案は撤回（2026-09-22、本人） |
-| 書き込み先 | `## Relations` に統一。インラインは設定で選べる |
+| 書き込み先 | 既定はインライン（本文のリンクに付ける。行にリンクだけなら括弧なし、文中なら括弧つき）。`## Relations` 節は設定で選べる（2026-09-22 に既定を入れ替え） |
+| 候補の数 | 確率順の上位 5 件、0% は出さない。自信なしでも同じ並びで既定なし（2026-09-22） |
 | 既存の型 | 自動更新しない。見直しタブで手動 |
 | しきい値 | 既定 0.8／0.9。JEV-0 で確定 |
 | API キー | 設定（`data.json`）。README に送信内容を明記。コミュニティ登録するならネットワーク利用の開示が要る |
