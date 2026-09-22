@@ -46,7 +46,9 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 ## 3. 書き込みと取り消し（`relations.ts`、`log.ts`）
 
 - 書き先（本人の決定、2026-09-22。既定を `inline` に変えた）: 入口が指した本文の `[[X]]` そのものにフィールドを付ける。行頭（字下げとリスト記号を除く）から行末までがそのリンク 1 つだけの行なら括弧なしの `field:: [[X]]`、文章の途中なら `(field:: [[X]])`。書き換えるのは入口（コマンドのカーソル、サジェスターの `]]`、キューのカード）が指した出現で、同じ相手が本文に 2 つあっても他は触らない（LEV-185）。同じ出現に既にフィールドが付いていれば何もしない。
-- 設定 `writeMode: relations` を選ぶと、代わりにノート末尾の `## Relations` 節（見出しは設定 `relationsHeading`、無ければ末尾に作る）に `field:: [[X]]` を 1 行追記し、本文は触らない。どちらも ExcaliBrain は Dataview のフィールドとして拾う（`Page.addDVFieldLinksToPage`）。
+- 設定 `writeMode: relations` を選ぶと、代わりにノート末尾の `## Relations` 節（見出しは設定 `relationsHeading`、無ければ末尾に作る）に `field:: [[X]]` を 1 行追記し、本文は触らない。どちらも ExcaliBrain は Dataview のフィールドとして拾う（`Page.addDVFieldLinksToPage`）。既に `data.json` で `relations` を選んでいる Vault は移行しない。
+- markdown リンク（本人の決定、2026-09-22。LEV-185）: 入口が `[B](notes/B.md)` を指したときは、インラインにせず `## Relations` 節に `up:: [[notes/B.md]]`（解決したパスを `[[…]]` に入れた形）を 1 行足す。理由は 2 つ。`(up:: [B](notes/B.md))` が Dataview に Link として読まれるかは実機で確かめていない（Dataview のインラインフィールドは括弧の入れ子を数えるので値そのものは取れるはずだが、`[[…]]` と違って Link ではなく文字列になり、ExcaliBrain が拾えるのは `src/utils/dataview.ts` の `readLinksFromString` 経由の 1 段回りになる）。もう 1 つは、パスに `)` が入ると括弧が閉じる位置が変わること。実機で読めることを確かめたければ E22 の追加項目にする。
+- 行頭（字下げとリスト記号を除く）の判定: リスト記号は `-`／`*`／`+`／`1.`／`1)`。`- [ ] [[X]]` のようなチェックボックスや `# [[X]]` のような見出しは「文中」として扱い、括弧を付ける。
 - 見直しの確定: 既存の `field:: [[X]]` 行を置き換える。インラインなら `(old:: [[X]])` → `(new:: [[X]])`。
 - ログ: プラグインのデータフォルダの `jev-log.json` に `{ id, batchId, file, line, before, after, at, source }` を追記する（`data.json` とは別ファイル。gitignore 済み）。取り消しは行単位 `undo(id)` と一括単位 `undoBatch(batchId)`。対象の行が手で変わっていたら取り消さずに Notice を出す。
 - 反映: `metadataCache` の更新は Obsidian に任せ、JevBrain は既存の `indexUpdateInterval`（`Scene.setTimer()`）で次の描画に反映する。jev から `Scene` の描画 API は呼ばない。

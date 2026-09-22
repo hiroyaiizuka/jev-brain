@@ -37,6 +37,9 @@ export type JevQueueCard = {
   /** リンクの位置と長さ（`collectUntypedLinks` が `metadataCache` から持ってきたもの）。state に渡す。 */
   readonly offset: number;
   readonly length: number;
+  /** 同じ位置を行と桁で。確定はこの出現だけを書き換える（設計 §3、LEV-185）。 */
+  readonly line: number;
+  readonly ch: number;
   readonly context: string;
   status: JevQueueStatus;
   judgement: Judgement | null;
@@ -109,6 +112,8 @@ export class JevQueueModel {
         displayText: link.displayText,
         offset: link.offset,
         length: link.length,
+        line: link.line,
+        ch: link.ch,
         context: link.context,
         status: this.deferred.has(deferKey(path, link.target)) ? "later" : "pending",
         judgement: null,

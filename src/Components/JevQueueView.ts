@@ -13,8 +13,8 @@ import type { Choice, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry, undo } from "src/jev/log";
 import { JevQueueModel } from "src/jev/queue-model";
 import type { JevQueueCard } from "src/jev/queue-model";
-import { appendRelation } from "src/jev/relations";
-import type { RelationEdit } from "src/jev/relations";
+import { appendRelation, isRelationEdit } from "src/jev/relations";
+import type { RelationResult } from "src/jev/relations";
 import { buildState } from "src/jev/state";
 import { JEV_CENTRAL_PAGE_CHANGED } from "src/utils/jevEvents";
 
@@ -279,12 +279,23 @@ export class JevQueueView extends ItemView {
   }
 
   /**
-   * 書き込みと state に使うリンクの書き方。`[[folder/Note.md]]` ではなく Obsidian が
+   * state に使うリンクの書き方。`[[folder/Note.md]]` ではなく Obsidian が
    * そのノートから書くのと同じ最短の形にする。未解決のリンクはそのまま。
    */
   private linkTextOf(target: string): string {
     const file = this.targetFile(target);
     return file && this.note ? this.app.metadataCache.fileToLinktext(file, this.note.file.path) : target;
+  }
+
+  /**
+   * 書き込みに使うリンクの書き方。本文がそのカードの出現を `[[…]]` で書いていれば、その綴りの
+   * まま（`relations.ts` はこの綴りでその出現を見つけ、インラインはそのまま包む）。markdown
+   * リンクで書かれていれば `[[…]]` に入れて意味の変わらない最短の形にする（設計 §3）。
+   */
+  private writeTextOf(card: JevQueueCard): string {
+    const written = /^\[\[([^[\]]+)\]\]$/u.exec(card.context.slice(card.ch, card.ch + card.length));
+    const linkpath = written?.[1].split("|")[0].split("#")[0].trim();
+    return linkpath !== undefined && linkpath !== "" ? linkpath : this.linkTextOf(card.target);
   }
 
   // ---- 確定・あとで・取り消し ---------------------------------------------
@@ -296,15 +307,18 @@ export class JevQueueView extends ItemView {
     const batchId = this.batchId;
     if (!note || !field || card.status !== "open") return;
     const jev = this.plugin.settings.jev;
-    let edit: RelationEdit | null;
+    let outcome: RelationResult;
     let logId = "";
     try {
-      edit = await appendRelation(this.app, note.file, field, this.linkTextOf(card.target), {
+      outcome = await appendRelation(this.app, note.file, field, this.writeTextOf(card), {
         heading: jev.relationsHeading,
         mode: jev.writeMode,
+        // 書き換えるのはカードが持つその出現だけ。同じ相手が本文に 2 つあっても他は触らない（LEV-185）。
+        at: { line: card.line, ch: card.ch },
       });
-      if (!edit) {
-        new Notice(t("JEV_QUEUE_NO_CHANGE"));
+      if (!isRelationEdit(outcome)) {
+        // 「既に付いている」と「集めたときの位置にもう無い」は直し方が違うので、言い方を分ける。
+        new Notice(outcome.skipped === "already-typed" ? t("JEV_QUEUE_NO_CHANGE") : t("JEV_QUEUE_LINK_GONE"));
         return;
       }
       // 記録できるのはデータフォルダが分かるときだけ。無ければ書き込みは残し、取り消しは出さない。
@@ -313,9 +327,9 @@ export class JevQueueView extends ItemView {
         const entry = await appendLogEntry(this.app, dir, {
           batchId,
           file: note.file.path,
-          line: edit.line,
-          before: edit.before,
-          after: edit.after,
+          line: outcome.line,
+          before: outcome.before,
+          after: outcome.after,
           source: "queue",
         });
         logId = entry.id;
@@ -328,7 +342,7 @@ export class JevQueueView extends ItemView {
     }
     // 書いている間に中心が変わった。書き込みと記録は残すが、いまのカードはもう別のノートのもの。
     if (generation !== this.generation) return;
-    this.model.confirm(card.target, { field, text: edit.after, logId });
+    this.model.confirm(card.target, { field, text: outcome.after, logId });
     this.renderCard(card);
   }
 

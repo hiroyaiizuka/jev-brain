@@ -2565,7 +2565,7 @@ private normalizeSettings() {
       containerEl,
       t("JEV_WRITE_MODE_NAME"),
       t("JEV_WRITE_MODE_DESC"),
-      {"relations": t("JEV_WRITE_MODE_RELATIONS"), "inline": t("JEV_WRITE_MODE_INLINE")},
+      {"inline": t("JEV_WRITE_MODE_INLINE"), "relations": t("JEV_WRITE_MODE_RELATIONS")},
       ()=>this.plugin.settings.jev.writeMode,
       (val)=>{
         this.plugin.settings.jev.writeMode = val === "inline" ? "inline" : "relations";
