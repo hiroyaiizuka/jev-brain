@@ -135,6 +135,8 @@
 
 実機 E22（2026-09-22、main 3104e2c、CDP、`artifacts/jev-inline-e2e/record.md`）: PASS。検証用 Vault を `inline` にして、文中は `(down:: [[X]])`、リンクだけの行は `down:: [[X]]`、リスト項目は `- down:: [[X]]`、同じ相手が 2 回ある本文はカーソルの 2 つ目だけが書き換わり、`## Relations` は増えず `jev-log.json` に 4 件。1 回目は相手に型付きのリンクを選んで何も書かれなかった（正しい挙動）。サジェスターとキューからの経路は E19／E20 で見る。
 
+現在の実装（LEV-188）: 相手のノートが見つからない markdown リンク（`x/A.md` の `[B](../notes/B.md)` で `notes/B.md` が無い）には型を書かない。`[[../notes/B.md]]` は Obsidian で解決せず切れたリンクになり、そのリンクは型が付かないまま何度でも有料の判定に回るため。`collectUntypedLinks` がこの出現を未型付けに数えないのでキュー（と一括）はカードを作らず Jev にも聞かない。コマンドは `typeLinkAtCursor` が Jev に聞く前に `unresolved-markdown` で止め、Notice `JEV_COMMAND_UNRESOLVED_MARKDOWN`（「{target} にノートが見つからないので、このリンクには型を付けられません」）を出す。未解決の `[[まだ無いノート]]` は今までどおり書ける。`tests/jev/typeLink.test.ts`（未解決の markdown は聞かず書かず、未解決の wiki は書く）・`tests/jev/collect.test.ts`（未解決の markdown を落とし、同じ鍵の `[[…]]` は残す）・`tests/components/jev-type-link-command.test.ts`（文言）が固定する。実機は未実施。
+
 ### JEV-2 エディタのサジェスター（JEV-1 の後）
 
 - `]]` を閉じた直後に `EditorSuggest` が候補（フィールド・確率・方向。確率順の上位 5 件までで 0% は出さない。自信なしなら既定なしで注記）を出し、Enter で書き込み（既定は本文のリンクにインライン、設定で `## Relations`）、Esc で閉じる。同じノートの同じリンクはセッション中 1 回だけ聞く。設定でオフにできる。
@@ -152,6 +154,8 @@
 - 確定後、JevBrain が次の描画で新しい関係を描く（推論の子が型の位置へ移る）。パネル下部に呼び出し回数・トークン・概算費用。実機（E20）、証跡は `artifacts/jev-3-e2e/`。
 
 現在の実装（LEV-174）: `src/Components/JevQueueView.ts`（`ItemView`、view type `jevbrain-queue`。`registerJev()` で `registerView` とコマンド `excalibrain-jev-open-queue`＝`activateJevQueue`）が、`Scene` の出す 1 本のイベント（`src/utils/jevEvents.ts` の `jevbrain:central-page-changed`。`render()` で中心のパス、`unloadScene()` で null。Scene が渡すのはパスだけで、jev を import せず描画 API も渡さない）を受けて `collectUntypedLinks` → カード → 同時 3 本で `buildState`＋`buildQuestions` → `askJev` → `judge` を埋め、カードに相手・前後の行・候補ボタン（自信ありは第一候補を選んだ状態＋確率、自信なしは設定の順で確率なし・既定なし）・「Confirm <field>」「Later」を出し、確定は `appendRelation`＋`appendLogEntry`（`batchId` は中心ごと、`source` は `queue`）、確定後は書いた塊と「Undo」（`undo`）を出す。中心が同じままの再描画では作り直さず（確定済みの「Undo」を残す）、フォルダ・タグ・URL・Markdown でない中心にはキューを出さない。「あとで」は「ノートのパス＋相手」でセッション中だけ覚え（プラグインデータには残さない）、あとでのカードには聞かない。下部に呼び出し回数・トークン・概算費用（設計 §7 の $0.042/M と 150 円/$）。確定・取り消しは中心が変わった間に走っても別のノートのカードに結果を当てず、判定は再試行と「戻す」も含めて同時 3 本を超えない。リンクの範囲は `collectUntypedLinks` が `metadataCache` から返す `offset`・`length`（LEV-174 で追加）をそのまま使う。カードの遷移は DOM を持たない `src/jev/queue-model.ts` に分け、`tests/jev/queue-model.test.ts`（24 件）が open → done → 取り消し、open → later → 戻す、既定は Q1 の答え（`ordered[0]` ではない）、あとでの記憶、失敗と再試行、集計を固定する。スタイルは `styles.css` に最小限だけで、ツールパネルのボタンとモバイル非表示は LEV-175、実機は LEV-176（未実施）。
+
+現在の実装（LEV-175）: ツールパネルの 3D トグルの後に「Jev」ボタン（`showsJevQueueButton`＝デスクトップで、この読み込みがキューを登録し今も `isJevActive`）が付き、押すと `toggleJevQueue` で右サイドのキューを開閉し（点灯はキューが開いているかで、タブやコマンドでの開閉も `layout-change` で追い、保存しない）、`styles.css` の `.jevbrain-queue-*` をカード・状態の帯（`data-jev-status`）・候補ピル（選択だけ強調）・下部の費用行に整え、キューとサジェスターの文言（サジェスターのハードコードと方向のラベルを `JEV_SUGGEST_*`・`JEV_DIRECTION_*` へ）を `ja` に訳した。`tests/components/jev-queue-toggle.test.ts`・`tests/utils/lang-jev.test.ts` が条件・開閉・差し込み・訳の網羅を固定し、実機は未実施（手順書 `artifacts/LEV-175-e2e/plan.md`、E20 と合わせて LEV-176）。
 
 ### JEV-4 一括確定と見直し（JEV-3 と JEV-0 の後）
 

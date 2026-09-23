@@ -16,6 +16,8 @@ import { appendLogEntry } from "src/jev/log";
 import { appendRelation, isRelationEdit, replaceRelation } from "src/jev/relations";
 import type { LinkPosition, RelationResult } from "src/jev/relations";
 import { buildState } from "src/jev/state";
+import { t } from "src/lang/helpers";
+import { directionLabel, fill } from "src/lang/jev";
 import { getDVFieldLinksForPage } from "src/utils/dataview";
 import { HIERARCHY_REGIONS, toHierarchyKey } from "src/utils/hierarchy";
 
@@ -68,16 +70,6 @@ export type OpenAtResult =
    * `replaceRelation` が書き換える先が無いので、聞く前に断る。
    */
   | { status: "typed-outside-body"; target: string; field: string };
-
-/** 候補の行に出す方向。`judge.ts` の日本語のラベルは Jev に送る criteria の説明なので、画面はプラグインの言語で書く。 */
-const DIRECTION_TEXT: Record<Direction, string> = {
-  parent: "parent",
-  child: "child",
-  leftFriend: "left friend",
-  rightFriend: "right friend",
-  previous: "previous",
-  next: "next",
-};
 
 const ASKING: JevSuggestion = { kind: "asking" };
 
@@ -318,16 +310,16 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
 
   renderSuggestion(suggestion: JevSuggestion, el: HTMLElement): void {
     if (suggestion.kind === "asking") {
-      el.createSpan({ text: "Jev is answering…", cls: "suggestion-note" });
+      el.createSpan({ text: t("JEV_SUGGEST_ASKING"), cls: "suggestion-note" });
       return;
     }
     el.createEl("code", { text: suggestion.field });
     // 自信なしでも並びと確率は同じで、食い違っていることだけを書き足す（設計 §2-3）。
     const note = [
-      suggestion.current ? "current" : null,
+      suggestion.current ? t("JEV_SUGGEST_CURRENT") : null,
       suggestion.probability === undefined ? null : `${percentOf(suggestion.probability)}%`,
-      suggestion.direction ? DIRECTION_TEXT[suggestion.direction] : null,
-      suggestion.confident ? null : "Jev is not confident",
+      suggestion.direction ? directionLabel(suggestion.direction) : null,
+      suggestion.confident ? null : t("JEV_SUGGEST_UNCONFIDENT"),
     ].filter((part): part is string => part !== null).join(" · ");
     if (note !== "") el.createSpan({ text: ` ${note}`, cls: "suggestion-note" });
   }
@@ -530,7 +522,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     const current = ask.currentField;
     if (current !== undefined && toHierarchyKey(current) === toHierarchyKey(field)) {
       // 今のフィールドを選んだ＝付け替えない。ファイルにも記録にも触らない。
-      new Notice(`Jev: ${written} stays as it is.`);
+      new Notice(fill(t("JEV_SUGGEST_KEPT"), { written }));
       return;
     }
     let outcome: RelationResult;
@@ -549,19 +541,20 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
         });
     } catch (error) {
       console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
-      new Notice(`Jev could not write ${written}. See the developer console for details.`);
+      new Notice(fill(t("JEV_SUGGEST_WRITE_FAILED"), { written }));
       return;
     }
     if (!isRelationEdit(outcome)) {
       if (current !== undefined) {
         // 型がフロントマターにある・リンクの書き方が本文と違う・判定を待つ間に行が変わった。
-        new Notice(`Jev did not write ${written}: no line of this note writes ${current}:: [[${ask.typedAs ?? ask.linkpath}]] to change.`);
+        new Notice(fill(t("JEV_SUGGEST_NO_LINE"), { written, current: `${current}:: [[${ask.typedAs ?? ask.linkpath}]]` }));
         return;
       }
       // 「既に付いている」と「指していたリンクが動いた」は直し方が違うので、同じ言い方にしない。
-      new Notice(outcome.skipped === "already-typed"
-        ? `Jev: ${written} is already there.`
-        : `Jev did not write ${written}: the link is no longer where it was closed.`);
+      new Notice(fill(
+        t(outcome.skipped === "already-typed" ? "JEV_SUGGEST_ALREADY_TYPED" : "JEV_SUGGEST_LINK_GONE"),
+        { written },
+      ));
       return;
     }
     // 書いたあとに記録が残せなかったときは、取り消せないことを黙って隠さない（設計 §3）。
@@ -580,8 +573,11 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
         return false;
       })
       : false;
-    const done = current !== undefined ? `changed ${current}:: to ${written}` : `added ${written}`;
-    new Notice(recorded ? `Jev: ${done}` : `Jev: ${done}, but it was not recorded and cannot be undone.`);
+    new Notice(fill(t(
+      current !== undefined
+        ? (recorded ? "JEV_SUGGEST_CHANGED" : "JEV_SUGGEST_CHANGED_UNLOGGED")
+        : (recorded ? "JEV_SUGGEST_ADDED" : "JEV_SUGGEST_ADDED_UNLOGGED"),
+    ), { written, old: current ?? "" }));
   }
 
   /** 届いた答えでポップアップを描き直す。開いていなければ何もしない。 */

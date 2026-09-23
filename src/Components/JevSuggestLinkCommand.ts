@@ -2,7 +2,7 @@ import { Editor, MarkdownFileInfo, MarkdownView, Notice, TFile } from "obsidian"
 import type ExcaliBrain from "src/excalibrain-main";
 import type { JevLinkSuggest, OpenAtResult } from "src/Suggesters/JevLinkSuggest";
 import { t } from "src/lang/helpers";
-import { fill } from "./JevTypeLinkCommand";
+import { fill } from "src/lang/jev";
 
 /**
  * コマンド「Jev: カーソルのリンクに型を付ける（候補から選ぶ）」（LEV-172、docs/jev-link-typer-design.md §4-1、

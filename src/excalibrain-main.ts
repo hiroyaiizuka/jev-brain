@@ -187,13 +187,17 @@ export default class ExcaliBrain extends Plugin {
     this.registerEditorSuggest(jevLinkSuggest);
     // LEV-172: 同じ候補をカーソル上のリンクに出すコマンド（型付きなら付け替え）。既定のホットキーは付けない。
     registerJevSuggestLinkCommand(this, jevLinkSuggest);
-    // JEV-3 型付け待ちキュー（docs/jev-link-typer-design.md §4-2）。ツールパネルのボタンは LEV-175。
+    // JEV-3 型付け待ちキュー（docs/jev-link-typer-design.md §4-2）。開閉ボタンは ToolsPanel（LEV-175）。
     this.registerView(JEV_QUEUE_VIEW_TYPE, (leaf) => new JevQueueView(leaf, this));
     this.addCommand({
       id: "excalibrain-jev-open-queue",
       name: t("JEV_QUEUE_OPEN"),
       callback: () => { void activateJevQueue(this.app); },
     });
+    // LEV-175: ツールパネルの「Jev」ボタンの点灯を、タブやコマンドでの開閉にも追わせる。
+    this.registerEvent(this.app.workspace.on("layout-change", () => {
+      this.scene?.toolsPanel?.updateJevButton();
+    }));
   }
 
   private registerEvents() {

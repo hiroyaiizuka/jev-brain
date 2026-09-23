@@ -6,10 +6,12 @@ import { PageSuggest } from "../Suggesters/PageSuggester";
 import { LinkTagFilter } from "./LinkTagFilter";
 import { EditableFileView, WorkspaceLeaf } from "obsidian";
 import { addVerticalDivider } from "./VerticalDivider";
+import { isJevQueueOpen, showsJevQueueButton, toggleJevQueue } from "./JevQueueView";
 
 export class ToolsPanel {
   private wrapperDiv: HTMLDivElement;
   private buttons: (ToggleButton|HTMLElement)[] = [];
+  private jevButton: ToggleButton | null = null;
   public linkTagFilter: LinkTagFilter;
   public searchElement: HTMLInputElement;
 
@@ -498,7 +500,38 @@ export class ToolsPanel {
       );
     }
 
+    // ------------
+    // Jev typing queue (docs/jev-link-typer-design.md §4-2, LEV-175). Only when this load registered
+    // the queue view (a key and the switch on) and Jev is still on, and never on mobile. The button
+    // shows whether the queue is open; that is the workspace's state, so nothing is saved.
+    // ------------
+    if(showsJevQueueButton(this.plugin)) {
+      addVerticalDivider(buttonsWrapperDiv);
+      this.jevButton = new ToggleButton({
+        plugin: this.plugin,
+        getVal: () => isJevQueueOpen(this.plugin.app),
+        setVal: () => {
+          void toggleJevQueue(this.plugin.app).then(() => this.updateJevButton());
+          return false;
+        },
+        wrapper: buttonsWrapperDiv,
+        options: {
+          display: "Jev",
+          icon: "links-coming-in",
+          tooltip: t("JEV_QUEUE_TOGGLE"),
+        },
+        updateIndex: false,
+        shouldRerenderOnToggle: false,
+      });
+      this.buttons.push(this.jevButton);
+    }
+
     this.contentEl.appendChild(this.wrapperDiv);
+  }
+
+  /** The queue was opened or closed somewhere else (its tab, the command): relight the Jev button. */
+  updateJevButton() {
+    this.jevButton?.updateButton();
   }
 
   rerender() {

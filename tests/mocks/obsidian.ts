@@ -211,6 +211,14 @@ export class MarkdownView {
   save(): Promise<void> { return Promise.resolve(); }
 }
 
+// ---- LEV-175 ----
+
+/** `JevQueueView extends ItemView`, so the class has to exist to import the module at all. The view itself is tested in the vault (E20). */
+export class ItemView {
+  leaf: unknown;
+  constructor(leaf: unknown) { this.leaf = leaf; }
+}
+
 // ---- LEV-172 ----
 /** `JevLinkSuggest.close()` calls `super.close()`; the real one hides the popover. */
 (EditorSuggest.prototype as unknown as { close: () => void }).close = function close(): void {

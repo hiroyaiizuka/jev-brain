@@ -398,53 +398,180 @@
 }
 
 /* ---------------------
-   JEV TYPING QUEUE (LEV-174)
-   最小限だけ。本格的なスタイルは LEV-175。
+   JEV TYPING QUEUE (LEV-174, LEV-175)
+   docs/jev-link-typer-design.md §4-2。色と寸法は Obsidian の CSS 変数だけで書き、
+   テーマの明暗に任せる。カードの状態は `data-jev-status`（pending / open / failed / later / done）。
   --------------------- */
 
-.jevbrain-queue-header,
-.jevbrain-queue-footer {
-  padding: var(--size-4-2);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+.jevbrain-queue.view-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.jevbrain-queue-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .jevbrain-queue-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-normal);
   font-weight: var(--font-semibold);
 }
 
-.jevbrain-queue-card {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-4-2);
-  margin-bottom: var(--size-4-2);
-}
-
-.jevbrain-queue-card-target {
-  font-weight: var(--font-semibold);
-}
-
-.jevbrain-queue-card-context,
-.jevbrain-queue-card-note,
-.jevbrain-queue-empty {
+.jevbrain-queue-count {
+  flex-shrink: 0;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
 
-.jevbrain-queue-card-written {
-  white-space: pre-wrap;
+.jevbrain-queue-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--size-4-2) var(--size-4-3);
+}
+
+.jevbrain-queue-empty {
+  padding: var(--size-4-4) 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  text-align: center;
+}
+
+/* カード */
+
+.jevbrain-queue-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  margin-bottom: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background-color: var(--background-primary);
+}
+
+.jevbrain-queue-card[data-jev-status="open"] {
+  border-left-color: var(--interactive-accent);
+}
+
+.jevbrain-queue-card[data-jev-status="failed"] {
+  border-left-color: var(--text-error);
+}
+
+.jevbrain-queue-card-target {
+  overflow-wrap: anywhere;
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.jevbrain-queue-card-context {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+}
+
+.jevbrain-queue-card-note {
+  color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+
+.jevbrain-queue-card[data-jev-status="failed"] .jevbrain-queue-card-note {
+  color: var(--text-error);
+}
+
+/* 済み・あとでの帯。カードごと沈め、中身は読めるまま残す。 */
+
+.jevbrain-queue-card[data-jev-status="done"] {
+  border-left-color: var(--color-green);
+  background-color: var(--background-secondary);
+}
+
+.jevbrain-queue-card[data-jev-status="later"] {
+  border-left-color: var(--text-faint);
+  background-color: var(--background-secondary);
+  opacity: 0.75;
+}
+
+.jevbrain-queue-card[data-jev-status="later"] .jevbrain-queue-card-context {
+  display: none;
+}
+
+.jevbrain-queue-card-written {
+  margin: 0;
+  padding: var(--size-2-2) var(--size-4-2);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 候補ピル。選ばれている 1 つだけ強調する。 */
 
 .jevbrain-queue-candidates,
 .jevbrain-queue-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--size-4-1);
-  margin-top: var(--size-4-2);
 }
 
-.jevbrain-queue-candidate-selected {
-  box-shadow: 0 0 0 2px var(--interactive-accent);
+.jevbrain-queue-candidates button.jevbrain-queue-candidate {
+  height: auto;
+  padding: var(--size-2-1) var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background-color: var(--background-secondary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+}
+
+.jevbrain-queue-candidates button.jevbrain-queue-candidate:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.jevbrain-queue-candidates button.jevbrain-queue-candidate-selected,
+.jevbrain-queue-candidates button.jevbrain-queue-candidate-selected:hover {
+  border-color: var(--interactive-accent);
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: var(--font-semibold);
+}
+
+.jevbrain-queue-actions {
+  justify-content: flex-end;
+}
+
+.jevbrain-queue-actions button {
+  font-size: var(--font-ui-smaller);
+}
+
+/* 下部の費用行 */
+
+.jevbrain-queue-footer {
+  flex-shrink: 0;
+  padding: var(--size-4-2) var(--size-4-3);
+  border-top: 1px solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
