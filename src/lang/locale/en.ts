@@ -353,4 +353,18 @@ export default {
 
   // LEV-188
   JEV_COMMAND_UNRESOLVED_MARKDOWN: "Nothing was written: no note is found at {target}, so that link cannot take a type. Fix the path, or create the note, and try again.",
+
+  // LEV-172: the hotkey command that opens the suggestion on the link at the cursor (docs/jev-link-typer-design.md §4-1).
+  JEV_SUGGEST_COMMAND: "Jev: type the link at the cursor (pick from the candidates)",
+  JEV_SUGGEST_INACTIVE: "Jev is turned off or has no API key. Reload the plugin after changing that.",
+  JEV_SUGGEST_NO_LINK: "Put the cursor on a [[link]] in the body of the note.",
+  JEV_SUGGEST_TYPED_ELSEWHERE: "[[{target}]] is typed by a field of the other note, so this note has nothing to change.",
+  JEV_SUGGEST_HIDDEN: "[[{target}]] is joined by a hidden field, so Jev leaves it alone.",
+  JEV_SUGGEST_OTHER_FIELD: "[[{target}]] already follows {field}::, which is not a field of your ontology that Dataview has read. Jev leaves it alone.",
+  JEV_SUGGEST_OUTSIDE_BODY: "{field}:: [[{target}]] is not written in the body of this note (frontmatter, say), so Jev cannot change it. Change it there by hand.",
+  JEV_SUGGEST_CURRENT: "current",
+  JEV_SUGGEST_KEPT: "Jev: {written} stays as it is.",
+  JEV_SUGGEST_NO_LINE: "Jev did not write {written}: no line of this note writes {current} to change.",
+  JEV_SUGGEST_CHANGED: "Jev: changed {old}:: to {written}",
+  JEV_SUGGEST_CHANGED_UNLOGGED: "Jev: changed {old}:: to {written}, but it was not recorded and cannot be undone.",
 }

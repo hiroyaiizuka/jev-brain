@@ -57,4 +57,18 @@ export default {
 
   // LEV-188
   JEV_COMMAND_UNRESOLVED_MARKDOWN: "何も書いていません: {target} にノートが見つからないので、このリンクには型を付けられません。パスを直すかノートを作ってから、もう一度試してください。",
+
+  // LEV-172: カーソルのリンクに候補を出すコマンド（docs/jev-link-typer-design.md §4-1）。
+  JEV_SUGGEST_COMMAND: "Jev: カーソルのリンクに型を付ける（候補から選ぶ）",
+  JEV_SUGGEST_INACTIVE: "Jev が無効か、API キーがありません。変えたあとはプラグインを再読み込みしてください。",
+  JEV_SUGGEST_NO_LINK: "本文の [[リンク]] にカーソルを置いてください。",
+  JEV_SUGGEST_TYPED_ELSEWHERE: "[[{target}]] は相手のノートのフィールドが型を付けています。このノートに付け替える行はありません。",
+  JEV_SUGGEST_HIDDEN: "[[{target}]] は hidden のフィールドで結ばれているので、Jev は触りません。",
+  JEV_SUGGEST_OTHER_FIELD: "[[{target}]] の前には {field}:: があり、Dataview が読んだオントロジーのフィールドではありません。Jev は触りません。",
+  JEV_SUGGEST_OUTSIDE_BODY: "{field}:: [[{target}]] はこのノートの本文に書かれていない（フロントマターなど）ので、Jev は付け替えられません。そこで手で直してください。",
+  JEV_SUGGEST_CURRENT: "現在",
+  JEV_SUGGEST_KEPT: "Jev: {written} のままにしました。",
+  JEV_SUGGEST_NO_LINE: "{written} は書いていません: このノートに書き換える {current} の行がありません。",
+  JEV_SUGGEST_CHANGED: "Jev: {old}:: を {written} に付け替えました",
+  JEV_SUGGEST_CHANGED_UNLOGGED: "Jev: {old}:: を {written} に付け替えましたが、記録できなかったので取り消せません。",
 };

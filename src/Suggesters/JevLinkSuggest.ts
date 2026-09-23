@@ -13,13 +13,13 @@ import type { JevQuestion, JevResponse as JevClientResponse } from "src/jev/clie
 import { buildQuestions, directionOfField, judge, percentOf } from "src/jev/judge";
 import type { Direction, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry } from "src/jev/log";
-import { appendRelation, isRelationEdit } from "src/jev/relations";
+import { appendRelation, isRelationEdit, replaceRelation } from "src/jev/relations";
 import type { LinkPosition, RelationResult } from "src/jev/relations";
 import { buildState } from "src/jev/state";
 import { t } from "src/lang/helpers";
 import { directionLabel, fill } from "src/lang/jev";
 import { getDVFieldLinksForPage } from "src/utils/dataview";
-import { HIERARCHY_REGIONS } from "src/utils/hierarchy";
+import { HIERARCHY_REGIONS, toHierarchyKey } from "src/utils/hierarchy";
 
 /**
  * `]]` を閉じた直後に Jev の候補を出すサジェスター（docs/jev-link-typer-design.md §4-1）。
@@ -39,7 +39,37 @@ export type JevSuggestion =
     probability?: number;
     direction: Direction | null;
     confident: boolean;
+    /** 付け替え（LEV-172）で、このノートが今この相手に付けているフィールド。先頭に 1 つだけ。 */
+    current?: boolean;
   };
+
+/**
+ * ホットキーのコマンド（LEV-172）が {@link JevLinkSuggest.openAt} で開けたかどうか。
+ * 開けなかった理由は Notice の文言を分けるためだけに返す（`JevSuggestLinkCommand.ts`）。
+ */
+export type OpenAtResult =
+  | { status: "opened"; target: string; currentField?: string }
+  /** 設定で切られた・キーが消された（登録は読み込み時だけなので、ここでも見る）。 */
+  | { status: "inactive" }
+  | { status: "no-dataview" }
+  /** このノート自身が除外パスか図面ファイル。 */
+  | { status: "excluded" }
+  /** カーソルが本文の `[[…]]` の上に無い（埋め込み・自分自身・除外した相手を含む）。 */
+  | { status: "no-link" }
+  /** 相手のノートだけがフィールドで指している。このノートには書き換える行が無い（設計 §2-1、`collectTypedLinks`）。 */
+  | { status: "typed-elsewhere"; target: string }
+  /** どちらかのノートが hidden のフィールドで結んでいる。聞かない相手（設計 §2-1）。 */
+  | { status: "hidden"; target: string }
+  /**
+   * リンクの前に、オントロジーにない（または Dataview がまだ読んでいない）フィールドが書いてある。
+   * 聞いても確定は `already-typed` で何も書けないので、聞く前に断る。
+   */
+  | { status: "other-field"; target: string; field: string }
+  /**
+   * このノートのフィールドが型を付けているが、本文に `field:: [[X]]` の行が無い（フロントマターなど）。
+   * `replaceRelation` が書き換える先が無いので、聞く前に断る。
+   */
+  | { status: "typed-outside-body"; target: string; field: string };
 
 const ASKING: JevSuggestion = { kind: "asking" };
 
@@ -72,6 +102,15 @@ type LinkAsk = {
   at: LinkPosition;
   status: "asking" | "answered" | "failed";
   judgement?: Judgement;
+  /** ホットキーで開いた 1 件（LEV-172）。`]]` の直後でなくても、カーソルがこのリンクの上にある間は出す。 */
+  forced?: boolean;
+  /**
+   * 型付きのリンクを付け替えるとき、このノートが今この相手に付けているフィールド（Dataview のキー）。
+   * 候補の先頭に置き（`judge` の `currentField`）、確定は `replaceRelation`（設計 §3「見直しの確定」）。
+   */
+  currentField?: string;
+  /** 付け替えで `replaceRelation` に渡す綴り: 本文で `currentField:: [[…]]` と書いているリンク（カーソルの綴りとは限らない）。 */
+  typedAs?: string;
 };
 
 /** カーソルの直前で閉じたリンク。 */
@@ -83,6 +122,12 @@ const CLOSED_LINK = /(!)?\[\[([^[\]]+)\]\]$/u;
 /** 自分でフィールドを書いている行（`up:: [[` や `(up:: [[`）。そこはサジェストの出番ではない。 */
 const FIELD_BEFORE = /(?:^|\()\s*[^()[\]]*?\s*::\s*$/u;
 
+/** `[[X#見出し|別名]]` の中身から X。同じノートの中の見出し（`[[#見出し]]`）は空文字。 */
+const linkpathOf = (inner: string): string => {
+  const bar = inner.indexOf("|");
+  return (bar === -1 ? inner : inner.slice(0, bar)).split("#")[0].trim();
+};
+
 /** 行とカーソルの桁から、今閉じたリンク。閉じていない・埋め込み・同じノートの中の見出しなら null。 */
 const closedLinkAt = (line: string, ch: number): ClosedLink | null => {
   const before = line.slice(0, ch);
@@ -90,10 +135,30 @@ const closedLinkAt = (line: string, ch: number): ClosedLink | null => {
   if (!match || match[1]) return null; // 埋め込み ![[X]] は対象外（設計 §2-1）
   const start = match.index;
   if (FIELD_BEFORE.test(before.slice(0, start))) return null;
-  const inner = match[2];
-  const bar = inner.indexOf("|");
-  const linkpath = (bar === -1 ? inner : inner.slice(0, bar)).split("#")[0].trim();
+  const linkpath = linkpathOf(match[2]);
   return linkpath === "" ? null : { start, linkpath };
+};
+
+/** 行の中の `[[…]]` と、その埋め込み。 */
+const WIKI_LINK = /(!)?\[\[([^[\]]+)\]\]/gu;
+
+/** カーソルが乗っている `[[…]]`（両端を含む）。 */
+type LinkAtCursor = ClosedLink & { length: number };
+
+/**
+ * カーソルが乗っている `[[X]]`（ホットキー、LEV-172）。両端を含むので `]]` の直後も指す。
+ * 隣り合う 2 つの境目では先のリンクを取る（`typeLink.ts` の `writtenLinkAt` と同じ）。
+ * 埋め込みと同じノートの中の見出しは null。`up:: [[X]]` の行は止めない: そこは付け替えの出番。
+ */
+const linkAtCursor = (line: string, ch: number): LinkAtCursor | null => {
+  for (const match of line.matchAll(WIKI_LINK)) {
+    const start = match.index;
+    if (ch < start || ch > start + match[0].length) continue;
+    if (match[1]) return null;
+    const linkpath = linkpathOf(match[2]);
+    return linkpath === "" ? null : { start, length: match[0].length, linkpath };
+  }
+  return null;
 };
 
 /**
@@ -126,6 +191,20 @@ const fieldLinksTo = (plugin: ExcaliBrain, from: string, to: string, fields: str
   return dvPage ? getDVFieldLinksForPage(plugin, dvPage, fields).some((item) => item.link === to) : false;
 };
 
+/** リンクの直前に書かれたフィールド名（`field:: [[X]]`・`(field:: [[X]])`）。`relations.ts` の `fieldBefore` と同じ読み方。 */
+const fieldNameBefore = (line: string, at: number): string | null =>
+  /(?:^|\()\s*([^()]*?)\s*::\s*$/u.exec(line.slice(0, at))?.[1] ?? null;
+
+/**
+ * `from` のノート自身のフィールドのうち、`to` を指している最初の 1 つ（Dataview のキー）。無ければ null。
+ * 同じ相手を 2 つのフィールドで指していても、付け替えるのは先の 1 つだけ（`replaceRelation` は 1 行替える）。
+ */
+const ownFieldTo = (plugin: ExcaliBrain, from: string, to: string, fields: string[]): string | null => {
+  const dvPage = plugin.DVAPI?.page(from);
+  if (!dvPage) return null;
+  return getDVFieldLinksForPage(plugin, dvPage, fields).find((item) => item.link === to)?.field ?? null;
+};
+
 /** `judge.ts` の質問を `client.ts` の形に。Choice しか無い（Score と Noul は JEV-5）。 */
 const toRequestQuestions = (questions: Questions): Record<string, JevQuestion> =>
   Object.fromEntries(
@@ -143,6 +222,8 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
   private readonly asked = new Map<string, Set<string>>();
   /** 前回 `onTrigger` が見た行。入力で変わったのかカーソルが動いただけなのかを分ける。 */
   private lastLine: { path: string; line: number; text: string } | null = null;
+  /** 答えが届いたときの描き直しの最中。そこで `close()` が呼ばれても、ホットキーの 1 件は閉じたことにしない。 */
+  private redrawing = false;
 
   constructor(plugin: ExcaliBrain) {
     super(plugin.app);
@@ -164,13 +245,18 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
    */
   onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
     // 登録は読み込み時に一度だけなので、途中でキーを消された・切られた場合もここで止める。
-    if (!isJevActive(this.plugin.settings) || !this.plugin.settings.jev.suggestOnLinkClose) return null;
+    if (!isJevActive(this.plugin.settings)) return null;
     if (!file || !this.plugin.DVAPI) return null;
     const line = editor.getLine(cursor.line);
     // 前回この関数が呼ばれたときの行。`onTrigger` はキー入力にもカーソル移動にも呼ばれるので、
     // 「今 `]]` を打った」のか「閉じたリンクの後ろにカーソルを置いただけ」なのかはこれで分ける。
     const previous = this.lastLine;
     this.lastLine = { path: file.path, line: cursor.line, text: line };
+    // ホットキーで開いた 1 件は `]]` の直後でなくても、設定 `suggestOnLinkClose` が偽でも出す
+    // （その設定は `]]` の直後に出すかどうか）。カーソルがリンクを離れたらここを通らず閉じる。
+    const forced = this.forcedAt(cursor, line, file);
+    if (forced) return forced;
+    if (!this.plugin.settings.jev.suggestOnLinkClose) return null;
     const closed = closedLinkAt(line, cursor.ch);
     if (!closed) return null;
     const start: EditorPosition = { line: cursor.line, ch: closed.start };
@@ -210,12 +296,15 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     const judgement = ask.judgement;
     if (ask.status === "asking" || !judgement) return [ASKING];
     const hierarchy = this.plugin.settings.hierarchy;
-    return judgement.ordered.map((candidate): JevSuggestion => ({
+    const current = ask.currentField === undefined ? null : toHierarchyKey(ask.currentField);
+    return judgement.ordered.map((candidate, index): JevSuggestion => ({
       kind: "candidate",
       field: candidate.field,
       probability: candidate.probability,
       direction: directionOfField(candidate.field, hierarchy),
       confident: judgement.confident,
+      // `judge` が先頭に置いたものだけ。同じ綴りが 2 つ並ぶことは無い。
+      ...(index === 0 && current !== null && toHierarchyKey(candidate.field) === current ? { current: true } : {}),
     }));
   }
 
@@ -227,6 +316,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     el.createEl("code", { text: suggestion.field });
     // 自信なしでも並びと確率は同じで、食い違っていることだけを書き足す（設計 §2-3）。
     const note = [
+      suggestion.current ? t("JEV_SUGGEST_CURRENT") : null,
       suggestion.probability === undefined ? null : `${percentOf(suggestion.probability)}%`,
       suggestion.direction ? directionLabel(suggestion.direction) : null,
       suggestion.confident ? null : t("JEV_SUGGEST_UNCONFIDENT"),
@@ -243,12 +333,107 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
   }
 
   /**
-   * ホットキー版（LEV-172）の入口。カーソルの位置で {@link onTrigger} からやり直す。
-   * 今は onTrigger の条件（`]]` の直後・未型付け・セッション中 1 回）がそのまま効くので、
-   * 「カーソル上の型付きリンクを付け替える」は LEV-172 で条件を緩めて足す。
+   * ホットキーのコマンド（LEV-172、設計 §4-1）の入口。カーソル上の `[[X]]` について、`]]` の直後と
+   * 同じ候補を出す。`onTrigger` の「`]]` の直後」「セッション中 1 回」は掛けない（任意のタイミングの入口）。
+   *
+   * 未型付けなら `]]` の直後と同じ問い合わせと確定（`appendRelation`）。このノート自身のフィールドが
+   * 既にその相手を指していれば、そのフィールドを先頭に置いた付け替え候補を出し、確定は
+   * `replaceRelation`（設計 §3「見直しの確定」）。型付きの判断は `collect.ts` の `collectTypedLinks` と
+   * 同じ（このノート自身の hidden 以外のフィールドだけ。相手のノートが書いたものは、ここに書き換える
+   * 行が無い）だが、`Pages` の索引ではなく Dataview を 1 件だけ見る: ブレインを開いていなくても動くため
+   * （`isUntyped` と同じ理由）。
    */
-  openAt(editor: Editor, file: TFile): void {
+  openAt(editor: Editor, file: TFile): OpenAtResult {
+    const settings = this.plugin.settings;
+    if (!isJevActive(settings)) return { status: "inactive" };
+    if (!this.plugin.DVAPI) return { status: "no-dataview" };
+    if (file.path === settings.excalibrainFilepath || settings.excludeFilepaths.some((path) => file.path.startsWith(path))) {
+      return { status: "excluded" };
+    }
+    const cursor = editor.getCursor();
+    const link = linkAtCursor(editor.getLine(cursor.line), cursor.ch);
+    if (!link || !isInBody(editor, cursor.line)) return { status: "no-link" };
+    const target = this.plugin.app.metadataCache
+      .getFirstLinkpathDest(link.linkpath, file.path)?.path ?? link.linkpath;
+    if (target === file.path || target === settings.excalibrainFilepath) return { status: "no-link" };
+    if (settings.excludeFilepaths.some((path) => target.startsWith(path))) return { status: "no-link" };
+
+    const hidden = this.plugin.hierarchyLowerCase.hidden;
+    if (fieldLinksTo(this.plugin, file.path, target, hidden) || fieldLinksTo(this.plugin, target, file.path, hidden)) {
+      return { status: "hidden", target: link.linkpath };
+    }
+    const typed = ontologyFields(this.plugin).filter((field) => !hidden.includes(field));
+    const own = ownFieldTo(this.plugin, file.path, target, typed);
+    const line = editor.getLine(cursor.line);
+    const written = fieldNameBefore(line, link.start);
+    if (own === null && written !== null) return { status: "other-field", target: link.linkpath, field: written };
+    if (own === null && fieldLinksTo(this.plugin, target, file.path, typed)) {
+      return { status: "typed-elsewhere", target: link.linkpath };
+    }
+    // 付け替えは書き換える行が本文にあるときだけ聞く（無ければ、聞いて払っても確定できない）。
+    const typedAs = own === null ? null : this.typingLinkpath(editor, file, own, target);
+    if (own !== null && typedAs === null) return { status: "typed-outside-body", target: link.linkpath, field: own };
+
+    const start: EditorPosition = { line: cursor.line, ch: link.start };
+    this.startAsk({
+      key: `${file.path}\n${cursor.line}:${link.start}\n${target}`,
+      file,
+      target,
+      linkpath: link.linkpath,
+      offset: editor.posToOffset(start),
+      length: link.length,
+      at: { ...start, wiki: true },
+      status: "asking",
+      forced: true,
+      ...(own === null || typedAs === null ? {} : { currentField: own, typedAs }),
+    }, editor.getValue());
     this.retrigger(editor, file);
+    return own === null
+      ? { status: "opened", target: link.linkpath }
+      : { status: "opened", target: link.linkpath, currentField: own };
+  }
+
+  /**
+   * Esc で閉じた・カーソルが離れて閉じたら、ホットキーの 1 件はもう出さない。残すと、閉じたあとに
+   * リンクの上へ戻ったカーソルで開き直り、次の Enter が誰も選んでいない候補を確定してしまう。
+   */
+  close(): void {
+    if (!this.redrawing && this.ask?.forced) this.ask.forced = false;
+    super.close();
+  }
+
+  /**
+   * 本文で `field:: [[L]]`（または `(field:: [[L]])`）と書き、L が `target` に解決するリンクの L。
+   * `replaceRelation` はこの綴りで行を探すので、カーソルの `[[X]]` と書き方が違っても（`[[folder/X]]`）付け替えられる。
+   * frontmatter とコードブロックの中は `relations.ts` も見ないので、ここでも見ない。
+   */
+  private typingLinkpath(editor: Editor, file: TFile, field: string, target: string): string | null {
+    const key = toHierarchyKey(field);
+    for (let i = 0; i <= editor.lastLine(); i++) {
+      const line = editor.getLine(i);
+      if (!line.includes("::")) continue;
+      for (const match of line.matchAll(WIKI_LINK)) {
+        if (match[1]) continue;
+        const name = fieldNameBefore(line, match.index);
+        if (name === null || toHierarchyKey(name) !== key) continue;
+        const linkpath = linkpathOf(match[2]);
+        const resolved = this.plugin.app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path ?? linkpath;
+        if (resolved === target && isInBody(editor, i)) return linkpath;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * ホットキーで開いた 1 件の上にカーソルがあれば、その範囲。`]]` の直後だけを見る通常の経路と違い、
+   * リンクの中ほどに置いたカーソルでも出し続ける。
+   */
+  private forcedAt(cursor: EditorPosition, line: string, file: TFile): EditorSuggestTriggerInfo | null {
+    const ask = this.ask;
+    if (!ask?.forced || ask.file.path !== file.path || ask.at.line !== cursor.line) return null;
+    const link = linkAtCursor(line, cursor.ch);
+    if (!link || link.start !== ask.at.ch || link.linkpath !== ask.linkpath) return null;
+    return { start: { line: cursor.line, ch: link.start }, end: cursor, query: link.linkpath };
   }
 
   /**
@@ -287,7 +472,8 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     }
     if (this.ask !== ask) return; // 別のリンクへ移ったあとに届いた答えは捨てる
     if (response) {
-      const judgement = judge(response, this.plugin.settings.hierarchy);
+      // 付け替えは今のフィールドを先頭に（設計 §4-1）。確率が付いていなくても 1 つ目に入る。
+      const judgement = judge(response, this.plugin.settings.hierarchy, { currentField: ask.currentField });
       ask.judgement = judgement;
       ask.status = "answered";
       // 候補が 1 件も無い応答（オントロジーのどのフィールドにも 0.5% 以上の確率が付かなかった）では
@@ -333,23 +519,37 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
   private async confirm(ask: LinkAsk, field: string): Promise<void> {
     const { app, manifest, settings } = this.plugin;
     const written = `${field}:: [[${ask.linkpath}]]`;
+    const current = ask.currentField;
+    if (current !== undefined && toHierarchyKey(current) === toHierarchyKey(field)) {
+      // 今のフィールドを選んだ＝付け替えない。ファイルにも記録にも触らない。
+      new Notice(fill(t("JEV_SUGGEST_KEPT"), { written }));
+      return;
+    }
     let outcome: RelationResult;
     try {
       // 読んだのはエディタのバッファ、書くのは `vault.process`＝ファイル。書く直前にバッファを
       // 流して、次の自動保存が追記した行を巻き戻さないようにする（`src/jev/typeLink.ts` の flush と同じ）。
       const view = app.workspace.getActiveViewOfType(MarkdownView);
       if (view?.file?.path === ask.file.path) await view.save();
-      outcome = await appendRelation(app, ask.file, field, ask.linkpath, {
-        heading: normalizeRelationsHeading(settings.jev.relationsHeading),
-        mode: settings.jev.writeMode,
-        at: ask.at,
-      });
+      outcome = current !== undefined
+        // 付け替え（設計 §3「見直しの確定」）: `current:: [[X]]` の行またはインラインのフィールド名だけを替える。
+        ? await replaceRelation(app, ask.file, current, field, ask.typedAs ?? ask.linkpath)
+        : await appendRelation(app, ask.file, field, ask.linkpath, {
+          heading: normalizeRelationsHeading(settings.jev.relationsHeading),
+          mode: settings.jev.writeMode,
+          at: ask.at,
+        });
     } catch (error) {
       console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
       new Notice(fill(t("JEV_SUGGEST_WRITE_FAILED"), { written }));
       return;
     }
     if (!isRelationEdit(outcome)) {
+      if (current !== undefined) {
+        // 型がフロントマターにある・リンクの書き方が本文と違う・判定を待つ間に行が変わった。
+        new Notice(fill(t("JEV_SUGGEST_NO_LINE"), { written, current: `${current}:: [[${ask.typedAs ?? ask.linkpath}]]` }));
+        return;
+      }
       // 「既に付いている」と「指していたリンクが動いた」は直し方が違うので、同じ言い方にしない。
       new Notice(fill(
         t(outcome.skipped === "already-typed" ? "JEV_SUGGEST_ALREADY_TYPED" : "JEV_SUGGEST_LINK_GONE"),
@@ -373,7 +573,11 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
         return false;
       })
       : false;
-    new Notice(fill(t(recorded ? "JEV_SUGGEST_ADDED" : "JEV_SUGGEST_ADDED_UNLOGGED"), { written }));
+    new Notice(fill(t(
+      current !== undefined
+        ? (recorded ? "JEV_SUGGEST_CHANGED" : "JEV_SUGGEST_CHANGED_UNLOGGED")
+        : (recorded ? "JEV_SUGGEST_ADDED" : "JEV_SUGGEST_ADDED_UNLOGGED"),
+    ), { written, old: current ?? "" }));
   }
 
   /** 届いた答えでポップアップを描き直す。開いていなければ何もしない。 */
@@ -396,7 +600,12 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     // 前と同じ context なら候補を取り直さないことがあるので、先に捨ててから `onTrigger` を
     // やり直させる（設計 §4-1: `close()`／`open()` ではなく context の更新で描き直す）。
     this.context = null;
-    trigger.call(this, editor, file, true);
+    this.redrawing = true;
+    try {
+      trigger.call(this, editor, file, true);
+    } finally {
+      this.redrawing = false;
+    }
   }
 
   /** 別のノートへ移ったら、そのノート以外のぶんは忘れる（設計 §4-1）。 */
