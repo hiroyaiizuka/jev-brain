@@ -180,9 +180,14 @@ export type JevSettings = {
   relationsHeading: string;
   /** Where a confirmed field goes: the link in the body it was pointed at (the default), or the Relations section. */
   writeMode: "relations" | "inline";
-  /** Smallest probability at which a bulk run confirms the first candidate on its own (JEV-4). */
+  /**
+   * Q1 offers only the fields the index uses at least this many times; 0 offers every field of the
+   * ontology (design §2-4, LEV-164). A field used fewer times is never suggested.
+   */
+  candidateMinUses: number;
+  /** Smallest probability at which a bulk run confirms the first candidate on its own (JEV-4). 0 = off, the default (LEV-164). */
   autoConfirmThreshold: number;
-  /** Smallest probability at which an existing field is offered for review (JEV-4). */
+  /** Smallest probability at which an existing field is offered for review (JEV-4). 0 = off, the default (LEV-164). */
   reviewThreshold: number;
   /** Jev endpoint the client posts to. */
   endpoint: string;

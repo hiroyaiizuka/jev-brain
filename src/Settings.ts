@@ -2577,9 +2577,22 @@ private normalizeSettings() {
 
     this.numberslider(
       containerEl,
+      t("JEV_CANDIDATE_MIN_USES_NAME"),
+      t("JEV_CANDIDATE_MIN_USES_DESC"),
+      {min:0,max:30,step:1},
+      ()=>this.plugin.settings.jev.candidateMinUses,
+      (val)=>this.plugin.settings.jev.candidateMinUses = val,
+      ()=>{},
+      false,
+      DEFAULT_JEV_SETTINGS.candidateMinUses
+    )
+
+    // 0 は「使わない」（LEV-164 で既定）。0.5 未満の値に意味は無いが、0 まで下ろせるようスライダーは 0 から。
+    this.numberslider(
+      containerEl,
       t("JEV_AUTO_CONFIRM_THRESHOLD_NAME"),
-      t("JEV_AUTO_CONFIRM_THRESHOLD_DESC"),
-      {min:0.5,max:1,step:0.05},
+      `${t("JEV_AUTO_CONFIRM_THRESHOLD_DESC")} ${t("JEV_THRESHOLD_OFF")}`,
+      {min:0,max:1,step:0.05},
       ()=>this.plugin.settings.jev.autoConfirmThreshold,
       (val)=>this.plugin.settings.jev.autoConfirmThreshold = val,
       ()=>{},
@@ -2590,8 +2603,8 @@ private normalizeSettings() {
     this.numberslider(
       containerEl,
       t("JEV_REVIEW_THRESHOLD_NAME"),
-      t("JEV_REVIEW_THRESHOLD_DESC"),
-      {min:0.5,max:1,step:0.05},
+      `${t("JEV_REVIEW_THRESHOLD_DESC")} ${t("JEV_THRESHOLD_OFF")}`,
+      {min:0,max:1,step:0.05},
       ()=>this.plugin.settings.jev.reviewThreshold,
       (val)=>this.plugin.settings.jev.reviewThreshold = val,
       ()=>{},

@@ -333,4 +333,8 @@ export default {
   JEV_QUEUE_WRITE_FAILED: "Jev could not finish writing that field. The developer console has the reason, and the note may already hold the line.",
   JEV_QUEUE_UNDO_FAILED: "Jev could not undo that line. The developer console has the reason.",
   JEV_QUEUE_USAGE: "{calls} judgement(s) · {tokens} tokens · about ¥{cost}",
+  // LEV-191: the default criteria (docs/jev-link-typer-design.md §2-4) and the thresholds turned off by default.
+  JEV_CANDIDATE_MIN_USES_NAME: "Candidate fields: minimum uses",
+  JEV_CANDIDATE_MIN_USES_DESC: "Jev chooses only among the fields your vault already uses at least this many times, which makes its first candidate right more often. <b>A field used fewer times is never suggested</b>, so a field you have just added to the ontology stays out until it is used this often; 0 offers every field of the ontology. When no field is used this often, every field is offered. The count is taken from the index and refreshed when the index is rebuilt.",
+  JEV_THRESHOLD_OFF: "0 turns it off, which is the default.",
 }

@@ -57,7 +57,7 @@ export const DEFAULT_LEVEL_COLORS: readonly string[] = ["#eeedfdff", "#cecbf3ff"
 
 /**
  * Jev link typer (docs/jev-link-typer-design.md §6). `loadSettings()` merges these into a saved `jev` object.
- * The two thresholds are provisional: JEV-0 measures them on a real vault before JEV-4 uses them.
+ * JEV-0 measured the two thresholds and LEV-164 turned both off by default (0 = off).
  */
 export const DEFAULT_JEV_SETTINGS: Readonly<JevSettings> = {
   apiKey: "",
@@ -68,8 +68,11 @@ export const DEFAULT_JEV_SETTINGS: Readonly<JevSettings> = {
   // 既定は本文のリンクに付ける（設計 §3、本人の決定 2026-09-22。LEV-185）。`data.json` に
   // `relations` が保存されている Vault は移行せず、そのまま節に書き続ける。
   writeMode: "inline",
-  autoConfirmThreshold: 0.8,
-  reviewThreshold: 0.9,
+  // 既定の criteria は Vault で 5 回以上使われているフィールドに絞る（設計 §2-4、LEV-164）。
+  candidateMinUses: 5,
+  // 一括の自動確定と見直しは既定で使わない（LEV-164）。0 が「使わない」。
+  autoConfirmThreshold: 0,
+  reviewThreshold: 0,
   endpoint: "https://api.typesafe.ai/v1/systemone",
   model: "jev-latest",
 };

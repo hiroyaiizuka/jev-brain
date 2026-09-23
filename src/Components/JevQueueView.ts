@@ -9,6 +9,7 @@ import { DEFAULT_JEV_TIMEOUT_MS, askJev } from "src/jev/client";
 import type { JevClientConfig, JevQuestion } from "src/jev/client";
 import { collectUntypedLinks } from "src/jev/collect";
 import type { UntypedLink } from "src/jev/collect";
+import { pluginCriteria } from "src/jev/criteria";
 import { DIRECTION_QUESTION, FIELD_QUESTION, buildQuestions, judge, percentOf } from "src/jev/judge";
 import type { Choice, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry, undo } from "src/jev/log";
@@ -146,7 +147,7 @@ export class JevQueueView extends ItemView {
     this.note = failed ? null : note;
     this.noteText = failed ? "" : text ?? "";
     this.batchId = `queue-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    this.questions = this.note ? buildQuestions(this.plugin.settings.hierarchy) : null;
+    this.questions = this.note ? buildQuestions(this.plugin.settings.hierarchy, pluginCriteria(this.plugin)) : null;
     // ノートでない中心（フォルダ・タグ・URL）にキューは無いので、モデルには中心なしとして渡す。
     this.model.setNote(this.note ? this.note.file.path : null, links ?? []);
     this.renderAll();
@@ -256,7 +257,7 @@ export class JevQueueView extends ItemView {
         : null,
       contextChars: settings.jev.contextChars,
     });
-    const questions = this.questions ?? buildQuestions(settings.hierarchy);
+    const questions = this.questions ?? buildQuestions(settings.hierarchy, pluginCriteria(this.plugin));
     const response = await askJev(this.clientConfig(), {
       state,
       questions: {

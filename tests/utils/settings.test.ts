@@ -15,8 +15,9 @@ describe('Jev settings defaults (docs/jev-link-typer-design.md §6)', () => {
       contextChars: 500,
       relationsHeading: 'Relations',
       writeMode: 'inline',
-      autoConfirmThreshold: 0.8,
-      reviewThreshold: 0.9,
+      candidateMinUses: 5,
+      autoConfirmThreshold: 0,
+      reviewThreshold: 0,
       endpoint: 'https://api.typesafe.ai/v1/systemone',
       model: 'jev-latest',
     });

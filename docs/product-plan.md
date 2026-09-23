@@ -135,6 +135,8 @@
 
 実機 E22（2026-09-22、main 3104e2c、CDP、`artifacts/jev-inline-e2e/record.md`）: PASS。検証用 Vault を `inline` にして、文中は `(down:: [[X]])`、リンクだけの行は `down:: [[X]]`、リスト項目は `- down:: [[X]]`、同じ相手が 2 回ある本文はカーソルの 2 つ目だけが書き換わり、`## Relations` は増えず `jev-log.json` に 4 件。1 回目は相手に型付きのリンクを選んで何も書かれなかった（正しい挙動）。サジェスターとキューからの経路は E19／E20 で見る。
 
+現在の実装（LEV-191）: コマンド・サジェスター・キューの 3 入口が `src/jev/criteria.ts` の `pluginCriteria` で既定の criteria（索引の定義済みリンクからフィールドごとの使用回数を数え、設定 `candidateMinUses`（既定 5、0 で全フィールド）以上のものだけを Q1 に出し、届くものが無ければ全フィールド。Q2 の 6 方向には `src/jev/direction-notes.json` の 1 文を付け、JEV-0 の `scripts/jev-accuracy-judge.mjs` も同じファイルを読む）を送り、`autoConfirmThreshold`／`reviewThreshold` の既定を 0＝使わないにして設定画面に最小使用回数の項目と説明（en・ja、N 未満のフィールドは提案されない旨）を足し、`tests/jev/criteria.test.ts` が数え方・絞り・0・空のときの全件・方向の 1 文を固定する（実機は未実施、手順は `artifacts/LEV-191-e2e/plan.md`）。
+
 ### JEV-2 エディタのサジェスター（JEV-1 の後）
 
 - `]]` を閉じた直後に `EditorSuggest` が候補（フィールド・確率・方向。確率順の上位 5 件までで 0% は出さない。自信なしなら既定なしで注記）を出し、Enter で書き込み（既定は本文のリンクにインライン、設定で `## Relations`）、Esc で閉じる。同じノートの同じリンクはセッション中 1 回だけ聞く。設定でオフにできる。

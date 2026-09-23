@@ -15,4 +15,8 @@ export default {
   JEV_COMMAND_WROTE: "Jev が {field}:: [[{target}]] を書きました（{probability}%、{tokens} トークン）。",
   JEV_COMMAND_WROTE_UNLOGGED: "Jev が {field}:: [[{target}]] を書きました（{probability}%、{tokens} トークン）が、記録できませんでした: この行は Jev では取り消せません。",
   JEV_COMMAND_ERROR: "Jev のコマンドが失敗しました。開発者コンソールを見てください。",
+  // LEV-191: 既定の criteria（docs/jev-link-typer-design.md §2-4）と、既定で無効のしきい値。
+  JEV_CANDIDATE_MIN_USES_NAME: "候補にするフィールドの最小使用回数",
+  JEV_CANDIDATE_MIN_USES_DESC: "Vault でこの回数以上使われているフィールドだけから Jev に選ばせます。第一候補が当たりやすくなります。<b>使用回数がこれ未満のフィールドは提案されません</b>。オントロジーに足したばかりのフィールドも、この回数使われるまでは候補に出ません。0 にするとオントロジーの全フィールドを候補にします。この回数に届くフィールドが 1 つも無いときも全フィールドを候補にします。回数は索引から数え、索引を作り直したときに数え直します。",
+  // しきい値の「0 で使わない」（JEV_THRESHOLD_OFF）は en の説明文の後ろに付くので、説明文と揃えて en のまま。
 };
