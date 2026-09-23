@@ -350,4 +350,7 @@ export default {
   JEV_SUGGEST_LINK_GONE: "Jev did not write {written}: the link is no longer where it was closed.",
   JEV_SUGGEST_ADDED: "Jev: added {written}",
   JEV_SUGGEST_ADDED_UNLOGGED: "Jev: added {written}, but it was not recorded and cannot be undone.",
+
+  // LEV-188
+  JEV_COMMAND_UNRESOLVED_MARKDOWN: "Nothing was written: no note is found at {target}, so that link cannot take a type. Fix the path, or create the note, and try again.",
 }

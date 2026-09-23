@@ -54,4 +54,7 @@ export default {
   JEV_SUGGEST_LINK_GONE: "{written} は書いていません: 閉じたときの位置にリンクがありません。",
   JEV_SUGGEST_ADDED: "Jev: {written} を足しました",
   JEV_SUGGEST_ADDED_UNLOGGED: "Jev: {written} を足しましたが、記録できなかったので取り消せません。",
+
+  // LEV-188
+  JEV_COMMAND_UNRESOLVED_MARKDOWN: "何も書いていません: {target} にノートが見つからないので、このリンクには型を付けられません。パスを直すかノートを作ってから、もう一度試してください。",
 };
