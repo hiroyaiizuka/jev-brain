@@ -486,6 +486,22 @@ describe('typeLinkAtCursor', () => {
     expect(vault.log()).toEqual([]);
   });
 
+  it('treats a URL at the cursor as no link, not as a missing note (LEV-188)', async () => {
+    const content = '[docs](https://example.com) と [x](mailto:a@example.com)。';
+    const vault = makeVault({ 'A.md': { content } });
+    const jev = asking(answer());
+
+    for (const snippet of ['[docs](https://example.com)', '[x](mailto:a@example.com)']) {
+      const result = await typeLinkAtCursor(
+        vault.plugin,
+        { file: vault.file('A.md'), content, cursor: cursorAt(content, snippet) },
+        jev.deps,
+      );
+      expect(result).toEqual({ status: 'no-untyped-link' });
+    }
+    expect(jev.calls).toEqual([]);
+  });
+
   it('still types a wikilink to a note that does not exist yet (LEV-188)', async () => {
     // `[[まだ無いノート]]` はそのまま書き戻せて、JevBrain も仮想ノードとして扱える。
     const content = '次は [[まだ無いノート]] に書く。';

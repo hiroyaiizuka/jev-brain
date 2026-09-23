@@ -32,7 +32,7 @@ export type UntypedLink = {
 export type TypedLink = UntypedLink & { fields: string[] };
 
 /** `[text](https://…)`, `mailto:` and the like. `metadataCache` lists them next to the wiki links. */
-const EXTERNAL_LINK = /^(?:[a-z][a-z\d+\-.]*:\/\/|mailto:)/iu;
+export const EXTERNAL_LINK = /^(?:[a-z][a-z\d+\-.]*:\/\/|mailto:)/iu;
 
 /**
  * The link's target without its `#heading` / `#^block`, percent-decoded when the link is

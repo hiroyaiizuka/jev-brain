@@ -3,7 +3,7 @@ import type ExcaliBrain from "src/excalibrain-main";
 import { normalizeRelationsHeading } from "src/Settings";
 import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev, type JevQuestion, type JevRequest } from "./client";
-import { collectUntypedLinks } from "./collect";
+import { EXTERNAL_LINK, collectUntypedLinks } from "./collect";
 import { buildQuestions, judge, type Questions } from "./judge";
 import { appendLogEntry } from "./log";
 import { appendRelation, isRelationEdit } from "./relations";
@@ -97,7 +97,8 @@ export const typeLinkAtCursor = async (
   if (!page) return { status: "no-index" };
 
   const written = writtenLinkAt(content.split("\n")[cursor.line] ?? "", cursor.ch);
-  if (!written) return { status: "no-untyped-link" };
+  // URL と `mailto:` は型を付ける相手ではない（`collect` と同じ判定）。下の「ノートが見つからない」に入れない。
+  if (!written || EXTERNAL_LINK.test(written.linkpath)) return { status: "no-untyped-link" };
   // 本文の書き方（`[[X|別名]]`・`[[X#見出し]]`・markdown リンク）と、`collect` が使う鍵（解決したパス）は
   // 別物。未型付けかどうかは解決したパスで確かめる。
   const targetFile = app.metadataCache.getFirstLinkpathDest(written.linkpath, file.path);
