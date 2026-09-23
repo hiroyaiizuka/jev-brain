@@ -37,11 +37,12 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 - 提示する候補（本人の決定、2026-09-22）: どちらの場合も Q1 の確率順の上位 5 件までで、四捨五入で 0% になる候補は出さない。サジェスターとキューで同じ。以前の「自信なしは確率を伏せて設定の順で全部出す」は、候補が 160 を超える Vault で一覧が読めなくなるので取り下げた。
 - 返り値: `{ field, probabilities: Record<string, number>, direction, directionProbability, confident }`。純関数で、Jev の応答は `client.ts` から受け取る。
 
-### 2-4 しきい値（既定値。JEV-0 の結果で確定する）
+### 2-4 しきい値と criteria（本人の決定、2026-09-23。LEV-164、根拠は `artifacts/jev-accuracy/record-v2.md`）
 
-- 一括の自動確定: 第一候補の確率 ≥ 0.8 かつ自信あり（`autoConfirmThreshold`）。
-- 見直しの提示: 第一候補 ≠ 現在のフィールド かつ 確率 ≥ 0.9 かつ自信あり（`reviewThreshold`）。
-- サジェスターとキュー: しきい値なし。必ず本人が押す。
+- 既定の criteria は「絞る＋方向の 1 文」（LEV-186 の `narrow,directions`）。Q1 の候補は Vault で `candidateMinUses` 回（既定 5、0 で絞らない）以上使われているフィールドだけ。Q2 の 6 方向には 1 文ずつ説明を付ける（左友 ＝ 同じ段の似た話題、前 ＝ 時系列で前 など）。500 件で第一候補 16.8%、上位 5 で 52.4%、方向 48.4%、1 判定 0.015 円。用例（`both`）は既定にしない。
+- 一括の自動確定は見送る（`autoConfirmThreshold` は設定に残すが既定は無効）。用例つきで 0.9 以上かつ自信ありなら適合 81% だが対象は 3.2% で、そのために全件を 4.5 倍の費用で判定することになるため。
+- 見直しタブも同じ理由で見送る（`reviewThreshold` も既定は無効）。
+- サジェスターとキュー: しきい値なし。上位 5 件から本人が選ぶ。JEV-4 の一括は「開いているノートの全リンクを判定してキューに並べる」までで、確定は本人（全部取り消しは付ける）。
 
 ## 3. 書き込みと取り消し（`relations.ts`、`log.ts`）
 
@@ -92,8 +93,9 @@ Jev にできるのは既存の語彙の順位付けだけなので、新しい�
 | `contextChars` | `500` | リンク前後の文字数 |
 | `relationsHeading` | `"Relations"` | 書き込み先の見出し |
 | `writeMode` | `"inline"` | `inline`（本文のリンクに付ける。既定）／ `relations`（`## Relations` 節に追記） |
-| `autoConfirmThreshold` | `0.8` | 一括の自動確定 |
-| `reviewThreshold` | `0.9` | 見直しの提示 |
+| `candidateMinUses` | `5` | Q1 の候補にする最低使用回数。0 で全フィールド（LEV-164） |
+| `autoConfirmThreshold` | 無効 | 一括の自動確定。既定は使わない（LEV-164） |
+| `reviewThreshold` | 無効 | 見直しの提示。既定は使わない（LEV-164） |
 | `endpoint` | `https://api.typesafe.ai/v1/systemone` | 変更可 |
 | `model` | `jev-latest` | 変更可 |
 
