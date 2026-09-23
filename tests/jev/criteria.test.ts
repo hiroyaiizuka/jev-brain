@@ -32,16 +32,18 @@ type Link = { from: string; to: string; field?: string; kind?: 'parent' | 'child
 const MIRROR = { parent: 'child', child: 'parent', leftFriend: 'leftFriend', rightFriend: 'rightFriend', next: 'previousFriend' } as const;
 const KEY = { parent: 'parent', child: 'child', leftFriend: 'leftFriend', rightFriend: 'rightFriend', next: 'nextFriend' } as const;
 
+type FakePage = { neighbours: Map<string, Partial<Relation>>; addDVFieldLinksToPage: () => void };
+
 /**
  * An index shaped the way `Page` builds it: every link sits on both of its pages, a field's name in
  * the matching `…TypeDefinition` of each, and a second field on the same pair is joined with ", ".
- * A hidden link and an inferred one carry no definition.
+ * A hidden link and an inferred one carry no definition. With `lazy`, a page's own links reach the
+ * index only once `addDVFieldLinksToPage` is called on it, as a real `Page` reads Dataview when drawn.
  */
-const indexOf = (links: Link[]): PageIndex & { pages: Map<string, { neighbours: Map<string, Partial<Relation>> }> } => {
-  const pages = new Map<string, { neighbours: Map<string, Partial<Relation>> }>();
+const indexOf = (links: Link[], { lazy = false } = {}): PageIndex & { pages: Map<string, FakePage> } => {
+  const pages = new Map<string, FakePage>();
   const relation = (from: string, to: string): Partial<Relation> => {
-    const page = pages.get(from) ?? { neighbours: new Map<string, Partial<Relation>>() };
-    pages.set(from, page);
+    const page = pageAt(from);
     const existing = page.neighbours.get(to) ?? {};
     page.neighbours.set(to, existing);
     return existing;
@@ -52,16 +54,37 @@ const indexOf = (links: Link[]): PageIndex & { pages: Map<string, { neighbours: 
     const current = fields[key];
     fields[key] = current ? `${field}, ${current}` : field;
   };
-  for (const { from, to, field, kind = 'parent' } of links) {
+  const apply = ({ from, to, field, kind = 'parent' }: Link) => {
     const forward = relation(from, to);
     const backward = relation(to, from);
     if (kind === 'hidden' || field === undefined) {
       forward.isHidden = kind === 'hidden';
       backward.isHidden = kind === 'hidden';
-      continue;
+      return;
     }
     define(forward, KEY[kind], field);
     define(backward, MIRROR[kind], field);
+  };
+  function pageAt(path: string): FakePage {
+    let page = pages.get(path);
+    if (!page) {
+      let loaded = !lazy;
+      page = {
+        neighbours: new Map<string, Partial<Relation>>(),
+        addDVFieldLinksToPage: () => {
+          if (loaded) return;
+          loaded = true;
+          links.filter((link) => link.from === path).forEach(apply);
+        },
+      };
+      pages.set(path, page);
+    }
+    return page;
+  }
+  for (const link of links) {
+    pageAt(link.from);
+    pageAt(link.to);
+    if (!lazy) apply(link);
   }
   return {
     pages,
@@ -126,6 +149,18 @@ describe('fieldUsage (counted once per index generation)', () => {
     // A rebuild is a new Pages (createIndex), so it is counted again.
     plugin.pages = indexOf([{ from: 'A.md', to: 'B.md', field: 'down', kind: 'child' }]) as unknown as Pages;
     expect(Object.fromEntries(fieldUsage(plugin))).toEqual({ down: 1 });
+  });
+
+  it('reads the fields of every page first, not only of the pages the brain has drawn', () => {
+    const index = indexOf([
+      { from: 'A.md', to: 'B.md', field: 'up' },
+      { from: 'C.md', to: 'B.md', field: 'up' },
+      { from: 'D.md', to: 'E.md', field: 'down', kind: 'child' },
+    ], { lazy: true });
+    // Before loading, the index knows none of the typed links (right after createIndex).
+    expect(countFieldUsage(index).size).toBe(0);
+
+    expect(Object.fromEntries(fieldUsage({ pages: index as unknown as Pages }))).toEqual({ up: 2, down: 1 });
   });
 
   it('is empty before the index exists', () => {

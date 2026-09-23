@@ -64,12 +64,21 @@ export const countFieldUsage = (pages: PageIndex): FieldUsage => {
   return usage;
 };
 
-/** {@link countFieldUsage} of the current index, counted once per rebuild; empty before the index exists. */
+/**
+ * {@link countFieldUsage} of the current index, counted once per rebuild; empty before the index exists.
+ * A page reads its Dataview fields only when it is first drawn (`Page.addDVFieldLinksToPage`), so every
+ * page is loaded here first: otherwise the count would be of the notes the brain happened to show.
+ */
 export const fieldUsage = (plugin: { pages?: Pages }): FieldUsage => {
   const pages = plugin.pages;
   if (!pages) return new Map();
   let usage = usageCache.get(pages);
   if (!usage) {
+    // 読み込みで未解決のページが索引に足されることがあるので、先に一覧を取ってから読む。
+    const index: PageIndex = pages;
+    const all: Page[] = [];
+    index.forEach((page) => { all.push(page); });
+    for (const page of all) page.addDVFieldLinksToPage();
     usage = countFieldUsage(pages);
     usageCache.set(pages, usage);
   }
