@@ -333,4 +333,6 @@ export default {
   JEV_QUEUE_WRITE_FAILED: "Jev could not finish writing that field. The developer console has the reason, and the note may already hold the line.",
   JEV_QUEUE_UNDO_FAILED: "Jev could not undo that line. The developer console has the reason.",
   JEV_QUEUE_USAGE: "{calls} judgement(s) · {tokens} tokens · about ¥{cost}",
+  // LEV-188
+  JEV_COMMAND_UNRESOLVED_MARKDOWN: "Nothing was written: no note is found at {target}, so that link cannot take a type. Fix the path, or create the note, and try again.",
 }

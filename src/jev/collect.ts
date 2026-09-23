@@ -32,7 +32,7 @@ export type UntypedLink = {
 export type TypedLink = UntypedLink & { fields: string[] };
 
 /** `[text](https://…)`, `mailto:` and the like. `metadataCache` lists them next to the wiki links. */
-const EXTERNAL_LINK = /^(?:[a-z][a-z\d+\-.]*:\/\/|mailto:)/iu;
+export const EXTERNAL_LINK = /^(?:[a-z][a-z\d+\-.]*:\/\/|mailto:)/iu;
 
 /**
  * The link's target without its `#heading` / `#^block`, percent-decoded when the link is
@@ -89,8 +89,8 @@ type Occurrence = { link: UntypedLink; relation: Relation | undefined };
 /**
  * The note's wiki links paired with the relation the graph already holds for their target.
  * Embeds are left out because `metadataCache` keeps them in `embeds`, not in `links`.
- * Dropped here: URLs, the note itself, the brain drawing, `excludeFilepaths`, and every
- * occurrence of a target after the first one.
+ * Dropped here: URLs, markdown links that resolve to no note, the note itself, the brain
+ * drawing, `excludeFilepaths`, and every occurrence of a target after the first one.
  */
 const occurrencesOf = (app: App, page: Page, file: TFile, content: string): Occurrence[] => {
   const links = app.metadataCache.getFileCache(file)?.links;
@@ -109,7 +109,12 @@ const occurrencesOf = (app: App, page: Page, file: TFile, content: string): Occu
     if (EXTERNAL_LINK.test(link.link)) continue;
     const linkpath = linkpathOf(link);
     if (linkpath === "") continue;
-    const target = app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path ?? linkpath;
+    const resolved = app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path;
+    // No field can type `[B](../notes/B.md)` when the note is missing: `[[../notes/B.md]]` does
+    // not resolve either, so the line would be a broken link and the occurrence would be asked
+    // about again and again (LEV-188). An unresolved `[[X]]` is written back as it is, and stays.
+    if (resolved === undefined && !link.original.startsWith("[[")) continue;
+    const target = resolved ?? linkpath;
     // Every relation setter of Page refuses the note itself and the brain drawing, so a field
     // on either of them would never become a relation and the link would be offered forever.
     if (target === file.path || target === page.plugin.settings.excalibrainFilepath) continue;
