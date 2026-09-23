@@ -84,6 +84,8 @@ export const noticeFor = (result: TypeLinkResult): string | null => {
       return t("JEV_COMMAND_EXCLUDED");
     case "no-untyped-link":
       return t("JEV_COMMAND_NO_LINK");
+    case "unresolved-markdown":
+      return fill(t("JEV_COMMAND_UNRESOLVED_MARKDOWN"), { target: result.target });
     case "failed":
       return null;
     case "unconfident":

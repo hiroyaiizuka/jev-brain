@@ -467,6 +467,42 @@ describe('typeLinkAtCursor', () => {
     expect(vault.vault.notes.get('x/A.md')).toBe(`${content}\n\n## Relations\nup:: [[notes/B.md]]`);
   });
 
+  it('writes nothing and asks nothing for a markdown link whose note does not exist (LEV-188)', async () => {
+    // 再現: `x/A.md` の `[B](../notes/B.md)`、`notes/B.md` は無い。`[[../notes/B.md]]` は Obsidian で
+    // 解決しないので、書けば切れたリンクが残り、そのリンクは型が付かないまま何度でも判定に回る。
+    const content = 'テンプレートは [B](../notes/B.md) に寄せる。';
+    const vault = makeVault({ 'x/A.md': { content } }, { writeMode: 'inline' });
+    const jev = asking(answer());
+
+    const result = await typeLinkAtCursor(
+      vault.plugin,
+      { file: vault.file('x/A.md'), content, cursor: cursorAt(content, '[B](../notes/B.md)', 2) },
+      jev.deps,
+    );
+
+    expect(result).toEqual({ status: 'unresolved-markdown', target: '../notes/B.md' });
+    expect(jev.calls).toEqual([]);
+    expect(vault.vault.notes.get('x/A.md')).toBe(content);
+    expect(vault.log()).toEqual([]);
+  });
+
+  it('still types a wikilink to a note that does not exist yet (LEV-188)', async () => {
+    // `[[まだ無いノート]]` はそのまま書き戻せて、JevBrain も仮想ノードとして扱える。
+    const content = '次は [[まだ無いノート]] に書く。';
+    const vault = makeVault({ 'A.md': { content } });
+    const jev = asking(answer());
+
+    const result = await typeLinkAtCursor(
+      vault.plugin,
+      { file: vault.file('A.md'), content, cursor: cursorAt(content, '[[まだ無いノート]]') },
+      jev.deps,
+    );
+
+    expect(result).toMatchObject({ status: 'written', field: 'up', target: 'まだ無いノート' });
+    expect(jev.calls).toHaveLength(1);
+    expect(vault.vault.notes.get('A.md')).toBe(`${content}\n\n## Relations\nup:: [[まだ無いノート]]`);
+  });
+
   it('types the occurrence the cursor is on, not the first one to the same note (LEV-185)', async () => {
     // 再現 1: 同じ相手への `[[B]]` が 2 つある本文で、2 つ目にカーソルを置く。
     const content = ['本文で [[B]] に触れる。', 'もう一度 [[B]] と書く。'].join('\n');

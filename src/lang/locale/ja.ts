@@ -15,4 +15,6 @@ export default {
   JEV_COMMAND_WROTE: "Jev が {field}:: [[{target}]] を書きました（{probability}%、{tokens} トークン）。",
   JEV_COMMAND_WROTE_UNLOGGED: "Jev が {field}:: [[{target}]] を書きました（{probability}%、{tokens} トークン）が、記録できませんでした: この行は Jev では取り消せません。",
   JEV_COMMAND_ERROR: "Jev のコマンドが失敗しました。開発者コンソールを見てください。",
+  // LEV-188
+  JEV_COMMAND_UNRESOLVED_MARKDOWN: "何も書いていません: {target} にノートが見つからないので、このリンクには型を付けられません。パスを直すかノートを作ってから、もう一度試してください。",
 };

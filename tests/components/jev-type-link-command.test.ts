@@ -77,6 +77,12 @@ describe('noticeFor', () => {
       .toBe('Nothing was written for up:: [[B]]: that link already carries a field.');
   });
 
+  it('says the note behind an unresolved markdown link cannot be found (LEV-188)', () => {
+    expect(noticeFor({ status: 'unresolved-markdown', target: '../notes/B.md' })).toBe(
+      'Nothing was written: no note is found at ../notes/B.md, so that link cannot take a type. Fix the path, or create the note, and try again.',
+    );
+  });
+
   it('tells a link that already carries a field apart from one that moved away (LEV-185)', () => {
     const gone = noticeFor({ status: 'link-gone', field: 'up', target: 'B' });
     expect(gone).toBe('Nothing was written for up:: [[B]]: the link is no longer where the cursor was. Put the cursor on it again.');

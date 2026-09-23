@@ -135,6 +135,8 @@
 
 実機 E22（2026-09-22、main 3104e2c、CDP、`artifacts/jev-inline-e2e/record.md`）: PASS。検証用 Vault を `inline` にして、文中は `(down:: [[X]])`、リンクだけの行は `down:: [[X]]`、リスト項目は `- down:: [[X]]`、同じ相手が 2 回ある本文はカーソルの 2 つ目だけが書き換わり、`## Relations` は増えず `jev-log.json` に 4 件。1 回目は相手に型付きのリンクを選んで何も書かれなかった（正しい挙動）。サジェスターとキューからの経路は E19／E20 で見る。
 
+現在の実装（LEV-188）: 相手のノートが見つからない markdown リンク（`x/A.md` の `[B](../notes/B.md)` で `notes/B.md` が無い）には型を書かない。`[[../notes/B.md]]` は Obsidian で解決せず切れたリンクになり、そのリンクは型が付かないまま何度でも有料の判定に回るため。`collectUntypedLinks` がこの出現を未型付けに数えないのでキュー（と一括）はカードを作らず Jev にも聞かない。コマンドは `typeLinkAtCursor` が Jev に聞く前に `unresolved-markdown` で止め、Notice `JEV_COMMAND_UNRESOLVED_MARKDOWN`（「{target} にノートが見つからないので、このリンクには型を付けられません」）を出す。未解決の `[[まだ無いノート]]` は今までどおり書ける。`tests/jev/typeLink.test.ts`（未解決の markdown は聞かず書かず、未解決の wiki は書く）・`tests/jev/collect.test.ts`（未解決の markdown を落とし、同じ鍵の `[[…]]` は残す）・`tests/components/jev-type-link-command.test.ts`（文言）が固定する。実機は未実施。
+
 ### JEV-2 エディタのサジェスター（JEV-1 の後）
 
 - `]]` を閉じた直後に `EditorSuggest` が候補（フィールド・確率・方向。確率順の上位 5 件までで 0% は出さない。自信なしなら既定なしで注記）を出し、Enter で書き込み（既定は本文のリンクにインライン、設定で `## Relations`）、Esc で閉じる。同じノートの同じリンクはセッション中 1 回だけ聞く。設定でオフにできる。

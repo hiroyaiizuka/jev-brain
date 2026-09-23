@@ -45,6 +45,11 @@ export type TypeLinkResult =
   | { status: "no-index" }
   /** カーソルの位置に未型付けのリンクが無い（リンクが無い・埋め込み・既に型が付いている・除外）。 */
   | { status: "no-untyped-link" }
+  /**
+   * カーソルの markdown リンク（`[B](../notes/B.md)`）の相手のノートが見つからない。`[[…]]` は `../` を
+   * 解決しないので、書けば切れたリンクになる。Jev には聞かず、何も書かない（LEV-188）。`target` は本文の綴り。
+   */
+  | { status: "unresolved-markdown"; target: string }
   /** このノート自身が除外パスか図面ファイル（設定 `excludeFilepaths`・`excalibrainFilepath`）。 */
   | { status: "excluded" }
   /** Jev に届かなかった。Notice は `client.ts` が既に 1 回出している。 */
@@ -96,13 +101,16 @@ export const typeLinkAtCursor = async (
   // 本文の書き方（`[[X|別名]]`・`[[X#見出し]]`・markdown リンク）と、`collect` が使う鍵（解決したパス）は
   // 別物。未型付けかどうかは解決したパスで確かめる。
   const targetFile = app.metadataCache.getFirstLinkpathDest(written.linkpath, file.path);
+  // markdown リンクは書き戻しに解決したパスを使うので、解決しなければ書ける `[[…]]` が無い。
+  // 未解決の `[[X]]` はそのまま書けるので止めない。`collect` もこの出現を未型付けに数えない。
+  if (!written.wiki && !targetFile) return { status: "unresolved-markdown", target: written.linkpath };
   const target = targetFile?.path ?? written.linkpath;
   if (!collectUntypedLinks(app, page, file, content).some((link) => link.target === target)) {
     return { status: "no-untyped-link" };
   }
   // 聞くのも書くのも本文のとおりの `X`。ただし markdown リンクの相手は相対パス（`../notes/B.md`）が
-  // ありうるので、`[[…]]` に入れて意味が変わらない解決後のパスを使う。
-  const name = written.wiki ? written.linkpath : targetFile?.path ?? written.linkpath;
+  // ありうるので、`[[…]]` に入れて意味が変わらない解決後のパスを使う（解決しないものは上で止めた）。
+  const name = written.wiki || !targetFile ? written.linkpath : targetFile.path;
 
   const state = buildState({
     note: { frontmatter: app.metadataCache.getFileCache(file)?.frontmatter, text: content },
