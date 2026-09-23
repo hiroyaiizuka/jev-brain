@@ -22,6 +22,8 @@ describe('suggestNoticeFor', () => {
     expect(suggestNoticeFor({ status: 'typed-elsewhere', target: 'C' })).toBe(
       '[[C]] is typed by a field of the other note, so this note has nothing to change.',
     );
+    expect(suggestNoticeFor({ status: 'other-field', target: 'B', field: 'source' })).toContain('already follows source::');
+    expect(suggestNoticeFor({ status: 'typed-outside-body', target: 'B', field: 'down' })).toContain('down:: [[B]] is not written in the body');
     expect(suggestNoticeFor({ status: 'hidden', target: "Q&A $' H" })).toBe(
       "[[Q&A $' H]] is joined by a hidden field, so Jev leaves it alone.",
     );

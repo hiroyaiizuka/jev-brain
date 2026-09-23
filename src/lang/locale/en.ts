@@ -339,4 +339,6 @@ export default {
   JEV_SUGGEST_NO_LINK: "Put the cursor on a [[link]] in the body of the note.",
   JEV_SUGGEST_TYPED_ELSEWHERE: "[[{target}]] is typed by a field of the other note, so this note has nothing to change.",
   JEV_SUGGEST_HIDDEN: "[[{target}]] is joined by a hidden field, so Jev leaves it alone.",
+  JEV_SUGGEST_OTHER_FIELD: "[[{target}]] already follows {field}::, which is not a field of your ontology that Dataview has read. Jev leaves it alone.",
+  JEV_SUGGEST_OUTSIDE_BODY: "{field}:: [[{target}]] is not written in the body of this note (frontmatter, say), so Jev cannot change it. Change it there by hand.",
 }

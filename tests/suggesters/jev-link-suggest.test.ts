@@ -627,17 +627,51 @@ describe('JevLinkSuggest.openAt (LEV-172)', () => {
     expect(Notice.messages).toEqual(['Jev: down:: [[B]] stays as it is.']);
   });
 
-  it('says so when no line of the body writes the current field (a frontmatter field, say)', async () => {
-    const content = '---\ndown: "[[B]]"\n---\n関連 [[B]]';
-    const { suggester, vault, file } = setup({ ...TWO_NOTES, 'A.md': { content, fields: { down: { path: 'B.md' } } } });
-    expect(hotkey(suggester, file('A.md'), content, 5, 3).result).toMatchObject({ status: 'opened', currentField: 'down' });
+  it('re-types a field line that spells the link differently from the cursor (review of PR #39)', async () => {
+    const content = '本文の [[B]]\n\ndown:: [[folder/B]]';
+    const { suggester, vault, file } = setup({
+      'A.md': { content, fields: { down: { path: 'folder/B.md' } } },
+      'folder/B.md': { content: '' },
+    });
+    // `[[B]]` has no note of its own here: both spellings reach `folder/B.md` through the stub's resolver.
+    (suggester.plugin.app.metadataCache as unknown as { getFirstLinkpathDest: (path: string) => TFile | null })
+      .getFirstLinkpathDest = (path: string) => (path === 'B' || path === 'folder/B' ? file('folder/B.md') ?? null : null);
+    expect(hotkey(suggester, file('A.md'), content, 6).result).toMatchObject({ status: 'opened', currentField: 'down' });
     await flush();
 
     suggester.selectSuggestion(UP);
     await flush();
 
-    expect(vault.notes.get('A.md')).toBe(content);
-    expect(Notice.messages).toEqual(['Jev did not write up:: [[B]]: no line of this note writes down:: [[B]] to change.']);
+    expect(vault.notes.get('A.md')).toBe('本文の [[B]]\n\nup:: [[folder/B]]');
+  });
+
+  it('does not ask when no line of the body writes the current field (a frontmatter field, say)', () => {
+    const content = '---\ndown: "[[B]]"\n---\n関連 [[B]]';
+    const { suggester, file } = setup({ ...TWO_NOTES, 'A.md': { content, fields: { down: { path: 'B.md' } } } });
+    expect(hotkey(suggester, file('A.md'), content, 5, 3).result)
+      .toEqual({ status: 'typed-outside-body', target: 'B', field: 'down' });
+    expect(requestUrlMock.calls).toHaveLength(0);
+  });
+
+  it('does not ask about a link behind a field the ontology does not have (review of PR #39)', () => {
+    const content = 'source:: [[B]]';
+    const { suggester, file } = setup({ ...TWO_NOTES, 'A.md': { content } });
+    expect(hotkey(suggester, file('A.md'), content, 11).result)
+      .toEqual({ status: 'other-field', target: 'B', field: 'source' });
+    expect(requestUrlMock.calls).toHaveLength(0);
+  });
+
+  it('stays closed once dismissed, even with the cursor back on the link (review of PR #39)', async () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const { suggester, file } = setup(TWO_NOTES, { jev: { suggestOnLinkClose: false } });
+    const { editor } = hotkey(suggester, file('A.md'), content, 19);
+    await flush();
+    // The answer's redraw went through `trigger` and kept the popup.
+    expect(suggester.context).not.toBeNull();
+
+    suggester.close(); // Esc
+    expect(suggester.onTrigger({ line: 0, ch: 20 }, editor, file('A.md'))).toBeNull();
+    expect(suggester.onTrigger({ line: 0, ch: 22 }, editor, file('A.md'))).toBeNull();
   });
 
   it('works while `]]` suggestions are turned off, and asks again at any time', async () => {

@@ -210,3 +210,9 @@ export class MarkdownView {
   file: TFile | null = null;
   save(): Promise<void> { return Promise.resolve(); }
 }
+
+// ---- LEV-172 ----
+/** `JevLinkSuggest.close()` calls `super.close()`; the real one hides the popover. */
+(EditorSuggest.prototype as unknown as { close: () => void }).close = function close(): void {
+  (this as EditorSuggest).context = null;
+};

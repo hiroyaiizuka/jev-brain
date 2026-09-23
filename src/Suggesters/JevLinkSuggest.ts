@@ -57,7 +57,17 @@ export type OpenAtResult =
   /** 相手のノートだけがフィールドで指している。このノートには書き換える行が無い（設計 §2-1、`collectTypedLinks`）。 */
   | { status: "typed-elsewhere"; target: string }
   /** どちらかのノートが hidden のフィールドで結んでいる。聞かない相手（設計 §2-1）。 */
-  | { status: "hidden"; target: string };
+  | { status: "hidden"; target: string }
+  /**
+   * リンクの前に、オントロジーにない（または Dataview がまだ読んでいない）フィールドが書いてある。
+   * 聞いても確定は `already-typed` で何も書けないので、聞く前に断る。
+   */
+  | { status: "other-field"; target: string; field: string }
+  /**
+   * このノートのフィールドが型を付けているが、本文に `field:: [[X]]` の行が無い（フロントマターなど）。
+   * `replaceRelation` が書き換える先が無いので、聞く前に断る。
+   */
+  | { status: "typed-outside-body"; target: string; field: string };
 
 /** 候補の行に出す方向。`judge.ts` の日本語のラベルは Jev に送る criteria の説明なので、画面はプラグインの言語で書く。 */
 const DIRECTION_TEXT: Record<Direction, string> = {
@@ -107,6 +117,8 @@ type LinkAsk = {
    * 候補の先頭に置き（`judge` の `currentField`）、確定は `replaceRelation`（設計 §3「見直しの確定」）。
    */
   currentField?: string;
+  /** 付け替えで `replaceRelation` に渡す綴り: 本文で `currentField:: [[…]]` と書いているリンク（カーソルの綴りとは限らない）。 */
+  typedAs?: string;
 };
 
 /** カーソルの直前で閉じたリンク。 */
@@ -187,6 +199,10 @@ const fieldLinksTo = (plugin: ExcaliBrain, from: string, to: string, fields: str
   return dvPage ? getDVFieldLinksForPage(plugin, dvPage, fields).some((item) => item.link === to) : false;
 };
 
+/** リンクの直前に書かれたフィールド名（`field:: [[X]]`・`(field:: [[X]])`）。`relations.ts` の `fieldBefore` と同じ読み方。 */
+const fieldNameBefore = (line: string, at: number): string | null =>
+  /(?:^|\()\s*([^()]*?)\s*::\s*$/u.exec(line.slice(0, at))?.[1] ?? null;
+
 /**
  * `from` のノート自身のフィールドのうち、`to` を指している最初の 1 つ（Dataview のキー）。無ければ null。
  * 同じ相手を 2 つのフィールドで指していても、付け替えるのは先の 1 つだけ（`replaceRelation` は 1 行替える）。
@@ -214,6 +230,8 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
   private readonly asked = new Map<string, Set<string>>();
   /** 前回 `onTrigger` が見た行。入力で変わったのかカーソルが動いただけなのかを分ける。 */
   private lastLine: { path: string; line: number; text: string } | null = null;
+  /** 答えが届いたときの描き直しの最中。そこで `close()` が呼ばれても、ホットキーの 1 件は閉じたことにしない。 */
+  private redrawing = false;
 
   constructor(plugin: ExcaliBrain) {
     super(plugin.app);
@@ -354,9 +372,15 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     }
     const typed = ontologyFields(this.plugin).filter((field) => !hidden.includes(field));
     const own = ownFieldTo(this.plugin, file.path, target, typed);
+    const line = editor.getLine(cursor.line);
+    const written = fieldNameBefore(line, link.start);
+    if (own === null && written !== null) return { status: "other-field", target: link.linkpath, field: written };
     if (own === null && fieldLinksTo(this.plugin, target, file.path, typed)) {
       return { status: "typed-elsewhere", target: link.linkpath };
     }
+    // 付け替えは書き換える行が本文にあるときだけ聞く（無ければ、聞いて払っても確定できない）。
+    const typedAs = own === null ? null : this.typingLinkpath(editor, file, own, target);
+    if (own !== null && typedAs === null) return { status: "typed-outside-body", target: link.linkpath, field: own };
 
     const start: EditorPosition = { line: cursor.line, ch: link.start };
     this.startAsk({
@@ -369,12 +393,43 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
       at: { ...start, wiki: true },
       status: "asking",
       forced: true,
-      ...(own === null ? {} : { currentField: own }),
+      ...(own === null || typedAs === null ? {} : { currentField: own, typedAs }),
     }, editor.getValue());
     this.retrigger(editor, file);
     return own === null
       ? { status: "opened", target: link.linkpath }
       : { status: "opened", target: link.linkpath, currentField: own };
+  }
+
+  /**
+   * Esc で閉じた・カーソルが離れて閉じたら、ホットキーの 1 件はもう出さない。残すと、閉じたあとに
+   * リンクの上へ戻ったカーソルで開き直り、次の Enter が誰も選んでいない候補を確定してしまう。
+   */
+  close(): void {
+    if (!this.redrawing && this.ask?.forced) this.ask.forced = false;
+    super.close();
+  }
+
+  /**
+   * 本文で `field:: [[L]]`（または `(field:: [[L]])`）と書き、L が `target` に解決するリンクの L。
+   * `replaceRelation` はこの綴りで行を探すので、カーソルの `[[X]]` と書き方が違っても（`[[folder/X]]`）付け替えられる。
+   * frontmatter とコードブロックの中は `relations.ts` も見ないので、ここでも見ない。
+   */
+  private typingLinkpath(editor: Editor, file: TFile, field: string, target: string): string | null {
+    const key = toHierarchyKey(field);
+    for (let i = 0; i <= editor.lastLine(); i++) {
+      const line = editor.getLine(i);
+      if (!line.includes("::")) continue;
+      for (const match of line.matchAll(WIKI_LINK)) {
+        if (match[1]) continue;
+        const name = fieldNameBefore(line, match.index);
+        if (name === null || toHierarchyKey(name) !== key) continue;
+        const linkpath = linkpathOf(match[2]);
+        const resolved = this.plugin.app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path ?? linkpath;
+        if (resolved === target && isInBody(editor, i)) return linkpath;
+      }
+    }
+    return null;
   }
 
   /**
@@ -486,7 +541,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
       if (view?.file?.path === ask.file.path) await view.save();
       outcome = current !== undefined
         // 付け替え（設計 §3「見直しの確定」）: `current:: [[X]]` の行またはインラインのフィールド名だけを替える。
-        ? await replaceRelation(app, ask.file, current, field, ask.linkpath)
+        ? await replaceRelation(app, ask.file, current, field, ask.typedAs ?? ask.linkpath)
         : await appendRelation(app, ask.file, field, ask.linkpath, {
           heading: normalizeRelationsHeading(settings.jev.relationsHeading),
           mode: settings.jev.writeMode,
@@ -500,7 +555,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     if (!isRelationEdit(outcome)) {
       if (current !== undefined) {
         // 型がフロントマターにある・リンクの書き方が本文と違う・判定を待つ間に行が変わった。
-        new Notice(`Jev did not write ${written}: no line of this note writes ${current}:: [[${ask.linkpath}]] to change.`);
+        new Notice(`Jev did not write ${written}: no line of this note writes ${current}:: [[${ask.typedAs ?? ask.linkpath}]] to change.`);
         return;
       }
       // 「既に付いている」と「指していたリンクが動いた」は直し方が違うので、同じ言い方にしない。
@@ -549,7 +604,12 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     // 前と同じ context なら候補を取り直さないことがあるので、先に捨ててから `onTrigger` を
     // やり直させる（設計 §4-1: `close()`／`open()` ではなく context の更新で描き直す）。
     this.context = null;
-    trigger.call(this, editor, file, true);
+    this.redrawing = true;
+    try {
+      trigger.call(this, editor, file, true);
+    } finally {
+      this.redrawing = false;
+    }
   }
 
   /** 別のノートへ移ったら、そのノート以外のぶんは忘れる（設計 §4-1）。 */

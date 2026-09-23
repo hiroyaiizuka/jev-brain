@@ -21,4 +21,6 @@ export default {
   JEV_SUGGEST_NO_LINK: "本文の [[リンク]] にカーソルを置いてください。",
   JEV_SUGGEST_TYPED_ELSEWHERE: "[[{target}]] は相手のノートのフィールドが型を付けています。このノートに付け替える行はありません。",
   JEV_SUGGEST_HIDDEN: "[[{target}]] は hidden のフィールドで結ばれているので、Jev は触りません。",
+  JEV_SUGGEST_OTHER_FIELD: "[[{target}]] の前には {field}:: があり、Dataview が読んだオントロジーのフィールドではありません。Jev は触りません。",
+  JEV_SUGGEST_OUTSIDE_BODY: "{field}:: [[{target}]] はこのノートの本文に書かれていない（フロントマターなど）ので、Jev は付け替えられません。そこで手で直してください。",
 };

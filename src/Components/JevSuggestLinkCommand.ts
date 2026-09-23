@@ -45,5 +45,9 @@ export const suggestNoticeFor = (result: OpenAtResult): string | null => {
       return fill(t("JEV_SUGGEST_TYPED_ELSEWHERE"), { target: result.target });
     case "hidden":
       return fill(t("JEV_SUGGEST_HIDDEN"), { target: result.target });
+    case "other-field":
+      return fill(t("JEV_SUGGEST_OTHER_FIELD"), { target: result.target, field: result.field });
+    case "typed-outside-body":
+      return fill(t("JEV_SUGGEST_OUTSIDE_BODY"), { target: result.target, field: result.field });
   }
 };
