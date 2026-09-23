@@ -15,4 +15,10 @@ export default {
   JEV_COMMAND_WROTE: "Jev が {field}:: [[{target}]] を書きました（{probability}%、{tokens} トークン）。",
   JEV_COMMAND_WROTE_UNLOGGED: "Jev が {field}:: [[{target}]] を書きました（{probability}%、{tokens} トークン）が、記録できませんでした: この行は Jev では取り消せません。",
   JEV_COMMAND_ERROR: "Jev のコマンドが失敗しました。開発者コンソールを見てください。",
+  // LEV-172: カーソルのリンクに候補を出すコマンド（docs/jev-link-typer-design.md §4-1）。
+  JEV_SUGGEST_COMMAND: "Jev: カーソルのリンクに型を付ける（候補から選ぶ）",
+  JEV_SUGGEST_INACTIVE: "Jev が無効か、API キーがありません。変えたあとはプラグインを再読み込みしてください。",
+  JEV_SUGGEST_NO_LINK: "本文の [[リンク]] にカーソルを置いてください。",
+  JEV_SUGGEST_TYPED_ELSEWHERE: "[[{target}]] は相手のノートのフィールドが型を付けています。このノートに付け替える行はありません。",
+  JEV_SUGGEST_HIDDEN: "[[{target}]] は hidden のフィールドで結ばれているので、Jev は触りません。",
 };

@@ -116,7 +116,7 @@ export const noticeFor = (result: TypeLinkResult): string | null => {
  * `{name}` を値で埋める。ノートの名前は Vault のもので `$&` や `$'` が入りうるが、`replace` の置換
  * 文字列はそれを展開してしまう（`$'` は残り全部に化ける）ので、関数で返して素通しにする。
  */
-const fill = (template: string, values: Record<string, string>): string =>
+export const fill = (template: string, values: Record<string, string>): string =>
   Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, () => value), template);
 
 /** 確率のパーセント表記。応答がその候補の確率を返さなかったときは「?」。 */

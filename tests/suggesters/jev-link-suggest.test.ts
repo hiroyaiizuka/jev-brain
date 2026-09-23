@@ -125,10 +125,11 @@ function setup(
   };
 }
 
-/** The editor members `onTrigger` reads: the lines, the buffer and the offset of a position. */
-function editorFor(text: string): Editor {
+/** The editor members `onTrigger` and `openAt` read: the lines, the buffer, the cursor and the offset of a position. */
+function editorFor(text: string, cursor: EditorPosition = { line: 0, ch: 0 }): Editor {
   const lines = text.split('\n');
   return {
+    getCursor: () => cursor,
     getLine: (line: number) => lines[line] ?? '',
     lastLine: () => lines.length - 1,
     getValue: () => text,
@@ -532,16 +533,156 @@ describe('JevLinkSuggest.selectSuggestion', () => {
   });
 });
 
-describe('JevLinkSuggest.openAt', () => {
-  it('re-enters onTrigger for the hotkey of LEV-172', () => {
-    const { suggester, file } = setup(TWO_NOTES);
-    const editor = editorFor(TWO_NOTES['A.md'].content ?? '');
-    const calls: boolean[] = [];
-    (suggester as unknown as { trigger: (editor: Editor, file: TFile, manual: boolean) => void }).trigger =
-      (_editor, _file, manual) => { calls.push(manual); };
+describe('JevLinkSuggest.openAt (LEV-172)', () => {
+  const UP: JevSuggestion = { kind: 'candidate', field: 'up', probability: 0.82, direction: 'parent', confident: true };
 
-    suggester.openAt(editor, file('A.md'));
-    expect(calls).toEqual([true]);
+  /**
+   * Runs the hotkey on `A.md` with the cursor at `ch` of `line`. Obsidian's own `trigger` (not in
+   * obsidian.d.ts) calls `onTrigger` and keeps what it returns as the context; the stand-in does the same.
+   */
+  function hotkey(suggester: JevLinkSuggest, file: TFile, text: string, ch: number, line = 0) {
+    const cursor = { line, ch };
+    const editor = editorFor(text, cursor);
+    const triggered: (EditorSuggestTriggerInfo | null)[] = [];
+    (suggester as unknown as { trigger: (editor: Editor, file: TFile, manual: boolean) => void }).trigger =
+      (own, ownFile) => {
+        const info = suggester.onTrigger(cursor, own, ownFile);
+        triggered.push(info);
+        suggester.context = info ? contextOf(info, own, ownFile) : null;
+      };
+    const result = suggester.openAt(editor, file);
+    return { result, editor, triggered };
+  }
+
+  const candidatesOf = (suggester: JevLinkSuggest) =>
+    suggester.getSuggestions(suggester.context);
+
+  const fieldsOf = (rows: JevSuggestion[]) => rows.map((row) => (row.kind === 'candidate' ? row.field : row.kind));
+
+  it('opens on an untyped link under the cursor, anywhere inside it, and offers the ranking as is', async () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const { suggester, file } = setup(TWO_NOTES);
+    // Inside `[[B]]`, not after `]]`: the hotkey does not need the link to have just been closed.
+    const { result, triggered } = hotkey(suggester, file('A.md'), content, 19);
+
+    expect(result).toEqual({ status: 'opened', target: 'B' });
+    expect(triggered[0]).toEqual({ start: { line: 0, ch: 17 }, end: { line: 0, ch: 19 }, query: 'B' });
+    await flush();
+    expect(requestUrlMock.calls).toHaveLength(1);
+    const candidates = candidatesOf(suggester);
+    expect(fieldsOf(candidates)).toEqual(['up', 'origin', 'similar', 'down']);
+    expect(candidates[0]).not.toHaveProperty('current');
+  });
+
+  it('puts the current field first on a link this note already types (設計 §4-1)', async () => {
+    const content = 'down:: [[B]]';
+    const { suggester, file } = setup({
+      ...TWO_NOTES,
+      'A.md': { content, fields: { down: { path: 'B.md' } } },
+    });
+    const { result } = hotkey(suggester, file('A.md'), content, 9);
+
+    expect(result).toEqual({ status: 'opened', target: 'B', currentField: 'down' });
+    await flush();
+    const candidates = candidatesOf(suggester);
+    // The untyped case above leads with `up`; here the current `down` leads and keeps its own probability.
+    expect(fieldsOf(candidates)).toEqual(['down', 'up', 'origin', 'similar']);
+    expect(candidates[0]).toMatchObject({ field: 'down', probability: 0.03, current: true });
+    expect(candidates[1]).not.toHaveProperty('current');
+  });
+
+  it('re-types through replaceRelation and records it (設計 §3「見直しの確定」)', async () => {
+    const content = '関連: (down:: [[B|別名]]) と [[B]]';
+    const after = '関連: (up:: [[B|別名]]) と [[B]]';
+    const { suggester, vault, file } = setup({
+      ...TWO_NOTES,
+      'A.md': { content, fields: { down: { path: 'B.md' } } },
+    });
+    hotkey(suggester, file('A.md'), content, 17);
+    await flush();
+
+    suggester.selectSuggestion(UP);
+    await flush();
+
+    // Only the field name changes; the alias, the brackets and the other link stay.
+    expect(vault.notes.get('A.md')).toBe(after);
+    const log = JSON.parse(vault.dataFiles.get(`${MANIFEST_DIR}/jev-log.json`) ?? '[]') as unknown[];
+    expect(log).toEqual([expect.objectContaining({ source: 'suggest', line: 0, before: content, after })]);
+    expect(Notice.messages).toEqual(['Jev: changed down:: to up:: [[B]]']);
+  });
+
+  it('writes nothing when the current field is picked again', async () => {
+    const content = 'down:: [[B]]';
+    const { suggester, vault, file } = setup({ ...TWO_NOTES, 'A.md': { content, fields: { down: { path: 'B.md' } } } });
+    hotkey(suggester, file('A.md'), content, 9);
+    await flush();
+
+    suggester.selectSuggestion({
+      kind: 'candidate', field: 'down', probability: 0.03, direction: 'child', confident: true, current: true,
+    });
+    await flush();
+
+    expect(vault.notes.get('A.md')).toBe(content);
+    expect(vault.dataFiles.size).toBe(0);
+    expect(Notice.messages).toEqual(['Jev: down:: [[B]] stays as it is.']);
+  });
+
+  it('says so when no line of the body writes the current field (a frontmatter field, say)', async () => {
+    const content = '---\ndown: "[[B]]"\n---\n関連 [[B]]';
+    const { suggester, vault, file } = setup({ ...TWO_NOTES, 'A.md': { content, fields: { down: { path: 'B.md' } } } });
+    expect(hotkey(suggester, file('A.md'), content, 5, 3).result).toMatchObject({ status: 'opened', currentField: 'down' });
+    await flush();
+
+    suggester.selectSuggestion(UP);
+    await flush();
+
+    expect(vault.notes.get('A.md')).toBe(content);
+    expect(Notice.messages).toEqual(['Jev did not write up:: [[B]]: no line of this note writes down:: [[B]] to change.']);
+  });
+
+  it('works while `]]` suggestions are turned off, and asks again at any time', async () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const { suggester, file } = setup(TWO_NOTES, { jev: { suggestOnLinkClose: false } });
+    expect(hotkey(suggester, file('A.md'), content, 22).result.status).toBe('opened');
+    await flush();
+    expect(hotkey(suggester, file('A.md'), content, 22).result.status).toBe('opened');
+    await flush();
+    expect(requestUrlMock.calls).toHaveLength(2);
+    expect(fieldsOf(candidatesOf(suggester))[0]).toBe('up');
+  });
+
+  it('closes once the cursor leaves the link', async () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const { suggester, file } = setup(TWO_NOTES, { jev: { suggestOnLinkClose: false } });
+    const { editor } = hotkey(suggester, file('A.md'), content, 19);
+    await flush();
+
+    expect(suggester.onTrigger({ line: 0, ch: 19 }, editor, file('A.md'))).not.toBeNull();
+    expect(suggester.onTrigger({ line: 0, ch: 3 }, editor, file('A.md'))).toBeNull();
+  });
+
+  it('says why it did not open, and asks nothing', () => {
+    const text = '本文 ![[B]] と [[C]] と [[H]]';
+    const { suggester, file } = setup({
+      ...TWO_NOTES,
+      'A.md': { content: text },
+      'C.md': { content: '', fields: { up: { path: 'A.md' } } },
+      'H.md': { content: '', fields: { ignore: { path: 'A.md' } } },
+    });
+    expect(hotkey(suggester, file('A.md'), text, 0).result).toEqual({ status: 'no-link' });
+    expect(hotkey(suggester, file('A.md'), text, 6).result).toEqual({ status: 'no-link' }); // the embed
+    expect(hotkey(suggester, file('A.md'), text, 14).result).toEqual({ status: 'typed-elsewhere', target: 'C' });
+    expect(hotkey(suggester, file('A.md'), text, 23).result).toEqual({ status: 'hidden', target: 'H' });
+    expect(requestUrlMock.calls).toHaveLength(0);
+  });
+
+  it('leaves out an excluded note and a session without a key', () => {
+    const content = TWO_NOTES['A.md'].content ?? '';
+    const excluded = setup(TWO_NOTES, { excludeFilepaths: ['A'] });
+    expect(hotkey(excluded.suggester, excluded.file('A.md'), content, 19).result).toEqual({ status: 'excluded' });
+    const off = setup(TWO_NOTES, { jev: { apiKey: '' } });
+    expect(hotkey(off.suggester, off.file('A.md'), content, 19).result).toEqual({ status: 'inactive' });
+    expect(requestUrlMock.calls).toHaveLength(0);
   });
 });
 
@@ -578,6 +719,11 @@ describe('JevLinkSuggest.renderSuggestion', () => {
   it('writes no percentage for a candidate the answer gave no probability', () => {
     expect(render({ kind: 'candidate', field: 'up', direction: 'parent', confident: true }))
       .toEqual([{ tag: 'code', text: 'up' }, { tag: 'span', text: ' parent' }]);
+  });
+
+  it('marks the current field of a re-type first (LEV-172)', () => {
+    expect(render({ kind: 'candidate', field: 'down', probability: 0.03, direction: 'child', confident: true, current: true }))
+      .toEqual([{ tag: 'code', text: 'down' }, { tag: 'span', text: ' current · 3% · child' }]);
   });
 
   it('shows one line while the answer is on its way', () => {

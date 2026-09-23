@@ -333,4 +333,10 @@ export default {
   JEV_QUEUE_WRITE_FAILED: "Jev could not finish writing that field. The developer console has the reason, and the note may already hold the line.",
   JEV_QUEUE_UNDO_FAILED: "Jev could not undo that line. The developer console has the reason.",
   JEV_QUEUE_USAGE: "{calls} judgement(s) · {tokens} tokens · about ¥{cost}",
+  // LEV-172: the hotkey command that opens the suggestion on the link at the cursor (docs/jev-link-typer-design.md §4-1).
+  JEV_SUGGEST_COMMAND: "Jev: type the link at the cursor (pick from the candidates)",
+  JEV_SUGGEST_INACTIVE: "Jev is turned off or has no API key. Reload the plugin after changing that.",
+  JEV_SUGGEST_NO_LINK: "Put the cursor on a [[link]] in the body of the note.",
+  JEV_SUGGEST_TYPED_ELSEWHERE: "[[{target}]] is typed by a field of the other note, so this note has nothing to change.",
+  JEV_SUGGEST_HIDDEN: "[[{target}]] is joined by a hidden field, so Jev leaves it alone.",
 }
