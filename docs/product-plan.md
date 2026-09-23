@@ -137,6 +137,8 @@
 
 現在の実装（LEV-188）: 相手のノートが見つからない markdown リンク（`x/A.md` の `[B](../notes/B.md)` で `notes/B.md` が無い）には型を書かない。`[[../notes/B.md]]` は Obsidian で解決せず切れたリンクになり、そのリンクは型が付かないまま何度でも有料の判定に回るため。`collectUntypedLinks` がこの出現を未型付けに数えないのでキュー（と一括）はカードを作らず Jev にも聞かない。コマンドは `typeLinkAtCursor` が Jev に聞く前に `unresolved-markdown` で止め、Notice `JEV_COMMAND_UNRESOLVED_MARKDOWN`（「{target} にノートが見つからないので、このリンクには型を付けられません」）を出す。未解決の `[[まだ無いノート]]` は今までどおり書ける。`tests/jev/typeLink.test.ts`（未解決の markdown は聞かず書かず、未解決の wiki は書く）・`tests/jev/collect.test.ts`（未解決の markdown を落とし、同じ鍵の `[[…]]` は残す）・`tests/components/jev-type-link-command.test.ts`（文言）が固定する。実機は未実施。
 
+現在の実装（LEV-191）: コマンド・サジェスター・キューの 3 入口が `src/jev/criteria.ts` の `pluginCriteria` で既定の criteria（索引の定義済みリンクからフィールドごとの使用回数を数え、設定 `candidateMinUses`（既定 5、0 で全フィールド）以上のものだけを Q1 に出し、届くものが無ければ全フィールド。Q2 の 6 方向には `src/jev/direction-notes.json` の 1 文を付け、JEV-0 の `scripts/jev-accuracy-judge.mjs` も同じファイルを読む）を送り、`autoConfirmThreshold`／`reviewThreshold` の既定を 0＝使わないにして設定画面に最小使用回数の項目と説明（en・ja、N 未満のフィールドは提案されない旨）を足し、`tests/jev/criteria.test.ts` が数え方・絞り・0・空のときの全件・方向の 1 文を固定する（実機は未実施、手順は `artifacts/LEV-191-e2e/plan.md`）。
+
 ### JEV-2 エディタのサジェスター（JEV-1 の後）
 
 - `]]` を閉じた直後に `EditorSuggest` が候補（フィールド・確率・方向。確率順の上位 5 件までで 0% は出さない。自信なしなら既定なしで注記）を出し、Enter で書き込み（既定は本文のリンクにインライン、設定で `## Relations`）、Esc で閉じる。同じノートの同じリンクはセッション中 1 回だけ聞く。設定でオフにできる。

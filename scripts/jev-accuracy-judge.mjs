@@ -62,17 +62,12 @@ export const EXAMPLE_LEAD = 'この Vault での使い方: ';
 /**
  * `directions`: one sentence per direction for Q2. LEV-163 answered 左友 zero times out of 500 and 前
  * eleven, with only the one-word label 「左友」／「前」 to go on; these say what the label means.
- * They live here, not in `judge.ts`, because §2-3's wording is what the plugin sends and this run is
- * measuring whether it should change.
+ * Since LEV-164 they are what the plugin sends by default (design §2-4), so the wording lives in
+ * `src/jev/direction-notes.json` and this run reads the same file `src/jev/criteria.ts` does.
  */
-export const DIRECTION_NOTES = {
-  parent: '[[X]] の方が抽象的で上位。今のノートの出典・元になった考え・所属する上位の概念',
-  child: '[[X]] の方が具体的で下位。今のノートの例・詳細・派生・実装',
-  leftFriend: '同じ段の似た話題。抽象度は同じで、言い換え・関連・支持・代替',
-  rightFriend: '同じ段の対立する話題。抽象度は同じで、反対・欠点・制約',
-  previous: '時系列や手順で、[[X]] が今のノートより前に来る',
-  next: '時系列や手順で、[[X]] が今のノートより後に来る',
-};
+export const DIRECTION_NOTES = Object.freeze(
+  JSON.parse(readFileSync(new URL('../src/jev/direction-notes.json', import.meta.url), 'utf8')),
+);
 
 const LEVER_LABELS = {
   narrow: ({ minUses }) => `候補を絞る（Vault で ${minUses} 件以上使われているフィールドだけ）`,

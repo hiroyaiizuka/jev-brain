@@ -10,6 +10,7 @@ import type ExcaliBrain from "src/excalibrain-main";
 import { isJevActive, normalizeRelationsHeading } from "src/Settings";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev } from "src/jev/client";
 import type { JevQuestion, JevResponse as JevClientResponse } from "src/jev/client";
+import { pluginCriteria } from "src/jev/criteria";
 import { buildQuestions, directionOfField, judge, percentOf } from "src/jev/judge";
 import type { Direction, Judgement, Questions } from "src/jev/judge";
 import { appendLogEntry } from "src/jev/log";
@@ -507,7 +508,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     });
     return askJev(
       { apiKey: jev.apiKey, endpoint: jev.endpoint, model: jev.model, timeoutMs: DEFAULT_JEV_TIMEOUT_MS },
-      { state, questions: toRequestQuestions(buildQuestions(this.plugin.settings.hierarchy)) },
+      { state, questions: toRequestQuestions(buildQuestions(this.plugin.settings.hierarchy, pluginCriteria(this.plugin))) },
     );
   }
 

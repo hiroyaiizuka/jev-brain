@@ -169,8 +169,9 @@ const fieldEntries = (hierarchy: Hierarchy): FieldEntry[] => {
 /**
  * Ways the JEV-0 re-measurement (LEV-186) may shape the criteria, so the two
  * conditions of design §10「criteria の説明文を厚くして再測」 can be asked without a
- * second copy of the questions. Left out — which is what the plugin does — the
- * questions are exactly what §2-3 describes.
+ * second copy of the questions. Left out, the questions are exactly what §2-3
+ * describes; the plugin passes `criteria.ts`'s default (narrowed fields and the
+ * direction notes, §2-4, LEV-164).
  */
 export type CriteriaOptions = {
   /**
@@ -207,8 +208,8 @@ const withNote = (description: string, note: string): string => (note === "" ? d
  * Q1 「このリンクに付けるフィールド」 over the whole ontology and Q2
  * 「このリンクの方向」 over the six directions. A description is the region and
  * the direction; the author's own wording is appended here once the settings
- * carry it. `options` is the measurement's lever (see {@link CriteriaOptions})
- * and changes nothing when it is left out.
+ * carry it. `options` shapes the criteria (see {@link CriteriaOptions}) and
+ * changes nothing when it is left out.
  */
 export const buildQuestions = (hierarchy: Hierarchy, options: CriteriaOptions = {}): Questions => {
   const entries = fieldEntries(hierarchy);

@@ -14,6 +14,7 @@ import { LinkDirection, RelationType, type Hierarchy } from 'src/Types';
 import { createEmptyHierarchyLowerCase, type HierarchyLowerCase } from 'src/utils/hierarchy';
 import type { JevClientConfig, JevRequest, JevResponse } from 'src/jev/client';
 import { typeLinkAtCursor } from 'src/jev/typeLink';
+import { DIRECTION_NOTES } from 'src/jev/criteria';
 
 /**
  * The wiring of one judgement (LEV-170): collect → buildState/buildQuestions → askJev → judge →
@@ -65,8 +66,9 @@ const settingsStub = {
     contextChars: 40,
     relationsHeading: 'Relations',
     writeMode: 'relations',
-    autoConfirmThreshold: 0.8,
-    reviewThreshold: 0.9,
+    candidateMinUses: 5,
+    autoConfirmThreshold: 0,
+    reviewThreshold: 0,
     endpoint: 'https://api.typesafe.ai/v1/systemone',
     model: 'jev-latest',
   },
@@ -150,6 +152,8 @@ function makeVault(
     get: (path: string) => pages.get(path),
     has: (path: string) => pages.has(path),
     add: (path: string, page: Page) => pages.set(path, page),
+    // The field counts of the default criteria (LEV-191) read the whole index.
+    forEach: (callback: (page: Page, path: string) => void) => { pages.forEach(callback); },
   } as unknown as Pages;
   // Obsidian resolves a link by path and then by name; the stub does the same, which is what lets
   // `[B](../notes/B.md)` and `[[B]]` both reach `notes/B.md`.
@@ -337,6 +341,8 @@ describe('typeLinkAtCursor', () => {
     expect(Object.keys(request.questions.direction.criteria)).toEqual([
       'parent', 'child', 'leftFriend', 'rightFriend', 'previous', 'next',
     ]);
+    // 既定の criteria（LEV-191）: この Vault に 5 回使われたフィールドは無いので Q1 は全部、Q2 に方向の 1 文。
+    expect(request.questions.direction.criteria.parent).toBe(`親。${DIRECTION_NOTES.parent}`);
   });
 
   it('writes the link as the body writes it, not the resolved path or the alias', async () => {

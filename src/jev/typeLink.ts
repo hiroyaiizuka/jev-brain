@@ -4,6 +4,7 @@ import { normalizeRelationsHeading } from "src/Settings";
 import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev, type JevQuestion, type JevRequest } from "./client";
 import { EXTERNAL_LINK, collectUntypedLinks } from "./collect";
+import { pluginCriteria } from "./criteria";
 import { buildQuestions, judge, type Questions } from "./judge";
 import { appendLogEntry } from "./log";
 import { appendRelation, isRelationEdit } from "./relations";
@@ -133,7 +134,7 @@ export const typeLinkAtCursor = async (
       model: settings.jev.model,
       timeoutMs: DEFAULT_JEV_TIMEOUT_MS,
     },
-    { state, questions: toRequestQuestions(buildQuestions(settings.hierarchy)) },
+    { state, questions: toRequestQuestions(buildQuestions(settings.hierarchy, pluginCriteria(plugin))) },
   );
   if (!response) return { status: "failed" };
 

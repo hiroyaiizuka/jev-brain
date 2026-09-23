@@ -367,4 +367,9 @@ export default {
   JEV_SUGGEST_NO_LINE: "Jev did not write {written}: no line of this note writes {current} to change.",
   JEV_SUGGEST_CHANGED: "Jev: changed {old}:: to {written}",
   JEV_SUGGEST_CHANGED_UNLOGGED: "Jev: changed {old}:: to {written}, but it was not recorded and cannot be undone.",
+
+  // LEV-191: the default criteria (docs/jev-link-typer-design.md §2-4) and the thresholds turned off by default.
+  JEV_CANDIDATE_MIN_USES_NAME: "Candidate fields: minimum uses",
+  JEV_CANDIDATE_MIN_USES_DESC: "Jev chooses only among the fields your vault already uses at least this many times, which makes its first candidate right more often. <b>A field used fewer times is never suggested</b>, so a field you have just added to the ontology stays out until it is used this often; 0 offers every field of the ontology. When no field is used this often, every field is offered. The count is taken from the index and refreshed when the index is rebuilt.",
+  JEV_THRESHOLD_OFF: "0 turns it off, which is the default.",
 }
