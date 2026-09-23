@@ -61,16 +61,36 @@ export const isJevQueueOpen = (app: App): boolean =>
   app.workspace.getLeavesOfType(JEV_QUEUE_VIEW_TYPE).length > 0;
 
 /**
- * ツールパネルの「Jev」ボタン（LEV-175）。開いていれば閉じ、無ければ右サイドに開く。
- * 閉じると view の onClose が飛んでいる判定を捨てる。
+ * その leaf が今見えているか。畳んだサイドバーの中、同じ枠で別のタブの後ろにあるものは見えていない
+ * （後ろのタブは Obsidian が `display: none` にするので `isShown()` が偽になる）。
  */
-export const toggleJevQueue = async (app: App): Promise<void> => {
-  const open = app.workspace.getLeavesOfType(JEV_QUEUE_VIEW_TYPE);
-  if (open.length === 0) {
-    await activateJevQueue(app);
-    return;
-  }
-  for (const leaf of open) leaf.detach();
+const isLeafShown = (app: App, leaf: WorkspaceLeaf): boolean => {
+  const root = leaf.getRoot();
+  const { leftSplit, rightSplit } = app.workspace;
+  if ((root === rightSplit && rightSplit.collapsed) || (root === leftSplit && leftSplit.collapsed)) return false;
+  return leaf.view.containerEl.isShown();
+};
+
+/** 開いている途中の toggle。終わる前の 2 回目の押下でキューを 2 枚開かないよう、同じものを返す。 */
+let toggling: Promise<void> | null = null;
+
+/**
+ * ツールパネルの「Jev」ボタン（LEV-175）。無ければ右サイドに開き、開いているが見えていなければ
+ * 表に出し、見えていれば閉じる。閉じると view の onClose が飛んでいる判定と「あとで」を捨てるので、
+ * 見えていないキューは閉じない。
+ */
+export const toggleJevQueue = (app: App): Promise<void> => {
+  if (toggling !== null) return toggling;
+  const run = async (): Promise<void> => {
+    const open = app.workspace.getLeavesOfType(JEV_QUEUE_VIEW_TYPE);
+    if (open.length === 0 || !open.some((leaf) => isLeafShown(app, leaf))) {
+      await activateJevQueue(app);
+      return;
+    }
+    for (const leaf of open) leaf.detach();
+  };
+  toggling = run().finally(() => { toggling = null; });
+  return toggling;
 };
 
 /** 中心ノートが Markdown のノートのときだけ、そのページとファイル。 */

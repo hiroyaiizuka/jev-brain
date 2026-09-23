@@ -42,29 +42,43 @@ describe('showsJevQueueButton', () => {
   });
 });
 
-/** Just the workspace members the toggle uses: leaves of a type, the right sidebar, and detach. */
+/** Just the workspace members the toggle uses: leaves of a type, the sidebars, visibility, reveal and detach. */
 class FakeLeaf {
   type: string | null = null;
+  /** False while another tab of the same group is in front (Obsidian hides it with `display: none`). */
+  shown = true;
+  readonly view = { containerEl: { isShown: (): boolean => this.shown } };
   constructor(private readonly workspace: FakeWorkspace) {}
+  getRoot(): FakeSplit { return this.workspace.rightSplit; }
   setViewState(state: { type: string }): Promise<void> {
     this.type = state.type;
     this.workspace.leaves.push(this);
-    return Promise.resolve();
+    // `setViewState` resolves after the view's onOpen; the tests let a second press land in between.
+    return new Promise((resolve) => { setTimeout(resolve, 0); });
   }
   detach(): void {
     this.workspace.leaves = this.workspace.leaves.filter((leaf) => leaf !== this);
   }
 }
 
+class FakeSplit {
+  collapsed = false;
+}
+
 class FakeWorkspace {
   leaves: FakeLeaf[] = [];
   revealed: FakeLeaf[] = [];
+  leftSplit = new FakeSplit();
+  rightSplit = new FakeSplit();
   getLeavesOfType(type: string): FakeLeaf[] {
     return this.leaves.filter((leaf) => leaf.type === type);
   }
   getRightLeaf(): FakeLeaf { return new FakeLeaf(this); }
   revealLeaf(leaf: FakeLeaf): Promise<void> {
     this.revealed.push(leaf);
+    // Obsidian expands the sidebar and brings the tab to the front.
+    this.rightSplit.collapsed = false;
+    leaf.shown = true;
     return Promise.resolve();
   }
 }
@@ -93,6 +107,33 @@ describe('toggleJevQueue', () => {
     await toggleJevQueue(app);
 
     expect(isJevQueueOpen(app)).toBe(false);
+  });
+
+  it('opens one queue, not two, when pressed again before the first press has finished opening', async () => {
+    await Promise.all([toggleJevQueue(app), toggleJevQueue(app)]);
+
+    expect(workspace.getLeavesOfType(JEV_QUEUE_VIEW_TYPE)).toHaveLength(1);
+  });
+
+  it('brings a queue in a collapsed sidebar to the front instead of closing it', async () => {
+    await toggleJevQueue(app);
+    workspace.rightSplit.collapsed = true;
+
+    await toggleJevQueue(app);
+
+    expect(isJevQueueOpen(app)).toBe(true);
+    expect(workspace.rightSplit.collapsed).toBe(false);
+  });
+
+  it('brings a queue behind another tab to the front instead of closing it', async () => {
+    await toggleJevQueue(app);
+    const [queue] = workspace.getLeavesOfType(JEV_QUEUE_VIEW_TYPE);
+    queue.shown = false;
+
+    await toggleJevQueue(app);
+
+    expect(isJevQueueOpen(app)).toBe(true);
+    expect(workspace.revealed).toEqual([queue, queue]);
   });
 
   it('leaves the other leaves alone', async () => {
