@@ -199,6 +199,15 @@ describe('collectUntypedLinks', () => {
     ]);
   });
 
+  it('leaves out a markdown link that resolves to no note, and keeps an unresolved wikilink (LEV-188)', () => {
+    // `[[../notes/B.md]]` は解決しないので、この出現には型を書く先が無い。判定に回すと有料の
+    // 問い合わせだけが飛ぶ。未解決の `[[C]]` はそのまま書けるので残す。
+    // 同じ鍵（`D.md`）の `[[D.md]]` が後ろにあっても、先の markdown リンクに押しのけられない。
+    const content = '[B](../notes/B.md) と [D](D.md) と [[C]] と [[D.md]]。';
+    const vault = makeVault({ 'x/A.md': { content } }, { regions });
+    expect(collectUntypedLinks(...argsFor(vault, 'x/A.md')).map((link) => link.target)).toEqual(['C', 'D.md']);
+  });
+
   it('leaves out a target of a hidden field, one under an excluded path and the brain drawing', () => {
     const vault = makeVault(
       {

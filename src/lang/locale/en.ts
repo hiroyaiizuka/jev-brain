@@ -333,6 +333,41 @@ export default {
   JEV_QUEUE_WRITE_FAILED: "Jev could not finish writing that field. The developer console has the reason, and the note may already hold the line.",
   JEV_QUEUE_UNDO_FAILED: "Jev could not undo that line. The developer console has the reason.",
   JEV_QUEUE_USAGE: "{calls} judgement(s) · {tokens} tokens · about ¥{cost}",
+
+  // LEV-175: the Jev button of the tools panel, the direction labels shared by the queue and the suggester,
+  // and the suggester's own lines. {written} is the field:: [[link]] the suggester tried to write.
+  JEV_QUEUE_TOGGLE: "Open or close the Jev typing queue for the note in the centre. Not saved.",
+  JEV_DIRECTION_PARENT: "parent",
+  JEV_DIRECTION_CHILD: "child",
+  JEV_DIRECTION_LEFT_FRIEND: "left friend",
+  JEV_DIRECTION_RIGHT_FRIEND: "right friend",
+  JEV_DIRECTION_PREVIOUS: "previous",
+  JEV_DIRECTION_NEXT: "next",
+  JEV_SUGGEST_ASKING: "Jev is answering…",
+  JEV_SUGGEST_UNCONFIDENT: "Jev is not confident",
+  JEV_SUGGEST_WRITE_FAILED: "Jev could not write {written}. See the developer console for details.",
+  JEV_SUGGEST_ALREADY_TYPED: "Jev: {written} is already there.",
+  JEV_SUGGEST_LINK_GONE: "Jev did not write {written}: the link is no longer where it was closed.",
+  JEV_SUGGEST_ADDED: "Jev: added {written}",
+  JEV_SUGGEST_ADDED_UNLOGGED: "Jev: added {written}, but it was not recorded and cannot be undone.",
+
+  // LEV-188
+  JEV_COMMAND_UNRESOLVED_MARKDOWN: "Nothing was written: no note is found at {target}, so that link cannot take a type. Fix the path, or create the note, and try again.",
+
+  // LEV-172: the hotkey command that opens the suggestion on the link at the cursor (docs/jev-link-typer-design.md §4-1).
+  JEV_SUGGEST_COMMAND: "Jev: type the link at the cursor (pick from the candidates)",
+  JEV_SUGGEST_INACTIVE: "Jev is turned off or has no API key. Reload the plugin after changing that.",
+  JEV_SUGGEST_NO_LINK: "Put the cursor on a [[link]] in the body of the note.",
+  JEV_SUGGEST_TYPED_ELSEWHERE: "[[{target}]] is typed by a field of the other note, so this note has nothing to change.",
+  JEV_SUGGEST_HIDDEN: "[[{target}]] is joined by a hidden field, so Jev leaves it alone.",
+  JEV_SUGGEST_OTHER_FIELD: "[[{target}]] already follows {field}::, which is not a field of your ontology that Dataview has read. Jev leaves it alone.",
+  JEV_SUGGEST_OUTSIDE_BODY: "{field}:: [[{target}]] is not written in the body of this note (frontmatter, say), so Jev cannot change it. Change it there by hand.",
+  JEV_SUGGEST_CURRENT: "current",
+  JEV_SUGGEST_KEPT: "Jev: {written} stays as it is.",
+  JEV_SUGGEST_NO_LINE: "Jev did not write {written}: no line of this note writes {current} to change.",
+  JEV_SUGGEST_CHANGED: "Jev: changed {old}:: to {written}",
+  JEV_SUGGEST_CHANGED_UNLOGGED: "Jev: changed {old}:: to {written}, but it was not recorded and cannot be undone.",
+
   // LEV-191: the default criteria (docs/jev-link-typer-design.md §2-4) and the thresholds turned off by default.
   JEV_CANDIDATE_MIN_USES_NAME: "Candidate fields: minimum uses",
   JEV_CANDIDATE_MIN_USES_DESC: "Jev chooses only among the fields your vault already uses at least this many times, which makes its first candidate right more often. <b>A field used fewer times is never suggested</b>, so a field you have just added to the ontology stays out until it is used this often; 0 offers every field of the ontology. When no field is used this often, every field is offered. The count is taken from the index and refreshed when the index is rebuilt.",

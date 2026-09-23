@@ -13,6 +13,7 @@ import { JevLinkSuggest } from './Suggesters/JevLinkSuggest';
 import { URLParser } from './graph/URLParser';
 import { AddToOntologyModal, Ontology } from './Components/AddToOntologyModal';
 import { registerJevTypeLinkCommand } from './Components/JevTypeLinkCommand';
+import { registerJevSuggestLinkCommand } from './Components/JevSuggestLinkCommand';
 import { JEV_QUEUE_VIEW_TYPE, JevQueueView, activateJevQueue } from './Components/JevQueueView';
 import { NavigationHistory } from './Components/NavigationHistory';
 import { getDailyNoteSettings, IPeriodicNoteSettings } from './utils/datehelpers';
@@ -182,14 +183,21 @@ export default class ExcaliBrain extends Plugin {
     // JEV-2 コマンド「カーソルのリンクに型を付ける」（docs/jev-link-typer-design.md §4-1）。
     registerJevTypeLinkCommand(this);
     // JEV-2: `]]` を閉じた直後の候補（docs/jev-link-typer-design.md §4-1）。
-    this.registerEditorSuggest(new JevLinkSuggest(this));
-    // JEV-3 型付け待ちキュー（docs/jev-link-typer-design.md §4-2）。ツールパネルのボタンは LEV-175。
+    const jevLinkSuggest = new JevLinkSuggest(this);
+    this.registerEditorSuggest(jevLinkSuggest);
+    // LEV-172: 同じ候補をカーソル上のリンクに出すコマンド（型付きなら付け替え）。既定のホットキーは付けない。
+    registerJevSuggestLinkCommand(this, jevLinkSuggest);
+    // JEV-3 型付け待ちキュー（docs/jev-link-typer-design.md §4-2）。開閉ボタンは ToolsPanel（LEV-175）。
     this.registerView(JEV_QUEUE_VIEW_TYPE, (leaf) => new JevQueueView(leaf, this));
     this.addCommand({
       id: "excalibrain-jev-open-queue",
       name: t("JEV_QUEUE_OPEN"),
       callback: () => { void activateJevQueue(this.app); },
     });
+    // LEV-175: ツールパネルの「Jev」ボタンの点灯を、タブやコマンドでの開閉にも追わせる。
+    this.registerEvent(this.app.workspace.on("layout-change", () => {
+      this.scene?.toolsPanel?.updateJevButton();
+    }));
   }
 
   private registerEvents() {
