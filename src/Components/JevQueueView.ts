@@ -3,7 +3,8 @@ import type { App } from "obsidian";
 import type ExcaliBrain from "src/excalibrain-main";
 import type { Page } from "src/graph/Page";
 import { t } from "src/lang/helpers";
-import { normalizeRelationsHeading } from "src/Settings";
+import { directionLabel, fill } from "src/lang/jev";
+import { isJevActive, normalizeRelationsHeading } from "src/Settings";
 import { errorlog } from "src/utils/utils";
 import { DEFAULT_JEV_TIMEOUT_MS, askJev } from "src/jev/client";
 import type { JevClientConfig, JevQuestion } from "src/jev/client";
@@ -25,7 +26,7 @@ import { JEV_CENTRAL_PAGE_CHANGED } from "src/utils/jevEvents";
  *
  * ここは描画と入出力だけで、カードの遷移は `src/jev/queue-model.ts`（DOM 無し）が持つ。Jev への
  * 問い合わせは `src/jev/client.ts`、ノートへの書き込みは `src/jev/relations.ts`・`log.ts` の外に出ない。
- * 本格的なスタイルとツールパネルのボタンは LEV-175、実機は LEV-176。
+ * スタイルは `styles.css` の `.jevbrain-queue-*`、ツールパネルの開閉ボタンは `ToolsPanel`（LEV-175）、実機は LEV-176。
  */
 export const JEV_QUEUE_VIEW_TYPE = "jevbrain-queue";
 
@@ -44,6 +45,32 @@ export const activateJevQueue = async (app: App): Promise<void> => {
     await leaf.setViewState({ type: JEV_QUEUE_VIEW_TYPE, active: true });
   }
   await app.workspace.revealLeaf(leaf);
+};
+
+/**
+ * ツールパネルに「Jev」ボタンを出すか（設計 §4-2・§9）。キューの view を登録した読み込みで
+ * （キーがあり有効）、今も有効で、デスクトップのときだけ。モバイルでは出さない。
+ */
+export const showsJevQueueButton = (
+  plugin: Pick<ExcaliBrain, "jevRegistered" | "settings"> & { EA?: { DEVICE?: { isDesktop?: boolean } } },
+): boolean =>
+  plugin.EA?.DEVICE?.isDesktop === true && plugin.jevRegistered && isJevActive(plugin.settings);
+
+/** キューがどこかの leaf に開いているか。ツールパネルの「Jev」ボタンの点灯に使う。 */
+export const isJevQueueOpen = (app: App): boolean =>
+  app.workspace.getLeavesOfType(JEV_QUEUE_VIEW_TYPE).length > 0;
+
+/**
+ * ツールパネルの「Jev」ボタン（LEV-175）。開いていれば閉じ、無ければ右サイドに開く。
+ * 閉じると view の onClose が飛んでいる判定を捨てる。
+ */
+export const toggleJevQueue = async (app: App): Promise<void> => {
+  const open = app.workspace.getLeavesOfType(JEV_QUEUE_VIEW_TYPE);
+  if (open.length === 0) {
+    await activateJevQueue(app);
+    return;
+  }
+  for (const leaf of open) leaf.detach();
 };
 
 /** 中心ノートが Markdown のノートのときだけ、そのページとファイル。 */
@@ -500,7 +527,7 @@ export class JevQueueView extends ItemView {
     const actions = this.addActions(el, [
       {
         text: card.selected
-          ? t("JEV_QUEUE_CONFIRM").replace("{field}", card.selected)
+          ? fill(t("JEV_QUEUE_CONFIRM"), { field: card.selected })
           : t("JEV_QUEUE_CONFIRM_NONE"),
         cls: "mod-cta",
         run: () => { void this.confirm(card); },
@@ -544,7 +571,8 @@ const percent = (probability: number): string => `${percentOf(probability)}%`;
  */
 const summarise = (judgement: Judgement): string =>
   judgement.confident
-    ? t("JEV_QUEUE_DIRECTION")
-      .replace("{direction}", judgement.direction ?? "")
-      .replace("{probability}", percent(judgement.directionProbability))
+    ? fill(t("JEV_QUEUE_DIRECTION"), {
+      direction: judgement.direction ? directionLabel(judgement.direction) : "",
+      probability: percent(judgement.directionProbability),
+    })
     : t("JEV_QUEUE_UNCERTAIN");
