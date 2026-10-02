@@ -1,0 +1,44 @@
+
+> jevbrain@0.2.18 check
+> npm run validate && npm run lint && npm test && npm run package
+
+
+> jevbrain@0.2.18 validate
+> node scripts/validate-release.mjs
+
+Release metadata validated.
+
+> jevbrain@0.2.18 lint
+> eslint . --max-warnings 0
+
+
+> jevbrain@0.2.18 test
+> vitest run
+
+
+ RUN  v5.0.1 /workspace
+
+
+ Test Files  32 passed (32)
+      Tests  623 passed (623)
+   Start at  15:14:34
+   Duration  2.52s (tests 51%, transform 30%, import 16%, worker 3%)
+
+    Isolate  32 workers spawned · ~86ms startup each (spawn + environment, per file)
+             at least ~835ms faster with isolate: false — reuses workers across files instead of one per file
+
+
+> jevbrain@0.2.18 package
+> npm run build && node scripts/package-plugin.mjs && node scripts/validate-release.mjs --artifacts
+
+
+> jevbrain@0.2.18 build
+> npm run typecheck && node esbuild.config.mjs production
+
+
+> jevbrain@0.2.18 typecheck
+> tsc --noEmit
+
+Packaged dist/jevbrain
+Release artifacts validated.
+Exit code: 0
