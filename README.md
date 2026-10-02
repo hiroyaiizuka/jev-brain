@@ -1,4 +1,4 @@
-> **jev-brain**: [ExcaliBrain](https://github.com/zsviczian/excalibrain)（MIT、Zsolt Viczián 作）のフォーク。Jev による支援と 3D 表示を加える構想で、現在は上流 0.2.18 に開発ハーネスを足した段階。plugin ID は `jevbrain`、名前は JevBrain で、上流版（`excalibrain`）とは別プラグインとして入る（既定の図面ファイルはどちらも `excalibrain.md` なので、並べて使うなら片方の設定を変える）。command ID・CSS クラス・設定のキー・画面の表示名は上流のまま。開発の進め方は末尾の「開発」と `AGENTS.md`、`docs/` を参照。以下は上流の README。
+> **jev-brain**: [ExcaliBrain](https://github.com/zsviczian/excalibrain)（MIT、Zsolt Viczián 作）のフォーク。Up／Down 領域（抽象／具体の軸）、疑似 3D 表示、Jev によるリンク型付け支援を加える。現在は上流 0.2.18 に、Up／Down 領域（ONT-1）、疑似 3D トグル（3D-1〜3D-3）、Jev の判定中核（JEV-1）・エディタサジェスター（JEV-2）・キュー（JEV-3）を実装済み（一部は実機確認待ち）。plugin ID は `jevbrain`、名前は JevBrain で、上流版（`excalibrain`）とは別プラグインとして入る（既定の図面ファイルはどちらも `excalibrain.md` なので、並べて使うなら片方の設定を変える）。command ID・CSS クラス・設定のキー・画面の表示名は上流のまま。開発の進め方は末尾の「開発」と `AGENTS.md`、`docs/` を参照。配布は未公開（BRAT は Jev の実機確認後）。以下は上流の README。
 
 # ExcaliBrain
 
