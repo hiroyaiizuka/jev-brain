@@ -1,6 +1,6 @@
 {
   "name": "jevbrain",
-  "version": "0.2.19",
+  "version": "0.0.1",
   "private": true,
   "description": "JevBrain: a fork of ExcaliBrain, the editable graph view for Obsidian, with a 3D abstraction axis.",
   "main": "main.js",

@@ -10,7 +10,7 @@ export interface ErrorLog {
 }
 
 export const errorlog = (data: ErrorLog): void => {
-  console.error({ plugin: "ExcaliBrain", ...data });
+  console.error({ plugin: "JevBrain", ...data });
 };
 
 export const sleep = async (ms: number): Promise<void> =>

@@ -13,6 +13,6 @@
 - ランタイム依存を追加する前に、必要性・バンドル増分・モバイル互換性を記録する。`styles.css` が唯一のスタイル正本で、`src/styles/style.scss` はビルドに使わない。
 - 本番 Vault をテスト対象にしない。自動準備はプロジェクト配下の `test-vault/` のみ。
 - プライマリー（`projects/Jev-brain` のチェックアウト）は常に `main` に置く。ブランチ作業は `orca worktree create` で作った worktree で行い、プライマリーで `git checkout -b`／`git switch` を実行しない。
-- `main.js`、`node_modules/`、`dist/`、`test-vault/`、証跡をコミットしない。plugin ID は `jevbrain`、名前は JevBrain、作者は Hiroya Iizuka（本人の決定、2026-09-21）。ID が違うので上流版（`excalibrain`）と別プラグインとして入る（実機での同時インストールは未確認。既定の図面ファイルがどちらも `excalibrain.md` なので、並べて使うには片方の設定を変える）。command ID・CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の "ExcaliBrain" は上流との diff を小さく保つため変えない。
+- `main.js`、`node_modules/`、`dist/`、`test-vault/`、証跡をコミットしない。plugin ID は `jevbrain`、名前は JevBrain、作者は Hiroya Iizuka（本人の決定、2026-09-21）。ID が違うので上流版（`excalibrain`）と別プラグインとして入る（実機での同時インストールは未確認）。画面に出る名前（`APPNAME`・コマンド名・Notice・設定の説明・ログの `plugin`）と既定の図面ファイル `jevbrain.md` は JevBrain（本人の決定、2026-10-10）。command ID `excalibrain-*`・CSS クラス・設定のキー・TypeScript のクラス名は上流との diff を小さく保つため変えない。
 
-上流 0.2.18 ＋ code scanner fixes から始めたフォーク。最初のベータ 0.2.19 を GitHub の pre-release で BRAT 向けに配る（2026-10-10）。コミュニティ登録は未着手。実装の存在と受入条件の達成は分けて扱い、実機テストの完成を先取りして報告しない。
+上流 0.2.18 ＋ code scanner fixes から始めたフォーク。新しいプラグインとして 0.0.1 から版を数え、GitHub の pre-release で BRAT 向けに配る（2026-10-10。いったん出した 0.2.19 は表示名が ExcaliBrain のままだったので取り下げた）。コミュニティ登録は未着手。実装の存在と受入条件の達成は分けて扱い、実機テストの完成を先取りして報告しない。

@@ -1,9 +1,9 @@
 {
   "id": "jevbrain",
   "name": "JevBrain",
-  "version": "0.2.19",
+  "version": "0.0.1",
   "minAppVersion": "1.8.7",
-  "description": "A clean, intuitive and editable graph view with a 3D abstraction axis. A fork of ExcaliBrain.",
+  "description": "Editable graph view for Obsidian with an Up/Down abstraction axis, a pseudo-3D view, and Jev-assisted link typing.",
   "author": "Hiroya Iizuka",
   "authorUrl": "https://github.com/hiroyaiizuka",
   "isDesktopOnly": false

@@ -180,7 +180,7 @@ return {twoD: await measure(false), threeD: await measure(true), back: await mea
 3. コミットとタグを push する。`release.yml` が check を通し、`dist/jevbrain/` の 3 ファイルを Release に添付する。0.x は pre-release。
 4. BRAT にリポジトリを登録して配布物が取れることを確認し、`artifacts/` に記録する。
 
-plugin ID は `jevbrain`、名前は JevBrain で、上流版（`excalibrain`）とは別プラグインとして入る（LEV-147）。実機での同時インストールは未確認で、既定の図面ファイルがどちらも `excalibrain.md` なので並べて使うには片方の設定を変える。BRAT で配る最初の版は 0.2.19（pre-release、2026-10-10）。BRAT の「Add beta plugin」に `hiroyaiizuka/jev-brain` を入れる。
+plugin ID は `jevbrain`、名前は JevBrain で、上流版（`excalibrain`）とは別プラグインとして入る（LEV-147）。実機での同時インストールは未確認（既定の図面ファイルは上流が `excalibrain.md`、JevBrain が `jevbrain.md`）。BRAT で配る最初の版は 0.0.1（pre-release、2026-10-10）。BRAT の「Add beta plugin」に `hiroyaiizuka/jev-brain` を入れる。
 
 ## 上流との同期
 

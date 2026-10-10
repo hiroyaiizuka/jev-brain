@@ -114,7 +114,7 @@ export const DEFAULT_SETTINGS: ExcaliBrainSettings = {
   compactView: false,
   compactingFactor: 1.5,
   minLinkLength: 18,
-  excalibrainFilepath: "excalibrain.md",
+  excalibrainFilepath: "jevbrain.md",
   indexUpdateInterval: 60000,
   hierarchy: DEFAULT_HIERARCHY_DEFINITION,
   inferAllLinksAsFriends: false,

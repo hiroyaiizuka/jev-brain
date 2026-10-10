@@ -6,11 +6,11 @@ export default {
   JSON_MALFORMED: `Hibás JSON`,
   JSON_MISSING_KEYS: `A JSON-nak rendelkeznie kell az alábbi 4 kulccsal: "parents", "children", "friends", "nextFriends"`,
   JSON_VALUES_NOT_STRING_ARRAYS: `A kulcsok értékeinek nem üres string tömbnek kell lenniük. Példa: "parents": ["Szülő", "Szülők", "feljebb"]`,
-  EXCALIBRAIN_FILE_NAME: "Excalibrain rajz fájl elérési útvonala",
-  EXCALIBRAIN_FILE_DESC: "⚠ Ez a fájl felül lesz írva a bővítmény által. Ha leállítod a szkriptet és változtatsz a gráfban, akkor át kell nevezned a fájlt, hogy a módosításaid megmaradjanak. Mert amikor újra elindítod az ExcaliBrain-t, a módosításaidat felülírja az automatikusan generált ExcaliBrain gráf.",
+  EXCALIBRAIN_FILE_NAME: "JevBrain rajz fájl elérési útvonala",
+  EXCALIBRAIN_FILE_DESC: "⚠ Ez a fájl felül lesz írva a bővítmény által. Ha leállítod a szkriptet és változtatsz a gráfban, akkor át kell nevezned a fájlt, hogy a módosításaid megmaradjanak. Mert amikor újra elindítod az JevBrain-t, a módosításaidat felülírja az automatikusan generált JevBrain gráf.",
   INDEX_REFRESH_FREQ_NAME: "Index frissítési gyakorisága",
-  INDEX_REFRESH_FREQ_DESC: "Az ExcaliBrain frissíti az indexét, amikor váltasz munkatérre, abban az esetben, ha az előző index frissítése óta megváltozott egy fájl a Vault-odban. <br>" +
-                           "Ez a beállítás csak akkor érvényes, ha egy markdown szerkesztőben írsz (nem váltasz fájlokat vagy térképeket), és mégis azt szeretnéd, hogy az ExcaliBrain frissítse a gráfodat ahogy gépelsz. " +
+  INDEX_REFRESH_FREQ_DESC: "Az JevBrain frissíti az indexét, amikor váltasz munkatérre, abban az esetben, ha az előző index frissítése óta megváltozott egy fájl a Vault-odban. <br>" +
+                           "Ez a beállítás csak akkor érvényes, ha egy markdown szerkesztőben írsz (nem váltasz fájlokat vagy térképeket), és mégis azt szeretnéd, hogy az JevBrain frissítse a gráfodat ahogy gépelsz. " +
                            "Mivel a gyakori háttérindex frissítések erőforrásigényesek lehetnek, van lehetőséged növelni az index-frissítés időközét, amely csökkenti a rendszer terhelését.",
   HIERARCHY_HEAD: "Ontológia",
   HIERARCHY_DESC: "Add meg a Dataview mezőneveket vesszővel elválasztva (,) úgy, hogy ezeket fogod használni a link irányok meghatározásához a gráfodban.<br>" +
@@ -58,7 +58,7 @@ export default {
   RENDERALIAS_NAME: "Megjelenítési azonosító ha elérhető",
   RENDERALIAS_DESC: "Megjeleníti az oldal azonosítóját a fájlnév helyett, ha az az oldal előlapján van meghatározva.",
   NODETITLE_SCRIPT_NAME: 'Dataview-kifejezés a csomópontnevekhez',
-  NODETITLE_SCRIPT_DESC: 'Dataview-kifejezés a csomópont címének megjelenítéséhez. Ha nincs rá szükséged, hagyd üresen.<br>A kifejezés a Dataview-oldalt <code>dvPage</code>, az ExcaliBrain alapértelmezett címkéjét pedig <code>defaultName</code> néven kapja meg.<br>Példák:<br><code>default(dvPage.title, defaultName)</code><br><code>lower(defaultName)</code><br><code>dvPage.file.path</code>',
+  NODETITLE_SCRIPT_DESC: 'Dataview-kifejezés a csomópont címének megjelenítéséhez. Ha nincs rá szükséged, hagyd üresen.<br>A kifejezés a Dataview-oldalt <code>dvPage</code>, az JevBrain alapértelmezett címkéjét pedig <code>defaultName</code> néven kapja meg.<br>Példák:<br><code>default(dvPage.title, defaultName)</code><br><code>lower(defaultName)</code><br><code>dvPage.file.path</code>',
   SHOWINFERRED_NAME: "Az előállított kapcsolatok megjelenítése",
   SHOWINFERRED_DESC: "<b>Be:</b> Mind az expliciten meghatározott, mind az előállított kapcsolatokat megjeleníti. Az előre mutató linkek gyerekek, a visszamutatók szülők, " +
     "ha két oldal egymásra hivatkozik, akkor barátokként lesznek kezelve. Az expliciten meghatározott kapcsolatok mindig előnyt élveznek.<br><b>Ki:</b> Csak az expliciten meghatározott kapcsolatokat jeleníti meg.",
@@ -86,7 +86,7 @@ export default {
   ALLOW_AUTOFOCUS_ON_SEARCH_NAME: "Automatikus fókusz a keresésnél",
   ALLOW_AUTOFOCUS_ON_SEARCH_DESC: "<b>Be:</b> Engedélyezi az automatikus fókuszt a keresésnél<br><b>Ki:</b> Letiltja az automatikus fókuszt",
   ALWAYS_ON_TOP_NAME: "Alapértelmezett 'mindig legfelül' viselkedés lebegtetett ablak esetén",
-  ALWAYS_ON_TOP_DESC: "<b>Be:</b> Ha az ExcaliBrain-t lebegtetett ablakban nyitod meg, akkor az új ablak mindig 'mindig legfelül' módban nyílik meg.<br><b>Ki:</b> Az új ablak nem lesz 'mindig legfelül' módban.",
+  ALWAYS_ON_TOP_DESC: "<b>Be:</b> Ha az JevBrain-t lebegtetett ablakban nyitod meg, akkor az új ablak mindig 'mindig legfelül' módban nyílik meg.<br><b>Ki:</b> Az új ablak nem lesz 'mindig legfelül' módban.",
   EMBEDDED_FRAME_WIDTH_NAME: "Beágyazott keret szélessége",
   EMBEDDED_FRAME_HEIGHT_NAME: "Beágyazott keret magassága",
   TAGLIST_NAME: "Formázott címkék",
@@ -144,19 +144,19 @@ export default {
   DATAVIEW_NOT_FOUND: `A Dataview bővítmény nem található. Kérlek telepítsd vagy engedélyezd a Dataview-t, majd próbáld újra indítani a(z) ${APPNAME} alkalmazást.`,
   DATAVIEW_UPGRADE: `Kérlek frissítsd a Dataview-t 0.5.31 vagy újabb verzióra. Kérlek frissítsd a Dataview-t, majd próbáld újra indítani a(z) ${APPNAME} alkalmazást.`,
   EXCALIDRAW_NOT_FOUND: `Az Excalidraw bővítmény nem található. Kérlek telepítsd vagy engedélyezd az Excalidraw-t, majd próbáld újra indítani a(z) ${APPNAME} alkalmazást.`,
-  EXCALIDRAW_MINAPP_VERSION: `Az ExcaliBrain az Excalidraw ${MINEXCALIDRAWVERSION} vagy újabb verzióját igényli. Kérlek frissítsd az Excalidraw-t, majd próbáld újra indítani a(z) ${APPNAME} alkalmazást.`,
+  EXCALIDRAW_MINAPP_VERSION: `Az JevBrain az Excalidraw ${MINEXCALIDRAWVERSION} vagy újabb verzióját igényli. Kérlek frissítsd az Excalidraw-t, majd próbáld újra indítani a(z) ${APPNAME} alkalmazást.`,
   COMMAND_ADD_PARENT_FIELD: "Dataview mező hozzáadása ontológiaként SZÜLŐKÉNT",
   COMMAND_ADD_CHILD_FIELD: "Dataview mező hozzáadása ontológiaként GYERMEKEKKÉNT",
   COMMAND_ADD_LEFT_FRIEND_FIELD: "Dataview mező hozzáadása ontológiaként BAL-OLDALI BARÁTKÉNT",
   COMMAND_ADD_RIGHT_FRIEND_FIELD: "Dataview mező hozzáadása ontológiaként JOBB-OLDALI BARÁTKÉNT",
   COMMAND_ADD_PREVIOUS_FIELD: "Dataview mező hozzáadása ontológiaként ELŐZŐKÉNT",
   COMMAND_ADD_NEXT_FIELD: "Dataview mező hozzáadása ontológiaként KÖVETKEZŐKÉNT",
-  COMMAND_START: "ExcaliBrain Normál",
-  COMMAND_START_HOVER: "ExcaliBrain lebegő szerkesztő",
-  COMMAND_START_POPOUT: "ExcaliBrain különálló ablak",
+  COMMAND_START: "JevBrain Normál",
+  COMMAND_START_HOVER: "JevBrain lebegő szerkesztő",
+  COMMAND_START_POPOUT: "JevBrain különálló ablak",
   //COMMAND_SEARCH: "Search",
-  COMMAND_STOP: "ExcaliBrain leállítása",
-  HOVER_EDITOR_ERROR: "Sajnálom. Valami hiba történt. Valószínűleg a Hover Editor verziófrissítése okozta, amelyet még nem kezeltem megfelelően az ExcaliBrain-ben. Általában néhány napon belül megoldom ezt.",
+  COMMAND_STOP: "JevBrain leállítása",
+  HOVER_EDITOR_ERROR: "Sajnálom. Valami hiba történt. Valószínűleg a Hover Editor verziófrissítése okozta, amelyet még nem kezeltem megfelelően az JevBrain-ben. Általában néhány napon belül megoldom ezt.",
   //ToolsPanel
   OPEN_DRAWING: "Mentés szerkesztéshez",
   SEARCH_IN_VAULT: "A csillagozott elemek megjelennek az üres keresésben.\nKeresés fájl, mappa vagy címke szerint a Vault-ban.\nKapcsold ki/ki a mappákat és címkéket a listában történő megjelenítéshez.",
@@ -169,6 +169,6 @@ export default {
   SHOW_HIDE_FOLDER: "Mappa node-ok megjelenítése/elrejtése",
   SHOW_HIDE_TAG: "Címke node-ok megjelenítése/elrejtése",
   SHOW_HIDE_PAGES: "Oldal node-ok megjelenítése/elrejtése (definiált, előállított, virtuális és melléklet)",
-  PIN_LEAF: "ExcaliBrain összekapcsolása az aktív legutóbbi elemmel"
+  PIN_LEAF: "JevBrain összekapcsolása az aktív legutóbbi elemmel"
 }
   

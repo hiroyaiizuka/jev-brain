@@ -469,7 +469,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     } catch (error) {
       // `askJev` は投げないが、相手のノートの読み込みと state の組み立ては投げうる。
       // 投げたまま放っておくと、ポップアップが待ちの 1 行のまま残る。
-      console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.run", message: reasonOf(error) });
+      console.warn({ plugin: "JevBrain", fn: "JevLinkSuggest.run", message: reasonOf(error) });
     }
     if (this.ask !== ask) return; // 別のリンクへ移ったあとに届いた答えは捨てる
     if (response) {
@@ -541,7 +541,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
           at: ask.at,
         });
     } catch (error) {
-      console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
+      console.warn({ plugin: "JevBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
       new Notice(fill(t("JEV_SUGGEST_WRITE_FAILED"), { written }));
       return;
     }
@@ -570,7 +570,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
         after: outcome.after,
         source: "suggest",
       }).then(() => true, (error: unknown) => {
-        console.warn({ plugin: "ExcaliBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
+        console.warn({ plugin: "JevBrain", fn: "JevLinkSuggest.confirm", message: reasonOf(error) });
         return false;
       })
       : false;
@@ -592,7 +592,7 @@ export class JevLinkSuggest extends EditorSuggest<JevSuggestion> {
     if (typeof trigger !== "function") {
       // 描き直せないと待ちの 1 行が残るので、次の入力まで直らないことを console に残す。
       console.warn({
-        plugin: "ExcaliBrain",
+        plugin: "JevBrain",
         fn: "JevLinkSuggest.retrigger",
         message: "EditorSuggest.trigger() is gone; the suggestion cannot be redrawn",
       });

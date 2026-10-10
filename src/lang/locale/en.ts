@@ -6,17 +6,17 @@ export default {
   JSON_MALFORMED: `Malformed JSON`,
   JSON_MISSING_KEYS: `JSON must have these 4 keys: "parents", "children", "friends", "nextFriends"`,
   JSON_VALUES_NOT_STRING_ARRAYS: `Key values must be a non-empty array of strings. e.g. "parents": ["Parent", "Parents", "up"]`,
-  EXCALIBRAIN_FILE_NAME: "Filepath of Excalibrain drawing",
+  EXCALIBRAIN_FILE_NAME: "Filepath of JevBrain drawing",
   EXCALIBRAIN_FILE_DESC: "⚠ This file will be overwritten by the plugin. If you stop the script and make changes to the graph, you " +
-    "should rename the file so your edits are preserved, because the next time you initiate ExcaliBrain your edits will be overwritten by " +
-    "the automatically generated ExcaliBrain graph.",
+    "should rename the file so your edits are preserved, because the next time you initiate JevBrain your edits will be overwritten by " +
+    "the automatically generated JevBrain graph.",
   INDEX_REFRESH_FREQ_NAME: "Index refresh frequency (seconds)",
-  INDEX_REFRESH_FREQ_DESC: "ExcaliBrain will update its index whenever you switch work panes, in case a file has changed in your Vault since the last index update. <br>" +
-                           "This setting is thus only relevant when you are typing in a markdown editor (not switching files or panes) and you still want ExcaliBrain to update it's graph as you type. " +
+  INDEX_REFRESH_FREQ_DESC: "JevBrain will update its index whenever you switch work panes, in case a file has changed in your Vault since the last index update. <br>" +
+                           "This setting is thus only relevant when you are typing in a markdown editor (not switching files or panes) and you still want JevBrain to update it's graph as you type. " +
                            "Because frequent background index updates can be resource intensive you have an option to increase the time interval for the index-updates which in turn will reduce the " +
                            "overhead on your system.",
   HIERARCHY_HEAD: "Ontology",
-  HIERARCHY_DESC: "Ontology, the heart of Excalibrain. It is the context of our knowledge graph and refers to a system for organizing and defining the relationships between different nodes in the graph. " +
+  HIERARCHY_DESC: "Ontology, the heart of JevBrain. It is the context of our knowledge graph and refers to a system for organizing and defining the relationships between different nodes in the graph. " +
     "It allows us to add semantic meaning to connections by associating them with specific Dataview fields, such as 'author' or 'chapter,' which influence the way nodes are positioned relative to each other on the graph. " +
     "This approach enables a more structured and meaningful representation of information, making it easier to understand and explore the interconnectedness of concepts within the markdown documents in your Vault.<br><br>" +
     "Enter the field names separated by comma (,) that you will use to define links in your graph.<br><br>" +
@@ -74,7 +74,7 @@ export default {
   /*RENDERALIAS_NAME: "Display alias if available",
   RENDERALIAS_DESC: "Displays the page alias instead of the filename if it is specified in the page's front matter.",*/
   NODETITLE_SCRIPT_NAME: 'Dataview expression for rendering node names',
-  NODETITLE_SCRIPT_DESC: 'Dataview expression used to render the node title. If you do not need it, leave this field empty.<br>The expression receives the Dataview page as <code>dvPage</code> and the normal ExcaliBrain label as <code>defaultName</code>.<br>Examples:<br><code>default(dvPage.title, defaultName)</code><br><code>lower(defaultName)</code><br><code>dvPage.file.path</code>',
+  NODETITLE_SCRIPT_DESC: 'Dataview expression used to render the node title. If you do not need it, leave this field empty.<br>The expression receives the Dataview page as <code>dvPage</code> and the normal JevBrain label as <code>defaultName</code>.<br>Examples:<br><code>default(dvPage.title, defaultName)</code><br><code>lower(defaultName)</code><br><code>dvPage.file.path</code>',
   /*SHOWINFERRED_NAME: "Display inferred relationships",
   SHOWINFERRED_DESC: "<b>Toggle ON</b>: Display both explicitly defined and inferred links. Forward links are children, backlinks are parents, " +
     "if two page mutually referes to one another then relationship is inferred to be a friendship. Explicitly defined relationships always " +
@@ -110,7 +110,7 @@ export default {
   ALLOW_AUTOFOCUS_ON_SEARCH_NAME: "Autofocus on search",
   ALLOW_AUTOFOCUS_ON_SEARCH_DESC: "<b>Toggle ON:</b> Allow autofocus on Search<br><b>Toggle OFF:</b> Disable autofocus",
   ALWAYS_ON_TOP_NAME: "Popout default 'always on top' behavior",
-  ALWAYS_ON_TOP_DESC: "<b>Toggle ON:</b> When opening ExcaliBrain in a popout window, it will open with the new window in 'always on top' mode.<br><b>Toggle OFF:</b> The new window will not be in 'always on top' mode.",
+  ALWAYS_ON_TOP_DESC: "<b>Toggle ON:</b> When opening JevBrain in a popout window, it will open with the new window in 'always on top' mode.<br><b>Toggle OFF:</b> The new window will not be in 'always on top' mode.",
   EMBEDDED_FRAME_WIDTH_NAME: "Embedded frame width",
   EMBEDDED_FRAME_HEIGHT_NAME: "Embedded frame height",
   TAGLIST_NAME: "Formatted tags",
@@ -178,7 +178,7 @@ export default {
   DATAVIEW_NOT_FOUND: `Dataview plugin not found. Please install or enable Dataview then try restarting ${APPNAME}.`,
   DATAVIEW_UPGRADE: `Please upgrade Dataview to 0.5.31 or newer. Please update Dataview then try restarting ${APPNAME}.`,
   EXCALIDRAW_NOT_FOUND: `Excalidraw plugin not found. Please install or enable Excalidraw then try restarting ${APPNAME}.`,
-  EXCALIDRAW_MINAPP_VERSION: `ExcaliBrain requires Excalidraw ${MINEXCALIDRAWVERSION} or higher. Please upgrade Excalidraw then try restarting ${APPNAME}.`,
+  EXCALIDRAW_MINAPP_VERSION: `JevBrain requires Excalidraw ${MINEXCALIDRAWVERSION} or higher. Please upgrade Excalidraw then try restarting ${APPNAME}.`,
   COMMAND_ADD_HIDDEN_FIELD: "Add dataview field to ontology as HIDDEN",
   COMMAND_ADD_PARENT_FIELD: "Add dataview field to ontology as PARENT",
   COMMAND_ADD_CHILD_FIELD: "Add dataview field to ontology as CHILD",
@@ -187,12 +187,12 @@ export default {
   COMMAND_ADD_PREVIOUS_FIELD: "Add dataview field to ontology as PREVIOUS",
   COMMAND_ADD_NEXT_FIELD: "Add dataview field to ontology as NEXT",
   COMMAND_ADD_ONTOLOGY_MODAL: "Add dataview field to ontology: Open Ontology Modal",
-  COMMAND_START: "ExcaliBrain Normal",
-  COMMAND_START_HOVER: "ExcaliBrain Hover-Editor",
-  COMMAND_START_POPOUT: "ExcaliBrain Popout Window",
+  COMMAND_START: "JevBrain Normal",
+  COMMAND_START_HOVER: "JevBrain Hover-Editor",
+  COMMAND_START_POPOUT: "JevBrain Popout Window",
   //COMMAND_SEARCH: "Search",
-  COMMAND_STOP: "Stop ExcaliBrain",
-  HOVER_EDITOR_ERROR: "I am sorry. Something went wrong. Most likely there was a version update to Hover Editor which I haven't addressed properly in ExcaliBrain. Normally I should get this fixed within few days",
+  COMMAND_STOP: "Stop JevBrain",
+  HOVER_EDITOR_ERROR: "I am sorry. Something went wrong. Most likely there was a version update to Hover Editor which I haven't addressed properly in JevBrain. Normally I should get this fixed within few days",
   //ToolsPanel
   OPEN_DRAWING: "Save snapshot for editing",
   SEARCH_IN_VAULT: "Starred items will be listed in empty search.\nSearch for a file, a folder or a tag in your Vault.\nToggle folders and tags on/off to show in the list.",
@@ -207,7 +207,7 @@ export default {
   SHOW_HIDE_FOLDER: "Show/Hide folder nodes",
   SHOW_HIDE_TAG: "Show/Hide tag nodes",
   SHOW_HIDE_PAGES: "Show/Hide page nodes (incl. defined, inferred, virtual and attachments)",
-  PIN_LEAF: "Link ExcaliBrain to the most recent active leaf. When linked, ExcaliBrain will only monitor changes of the pinned leaf and open synchronized pages only on the pinned leaf.",
+  PIN_LEAF: "Link JevBrain to the most recent active leaf. When linked, JevBrain will only monitor changes of the pinned leaf and open synchronized pages only on the pinned leaf.",
   NAVIGATE_BACK: "Navigate back",
   NAVIGATE_FORWARD: "Navigate forward",
   REFRESH_VIEW: "Refresh",
@@ -216,11 +216,11 @@ export default {
   COMPASS_SOUTH: "S",
   COMPASS_WEST: "W",
   COMPASS_EAST: "E",
-  AUTO_OPEN_DOCUMENT: "Synchronize navigation. When plugs are connected, changes to ExcaliBrain focus will be reflected in the active  Obsidian tab and vice versa.\n\n" +
-    "You can link/unlink this button to the '<> Display central node as embedded frame' button in the ExcaliBrain settings.",
+  AUTO_OPEN_DOCUMENT: "Synchronize navigation. When plugs are connected, changes to JevBrain focus will be reflected in the active  Obsidian tab and vice versa.\n\n" +
+    "You can link/unlink this button to the '<> Display central node as embedded frame' button in the JevBrain settings.",
   TOGGLE_AUTOOPEN_WHEN_EMBED_TOGGLE_NAME: "Synchronize navigation on Embed toggle",
-  TOGGLE_AUTOOPEN_WHEN_EMBED_TOGGLE_DESC: "<b>Toggle ON</b>: When you toggle the <i>'<kbd>&lt;&thinsp;&gt;</kbd> Display central node as embedded frame'</i> button, ExcaliBrain will automatically turn navigation synchronization on<br>" +
-    "<b>Toggle OFF</b>: When you toggle the <i>'<kbd>&lt;&thinsp;&gt;</kbd> Display central node as embedded frame'</i> button, ExcaliBrain will not automatically turn navigation synchronization on",
+  TOGGLE_AUTOOPEN_WHEN_EMBED_TOGGLE_DESC: "<b>Toggle ON</b>: When you toggle the <i>'<kbd>&lt;&thinsp;&gt;</kbd> Display central node as embedded frame'</i> button, JevBrain will automatically turn navigation synchronization on<br>" +
+    "<b>Toggle OFF</b>: When you toggle the <i>'<kbd>&lt;&thinsp;&gt;</kbd> Display central node as embedded frame'</i> button, JevBrain will not automatically turn navigation synchronization on",
 
   //AddToOntologyModal
   ADD_TO_ONTOLOGY_MODAL_DESC: "Select the direction of the ontology. If one of the buttons is highlighted, then the field is already part of the ontology in that direction.",
@@ -234,7 +234,7 @@ export default {
     "A field listed both here and under Children is kept here and removed from Children the next time the settings are loaded.",
   LINKSTYLE_UP: "Style of Up (abstract) links",
   LINKSTYLE_DOWN: "Style of Down (concrete) links",
-  TOGGLE_3D_VIEW: "Toggle 3D view. Up parents are raised, Down children lowered, everything else stays on the ground. Not saved: ExcaliBrain always starts in 2D.",
+  TOGGLE_3D_VIEW: "Toggle 3D view. Up parents are raised, Down children lowered, everything else stays on the ground. Not saved: JevBrain always starts in 2D.",
 
   //3D view settings (docs/3d-design.md §6-1): cabinet projection. Other locales fall back to these.
   VIEW3D_HEAD: "3D view",

@@ -119,10 +119,10 @@ export default class ExcaliBrain extends Plugin {
       if(!this.DVAPI) {
         (new WarningPrompt(
           this.app,
-          "⚠ ExcaliBrain Disabled: DataView Plugin not found",
+          "⚠ JevBrain Disabled: DataView Plugin not found",
           t("DATAVIEW_NOT_FOUND"))
         ).show((_result: boolean) => {
-          new Notice("Disabling ExcaliBrain Plugin", 8000);
+          new Notice("Disabling JevBrain Plugin", 8000);
           errorlog({fn:"ExcaliBrain.onload", where:"main.ts/onload()", message:"Dataview not found"});
           void this.app.plugins.disablePlugin(this.manifest.id);
         });
@@ -145,10 +145,10 @@ export default class ExcaliBrain extends Plugin {
       if(!this.EA) {
         (new WarningPrompt(
           this.app,
-          "⚠ ExcaliBrain Disabled: Excalidraw Plugin not found",
+          "⚠ JevBrain Disabled: Excalidraw Plugin not found",
           t("EXCALIDRAW_NOT_FOUND"))
         ).show((_result: boolean) => {
-          new Notice("Disabling ExcaliBrain Plugin", 8000);
+          new Notice("Disabling JevBrain Plugin", 8000);
           errorlog({fn:"ExcaliBrain.onload", where:"main.ts/onload()", message:"Excalidraw not found"});
           void this.app.plugins.disablePlugin(this.manifest.id);
         });
@@ -158,11 +158,11 @@ export default class ExcaliBrain extends Plugin {
       if(!this.EA.verifyMinimumPluginVersion(MINEXCALIDRAWVERSION)) {
         (new WarningPrompt(
           this.app,
-          "⚠ ExcaliBrain Disabled: Please upgrade Excalidraw and try again",
+          "⚠ JevBrain Disabled: Please upgrade Excalidraw and try again",
           t("EXCALIDRAW_MINAPP_VERSION"))
         ).show((_result: boolean) => {
-          new Notice("Disabling ExcaliBrain Plugin", 8000);
-          errorlog({fn:"ExcaliBrain.onload", where:"main.ts/onload()", message:"ExcaliBrain requires a new version of Excalidraw"});
+          new Notice("Disabling JevBrain Plugin", 8000);
+          errorlog({fn:"ExcaliBrain.onload", where:"main.ts/onload()", message:"JevBrain requires a new version of Excalidraw"});
           void this.app.plugins.disablePlugin(this.manifest.id);
         });
         return;
@@ -233,7 +233,7 @@ export default class ExcaliBrain extends Plugin {
     if(field) {
       menu.addItem((item: MenuItem) => {
         item
-          .setTitle(`Add "${field}" to ExcaliBrain Ontology`)
+          .setTitle(`Add "${field}" to JevBrain Ontology`)
           .setIcon("plus")
           .onClick(() => {
             void this.addToOntologyModal.show(field);
@@ -255,7 +255,7 @@ export default class ExcaliBrain extends Plugin {
       this.DVAPI.index.importer.reloadQueue.length > 0
     ) {
       if(counter++ % 100 === 10) {
-        new Notice("ExcaliBrain is waiting for Dataview to update its index",1000);
+        new Notice("JevBrain is waiting for Dataview to update its index",1000);
       }
       await sleep(100);
     }
@@ -263,7 +263,7 @@ export default class ExcaliBrain extends Plugin {
     counter = 0;
     while(!this.urlParser.initalized) {
       if(counter++ % 100 === 10) {
-        new Notice("ExcaliBrain is waiting for URLParser to finish indexing",1000);
+        new Notice("JevBrain is waiting for URLParser to finish indexing",1000);
       }
       await sleep(100);
     }
@@ -388,13 +388,13 @@ export default class ExcaliBrain extends Plugin {
       if(this.scene) {
         this.scene.unloadScene();
       }
-      new Notice("ExcaliBrain: Please start Excalidraw and try again.",4000);
+      new Notice("JevBrain: Please start Excalidraw and try again.",4000);
       return false;
     }
 
     this.EA = ea;
     if(typeof ea.verifyMinimumPluginVersion === "function" && !ea.verifyMinimumPluginVersion(MINEXCALIDRAWVERSION)) {
-      new Notice(`ExcaliBrain requires Excalidraw ${MINEXCALIDRAWVERSION} or newer.`, 5000);
+      new Notice(`JevBrain requires Excalidraw ${MINEXCALIDRAWVERSION} or newer.`, 5000);
       return false;
     }
     return true;
@@ -1050,7 +1050,7 @@ export default class ExcaliBrain extends Plugin {
     let counter = 0;
     while(!this.pluginLoaded && counter++ < 100) await sleep(50);
     if(!this.pluginLoaded) {
-      errorlog({where: "ExcaliBrain.start()", fn: "ExcaliBrain.start", message: "ExcaliBrain did not load. Aborting after 5000ms of trying"});
+      errorlog({where: "ExcaliBrain.start()", fn: "ExcaliBrain.start", message: "JevBrain did not load. Aborting after 5000ms of trying"});
       return;
     }
 
@@ -1059,7 +1059,7 @@ export default class ExcaliBrain extends Plugin {
 
     const ea = getEA(leaf.view);
     if(!ea) {
-      new Notice("ExcaliBrain: Excalidraw Automate is not available.", 5000);
+      new Notice("JevBrain: Excalidraw Automate is not available.", 5000);
       return;
     }
     if(typeof ea.isExcalidrawView === "function" && !ea.isExcalidrawView(leaf.view)) {
@@ -1067,7 +1067,7 @@ export default class ExcaliBrain extends Plugin {
       return;
     }
     if(typeof ea.verifyMinimumPluginVersion === "function" && !ea.verifyMinimumPluginVersion(MINEXCALIDRAWVERSION)) {
-      new Notice(`ExcaliBrain requires Excalidraw ${MINEXCALIDRAWVERSION} or newer.`, 5000);
+      new Notice(`JevBrain requires Excalidraw ${MINEXCALIDRAWVERSION} or newer.`, 5000);
       destroyViewEA(ea);
       return;
     }
@@ -1099,7 +1099,7 @@ export default class ExcaliBrain extends Plugin {
         scene.unloadScene(false, true);
         this.scene = null;
       }
-      new Notice("ExcaliBrain failed to initialize. See Developer Console for details.", 8000);
+      new Notice("JevBrain failed to initialize. See Developer Console for details.", 8000);
     }
   }
 

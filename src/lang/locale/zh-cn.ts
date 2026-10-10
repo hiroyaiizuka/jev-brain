@@ -6,11 +6,11 @@ export default {
   JSON_MALFORMED: `JSON 格式错误`,
   JSON_MISSING_KEYS: `JSON 必须包含以下四个键："parents"（父节点）、"children"（子节点）、"friends"（友好节点）、"nextFriends"（下一友好节点）`,
   JSON_VALUES_NOT_STRING_ARRAYS: `键的值必须是非空字符串数组。例如："parents": ["Parent", "Parents", "up"]`,
-  EXCALIBRAIN_FILE_NAME: "Excalibrain 图绘制的文件路径",
-  EXCALIBRAIN_FILE_DESC: "⚠ 此文件将被插件覆盖。如果您停止脚本并对图表进行更改，应该重新命名文件以保留您的编辑内容，因为下次启动 ExcaliBrain 时，您的编辑内容将被自动生成的 ExcaliBrain 图表覆盖。",
+  EXCALIBRAIN_FILE_NAME: "JevBrain 图绘制的文件路径",
+  EXCALIBRAIN_FILE_DESC: "⚠ 此文件将被插件覆盖。如果您停止脚本并对图表进行更改，应该重新命名文件以保留您的编辑内容，因为下次启动 JevBrain 时，您的编辑内容将被自动生成的 JevBrain 图表覆盖。",
   INDEX_REFRESH_FREQ_NAME: "索引刷新频率",
-  INDEX_REFRESH_FREQ_DESC: "每当您切换工作窗格时，ExcaliBrain 将更新其索引，以防止您的 Vault 中的文件自上次索引更新以来发生了更改。<br>" +
-                           "因此，此设置仅在您在 Markdown 编辑器中输入时有效（不切换文件或窗格），并且您仍希望在输入时更新 ExcaliBrain 图表。" +
+  INDEX_REFRESH_FREQ_DESC: "每当您切换工作窗格时，JevBrain 将更新其索引，以防止您的 Vault 中的文件自上次索引更新以来发生了更改。<br>" +
+                           "因此，此设置仅在您在 Markdown 编辑器中输入时有效（不切换文件或窗格），并且您仍希望在输入时更新 JevBrain 图表。" +
                            "由于频繁的后台索引更新可能会占用资源，您可以选择增加索引更新的时间间隔，从而减少系统开销。",
   HIERARCHY_HEAD: "本体论",
   HIERARCHY_DESC: "输入您将使用的 Dataview 字段名称，用逗号（,）分隔，以定义图表中的链接方向。<br>" +
@@ -59,7 +59,7 @@ export default {
   RENDERALIAS_NAME: "如果可用，显示别名",
   RENDERALIAS_DESC: "如果页面的 Front Matter 中指定了页面别名，则显示别名而不是文件名。",
   NODETITLE_SCRIPT_NAME: '用于节点名称的 Dataview 表达式',
-  NODETITLE_SCRIPT_DESC: '用于渲染节点标题的 Dataview 表达式。如果不需要，请留空。<br>表达式可通过 <code>dvPage</code> 访问 Dataview 页面，并通过 <code>defaultName</code> 访问 ExcaliBrain 的默认标签。<br>示例：<br><code>default(dvPage.title, defaultName)</code><br><code>lower(defaultName)</code><br><code>dvPage.file.path</code>',
+  NODETITLE_SCRIPT_DESC: '用于渲染节点标题的 Dataview 表达式。如果不需要，请留空。<br>表达式可通过 <code>dvPage</code> 访问 Dataview 页面，并通过 <code>defaultName</code> 访问 JevBrain 的默认标签。<br>示例：<br><code>default(dvPage.title, defaultName)</code><br><code>lower(defaultName)</code><br><code>dvPage.file.path</code>',
   SHOWINFERRED_NAME: "显示推断关系",
   SHOWINFERRED_DESC: "<b>打开：</b> 显示显式定义的关系和推断的关系。前向链接为子节点，反向链接为父节点，如果两个页面相互引用，则推断为友好关系。显式定义的关系始终优先。<br>" +
                      "<b>关闭：</b> 仅显示显式定义的关系。",
@@ -85,7 +85,7 @@ export default {
   ALLOW_AUTOFOCUS_ON_SEARCH_NAME: "搜索时自动聚焦",
   ALLOW_AUTOFOCUS_ON_SEARCH_DESC: "<b>打开：</b> 允许搜索时自动聚焦<br><b>关闭：</b> 禁用搜索时自动聚焦",
   ALWAYS_ON_TOP_NAME: "弹出窗口默认“置顶”行为",
-  ALWAYS_ON_TOP_DESC: "<b>打开：</b> 在弹出窗口中打开 ExcaliBrain 时，新窗口将以“始终置顶”模式打开。<br><b>关闭：</b> 新窗口将不会以“始终置顶”模式打开。",
+  ALWAYS_ON_TOP_DESC: "<b>打开：</b> 在弹出窗口中打开 JevBrain 时，新窗口将以“始终置顶”模式打开。<br><b>关闭：</b> 新窗口将不会以“始终置顶”模式打开。",
   EMBEDDED_FRAME_WIDTH_NAME: "嵌入帧宽度",
   EMBEDDED_FRAME_HEIGHT_NAME: "嵌入帧高度",
   TAGLIST_NAME: "格式化标签",
@@ -142,19 +142,19 @@ export default {
   DATAVIEW_NOT_FOUND: `未找到 Dataview 插件。请安装或启用 Dataview，然后尝试重新启动 ${APPNAME}。`,
   DATAVIEW_UPGRADE: `请升级 Dataview 到 0.5.31 或更高版本。请更新 Dataview，然后尝试重新启动 ${APPNAME}。`,
   EXCALIDRAW_NOT_FOUND: `未找到 Excalidraw 插件。请安装或启用 Excalidraw，然后尝试重新启动 ${APPNAME}。`,
-  EXCALIDRAW_MINAPP_VERSION: `ExcaliBrain 需要 Excalidraw ${MINEXCALIDRAWVERSION} 或更高版本。请升级 Excalidraw，然后尝试重新启动 ${APPNAME}。`,
+  EXCALIDRAW_MINAPP_VERSION: `JevBrain 需要 Excalidraw ${MINEXCALIDRAWVERSION} 或更高版本。请升级 Excalidraw，然后尝试重新启动 ${APPNAME}。`,
   COMMAND_ADD_PARENT_FIELD: "将 dataview 字段添加到本体作为父节点",
   COMMAND_ADD_CHILD_FIELD: "将 dataview 字段添加到本体作为子节点",
   COMMAND_ADD_LEFT_FRIEND_FIELD: "将 dataview 字段添加到本体作为左侧友好节点",
   COMMAND_ADD_RIGHT_FRIEND_FIELD: "将 dataview 字段添加到本体作为右侧友好节点",
   COMMAND_ADD_PREVIOUS_FIELD: "将 dataview 字段添加到本体作为上一个节点",
   COMMAND_ADD_NEXT_FIELD: "将 dataview 字段添加到本体作为下一个节点",
-  COMMAND_START: "ExcaliBrain 普通模式",
-  COMMAND_START_HOVER: "ExcaliBrain 悬停编辑器模式",
-  COMMAND_START_POPOUT: "ExcaliBrain 弹出窗口模式",
+  COMMAND_START: "JevBrain 普通模式",
+  COMMAND_START_HOVER: "JevBrain 悬停编辑器模式",
+  COMMAND_START_POPOUT: "JevBrain 弹出窗口模式",
   //COMMAND_SEARCH: "搜索",
-  COMMAND_STOP: "停止 ExcaliBrain",
-  HOVER_EDITOR_ERROR: "对不起，发生了一些错误。很可能是 Hover 编辑器更新了版本，而我在 ExcaliBrain 中没有适当处理。通常我会在几天内解决此问题",
+  COMMAND_STOP: "停止 JevBrain",
+  HOVER_EDITOR_ERROR: "对不起，发生了一些错误。很可能是 Hover 编辑器更新了版本，而我在 JevBrain 中没有适当处理。通常我会在几天内解决此问题",
   //ToolsPanel
   OPEN_DRAWING: "保存用于编辑的快照",
   SEARCH_IN_VAULT: "收藏夹中的项目将列在空搜索中。\n在您的 Vault 中搜索文件、文件夹或标签。\n切换文件夹和标签的显示/隐藏以在列表中显示。",
@@ -167,6 +167,6 @@ export default {
   SHOW_HIDE_FOLDER: "显示/隐藏文件夹节点",
   SHOW_HIDE_TAG: "显示/隐藏标签节点",
   SHOW_HIDE_PAGES: "显示/隐藏页面节点（包括已定义、推断、虚拟和附件节点）",
-  PIN_LEAF: "链接 ExcaliBrain 到最近的活动叶子"
+  PIN_LEAF: "链接 JevBrain 到最近的活动叶子"
 }
               
