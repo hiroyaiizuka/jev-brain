@@ -96,7 +96,7 @@ export async function askJev(config: JevClientConfig, request: JevRequest): Prom
 /** 失敗の出口はここだけ。Notice 1 回と console.warn 1 回で、API キーは書かない。 */
 function reportFailure(config: JevClientConfig, reason: string): null {
   new Notice("Jev request failed. See the developer console for details.", 5000);
-  console.warn({ plugin: "ExcaliBrain", fn: "askJev", where: config.endpoint, message: reason });
+  console.warn({ plugin: "JevBrain", fn: "askJev", where: config.endpoint, message: reason });
   return null;
 }
 

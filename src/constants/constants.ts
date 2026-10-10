@@ -1,6 +1,6 @@
 import { NodeStyle, LinkStyle, Hierarchy, JevSettings, View3DSettings } from "../Types";
 
-export const APPNAME = "ExcaliBrain";
+export const APPNAME = "JevBrain";
 export const MINEXCALIDRAWVERSION = "2.27.3"
 export const PREDEFINED_LINK_STYLES = ["base","inferred","file-tree","tag-tree"];
 export const SUGGEST_LIMIT = 30;

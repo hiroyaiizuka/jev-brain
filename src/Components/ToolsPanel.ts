@@ -80,7 +80,7 @@ export class ToolsPanel {
           ea.canvas.theme = "light";
           elements.forEach((el) => (ea.elementsDict[el.id] = el));
           ea.create({
-            filename: `ExcaliBrain Snapshot - ${splitFolderAndFilename(
+            filename: `JevBrain Snapshot - ${splitFolderAndFilename(
               this.plugin.scene.centralPagePath
             ).basename}`,
             onNewPane: true,

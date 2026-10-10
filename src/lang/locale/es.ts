@@ -6,11 +6,11 @@ export default {
   JSON_MALFORMED: `JSON mal formado`,
   JSON_MISSING_KEYS: `JSON debe contener estas 4 claves: "parents", "children", "friends", "nextFriends"`,
   JSON_VALUES_NOT_STRING_ARRAYS: `Los valores de las claves deben ser una matriz no vacía de cadenas. Ejemplo: "parents": ["Padre", "Padres", "arriba"]`,
-  EXCALIBRAIN_FILE_NAME: "Ruta del archivo de dibujo de Excalibrain",
-  EXCALIBRAIN_FILE_DESC: "⚠ Este archivo será sobrescrito por el complemento. Si detienes el script y realizas cambios en el grafo, debes renombrar el archivo para conservar tus ediciones, porque la próxima vez que inicies ExcaliBrain, tus ediciones serán sobrescritas por el grafo generado automáticamente.",
+  EXCALIBRAIN_FILE_NAME: "Ruta del archivo de dibujo de JevBrain",
+  EXCALIBRAIN_FILE_DESC: "⚠ Este archivo será sobrescrito por el complemento. Si detienes el script y realizas cambios en el grafo, debes renombrar el archivo para conservar tus ediciones, porque la próxima vez que inicies JevBrain, tus ediciones serán sobrescritas por el grafo generado automáticamente.",
   INDEX_REFRESH_FREQ_NAME: "Frecuencia de actualización del índice",
-  INDEX_REFRESH_FREQ_DESC: "ExcaliBrain actualizará su índice cada vez que cambies los paneles de trabajo, en caso de que un archivo haya cambiado en tu Vault desde la última actualización del índice. <br>" +
-                           "Esta configuración solo es relevante cuando estás escribiendo en un editor de markdown (sin cambiar de archivo o paneles) y aún deseas que ExcaliBrain actualice su grafo mientras escribes. " +
+  INDEX_REFRESH_FREQ_DESC: "JevBrain actualizará su índice cada vez que cambies los paneles de trabajo, en caso de que un archivo haya cambiado en tu Vault desde la última actualización del índice. <br>" +
+                           "Esta configuración solo es relevante cuando estás escribiendo en un editor de markdown (sin cambiar de archivo o paneles) y aún deseas que JevBrain actualice su grafo mientras escribes. " +
                            "Debido a que las actualizaciones frecuentes del índice en segundo plano pueden ser intensivas en recursos, tienes la opción de aumentar el intervalo de tiempo para las actualizaciones del índice, lo que reducirá " +
                            "la carga en tu sistema.",
   HIERARCHY_HEAD: "Ontología",
@@ -62,7 +62,7 @@ export default {
   RENDERALIAS_NAME: "Mostrar alias si está disponible",
   RENDERALIAS_DESC: "Muestra el alias de la página en lugar del nombre de archivo si está especificado en el front matter de la página.",
   NODETITLE_SCRIPT_NAME: 'Expresión de Dataview para los nombres de nodos',
-  NODETITLE_SCRIPT_DESC: 'Expresión de Dataview usada para mostrar el título del nodo. Déjala vacía si no la necesitas.<br>La expresión recibe la página de Dataview como <code>dvPage</code> y la etiqueta normal de ExcaliBrain como <code>defaultName</code>.<br>Ejemplos:<br><code>default(dvPage.title, defaultName)</code><br><code>lower(defaultName)</code><br><code>dvPage.file.path</code>',
+  NODETITLE_SCRIPT_DESC: 'Expresión de Dataview usada para mostrar el título del nodo. Déjala vacía si no la necesitas.<br>La expresión recibe la página de Dataview como <code>dvPage</code> y la etiqueta normal de JevBrain como <code>defaultName</code>.<br>Ejemplos:<br><code>default(dvPage.title, defaultName)</code><br><code>lower(defaultName)</code><br><code>dvPage.file.path</code>',
   SHOWINFERRED_NAME: "Mostrar relaciones inferidas",
   SHOWINFERRED_DESC: "<b>Activado:</b> Mostrar tanto los enlaces explícitamente definidos como los inferidos. Los enlaces hacia adelante son hijos, los enlaces de retroceso son padres, " +
     "si dos páginas se refieren mutuamente, se infiere que existe una amistad. Las relaciones definidas explícitamente siempre tienen prioridad.<br><b>Desactivado:</b> Mostrar solo relaciones definidas explícitamente.",
@@ -90,7 +90,7 @@ export default {
   ALLOW_AUTOFOCUS_ON_SEARCH_NAME: "Autofocus en búsqueda",
   ALLOW_AUTOFOCUS_ON_SEARCH_DESC: "<b>Activado:</b> Permitir enfoque automático en la búsqueda<br><b>Desactivado:</b> Deshabilitar enfoque automático",
   ALWAYS_ON_TOP_NAME: "Comportamiento predeterminado de 'siempre arriba' en ventana emergente",
-  ALWAYS_ON_TOP_DESC: "<b>Activado:</b> Cuando se abre ExcaliBrain en una ventana emergente, se abrirá con la nueva ventana en el modo 'siempre arriba'.<br><b>Desactivado:</b> La nueva ventana no estará en el modo 'siempre arriba'.",
+  ALWAYS_ON_TOP_DESC: "<b>Activado:</b> Cuando se abre JevBrain en una ventana emergente, se abrirá con la nueva ventana en el modo 'siempre arriba'.<br><b>Desactivado:</b> La nueva ventana no estará en el modo 'siempre arriba'.",
   EMBEDDED_FRAME_WIDTH_NAME: "Ancho del marco incorporado",
   EMBEDDED_FRAME_HEIGHT_NAME: "Altura del marco incorporado",
   TAGLIST_NAME: "Etiquetas formateadas",
@@ -150,19 +150,19 @@ export default {
   DATAVIEW_NOT_FOUND: `Plugin Dataview no encontrado. Por favor, instala o habilita Dataview y luego intenta reiniciar ${APPNAME}.`,
   DATAVIEW_UPGRADE: `Por favor, actualiza Dataview a la versión 0.5.31 o superior. Actualiza Dataview y luego intenta reiniciar ${APPNAME}.`,
   EXCALIDRAW_NOT_FOUND: `Plugin Excalidraw no encontrado. Por favor, instala o habilita Excalidraw y luego intenta reiniciar ${APPNAME}.`,
-  EXCALIDRAW_MINAPP_VERSION: `ExcaliBrain requiere Excalidraw ${MINEXCALIDRAWVERSION} o superior. Por favor, actualiza Excalidraw y luego intenta reiniciar ${APPNAME}.`,
+  EXCALIDRAW_MINAPP_VERSION: `JevBrain requiere Excalidraw ${MINEXCALIDRAWVERSION} o superior. Por favor, actualiza Excalidraw y luego intenta reiniciar ${APPNAME}.`,
   COMMAND_ADD_PARENT_FIELD: "Agregar campo de Dataview a la ontología como PADRE",
   COMMAND_ADD_CHILD_FIELD: "Agregar campo de Dataview a la ontología como HIJO",
   COMMAND_ADD_LEFT_FRIEND_FIELD: "Agregar campo de Dataview a la ontología como AMIGO LADO IZQUIERDO",
   COMMAND_ADD_RIGHT_FRIEND_FIELD: "Agregar campo de Dataview a la ontología como AMIGO LADO DERECHO",
   COMMAND_ADD_PREVIOUS_FIELD: "Agregar campo de Dataview a la ontología como ANTERIOR",
   COMMAND_ADD_NEXT_FIELD: "Agregar campo de Dataview a la ontología como SIGUIENTE",
-  COMMAND_START: "ExcaliBrain Normal",
-  COMMAND_START_HOVER: "ExcaliBrain Editor Emergente",
-  COMMAND_START_POPOUT: "ExcaliBrain Ventana Emergente",
+  COMMAND_START: "JevBrain Normal",
+  COMMAND_START_HOVER: "JevBrain Editor Emergente",
+  COMMAND_START_POPOUT: "JevBrain Ventana Emergente",
   //COMMAND_SEARCH: "Buscar",
-  COMMAND_STOP: "Detener ExcaliBrain",
-  HOVER_EDITOR_ERROR: "Lo siento. Algo salió mal. Lo más probable es que haya habido una actualización de versión en el Editor Emergente que no he abordado adecuadamente en ExcaliBrain. Normalmente debería solucionarlo en unos pocos días",
+  COMMAND_STOP: "Detener JevBrain",
+  HOVER_EDITOR_ERROR: "Lo siento. Algo salió mal. Lo más probable es que haya habido una actualización de versión en el Editor Emergente que no he abordado adecuadamente en JevBrain. Normalmente debería solucionarlo en unos pocos días",
   //ToolsPanel
   OPEN_DRAWING: "Guardar instantánea para editar",
   SEARCH_IN_VAULT: "Los elementos marcados serán listados en una búsqueda vacía.\nBusca un archivo, una carpeta o una etiqueta en tu Vault.\nAlterna entre carpetas y etiquetas para mostrar/ocultar en la lista.",
@@ -175,6 +175,6 @@ export default {
   SHOW_HIDE_FOLDER: "Mostrar/Ocultar nodos de carpeta",
   SHOW_HIDE_TAG: "Mostrar/Ocultar nodos de etiqueta",
   SHOW_HIDE_PAGES: "Mostrar/Ocultar nodos de página (incluye definidos, inferidos, virtuales y adjuntos)",
-  PIN_LEAF: "Conectar ExcaliBrain a la hoja activa más reciente"
+  PIN_LEAF: "Conectar JevBrain a la hoja activa más reciente"
 }
     

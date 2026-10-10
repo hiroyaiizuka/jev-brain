@@ -104,7 +104,7 @@ export class Scene {
 
   constructor(plugin: ExcaliBrain, newLeaf: boolean, leaf?: WorkspaceLeaf, ea?: ExcalidrawAutomate) {
     const resolvedEA = ea ?? plugin.EA ?? getEA(leaf?.view);
-    if(!resolvedEA) throw new Error("ExcaliBrain: Excalidraw Automate is not available.");
+    if(!resolvedEA) throw new Error("JevBrain: Excalidraw Automate is not available.");
     this.ea = resolvedEA;
     this.plugin = plugin;
     this.app = plugin.app;
@@ -155,11 +155,11 @@ export class Scene {
     await this.plugin.loadSettings();
     if(!this.leaf?.view || !this.ea) return;
     if(!await waitForExcalidrawViewReady(this.ea)) {
-      throw new Error("ExcaliBrain: Excalidraw view did not become ready within 10 seconds.");
+      throw new Error("JevBrain: Excalidraw view did not become ready within 10 seconds.");
     }
     const excalidrawEl = this.leaf.view.containerEl.querySelector<HTMLElement>(".excalidraw");
     if(!excalidrawEl) {
-      throw new Error("ExcaliBrain: Excalidraw canvas DOM is unavailable after view startup.");
+      throw new Error("JevBrain: Excalidraw canvas DOM is unavailable after view startup.");
     }
     this.toolsPanel = new ToolsPanel(excalidrawEl,this.plugin);
     await this.initializeScene();
@@ -329,7 +329,7 @@ export class Scene {
 
     let file = app.vault.getAbstractFileByPath(settings.excalibrainFilepath);
     if(file && !(file instanceof TFile)) {
-      new Notice(`Please check settings. ExcaliBrain path (${settings.excalibrainFilepath}) points to a folder, not a file`);
+      new Notice(`Please check settings. JevBrain path (${settings.excalibrainFilepath}) points to a folder, not a file`);
       return null;
     }
     if(!file) {
@@ -347,10 +347,10 @@ export class Scene {
       (new WarningPrompt(
         app,
         "⚠ File Exists",
-        `${brainFile.path} already exists in your Vault. Is it ok to overwrite this file? If not, change ExcaliBrain file path in plugin settings.`)
+        `${brainFile.path} already exists in your Vault. Is it ok to overwrite this file? If not, change JevBrain file path in plugin settings.`)
       ).show((result: boolean) => {
         if(!result) {
-          new Notice(`Could not start ExcaliBrain. Please change the ExcaliBrain file path in plugin settings.`);
+          new Notice(`Could not start JevBrain. Please change the JevBrain file path in plugin settings.`);
           return;
         }
         void (async (): Promise<void> => {
@@ -390,18 +390,18 @@ export class Scene {
     ea.clear();
     ea.setView?.(this.leaf.view);
     if(!this.ensureBrainViewBound()) {
-      throw new Error("ExcaliBrain: Excalidraw view lost its target binding during scene initialization.");
+      throw new Error("JevBrain: Excalidraw view lost its target binding during scene initialization.");
     }
     ea.copyViewElementsToEAforEditing(ea.getViewElements());
     ea.getElements().forEach((el: Mutable<ExcalidrawElement>)=>el.isDeleted=true);
 
     if(!await waitForExcalidrawViewReady(ea)) {
-      throw new Error("ExcaliBrain: Excalidraw API is unavailable during scene initialization.");
+      throw new Error("JevBrain: Excalidraw API is unavailable during scene initialization.");
     }
 
     const api = ea.getExcalidrawAPI?.();
     if(!api) {
-      throw new Error("ExcaliBrain: Excalidraw API is unavailable.");
+      throw new Error("JevBrain: Excalidraw API is unavailable.");
     }
 
     ea.registerThisAsViewEA?.();
@@ -426,7 +426,7 @@ export class Scene {
     ea.addText(0,0,"🚀 To get started\nselect a document using the search in the top left or\n" +
       "open a document in another pane.\n\n" +
       "✨ For the best experience enable 'Open in adjacent pane'\nin Excalidraw settings " +
-      "under 'Links and Transclusion'.\n\n⚠ ExcaliBrain may need to wait for " +
+      "under 'Links and Transclusion'.\n\n⚠ JevBrain may need to wait for " +
       "DataView to initialize its index.\nThis can take up to a few minutes after starting Obsidian.", {textAlign:"center"});
     await addElementsToViewTransient(ea);
 
@@ -436,10 +436,10 @@ export class Scene {
     await this.addEventHandler();
     const excalidrawEl = this.leaf.view.containerEl.querySelector<HTMLElement>(".excalidraw");
     if(!excalidrawEl) {
-      throw new Error("ExcaliBrain: Excalidraw canvas DOM disappeared during scene initialization.");
+      throw new Error("JevBrain: Excalidraw canvas DOM disappeared during scene initialization.");
     }
     this.historyPanel = new HistoryPanel(excalidrawEl,this.plugin);
-    new Notice("ExcaliBrain On");
+    new Notice("JevBrain On");
   }
 
   public setBaseLayoutParams() {
@@ -1088,7 +1088,7 @@ export class Scene {
 
     const excalidrawAPI = ea.getExcalidrawAPI();
     if(!excalidrawAPI) {
-      throw new Error("ExcaliBrain: Excalidraw API became unavailable during render.");
+      throw new Error("JevBrain: Excalidraw API became unavailable during render.");
     }
     await addElementsToViewTransient(ea);
     updateViewSceneTransient(ea, {appState: {viewBackgroundColor: settings.backgroundColor}});

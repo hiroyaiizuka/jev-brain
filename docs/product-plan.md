@@ -14,7 +14,7 @@
 
 - 上流 zsviczian/excalibrain 0.2.18 に作者の code scanner fixes を重ねた状態（2026-09-20 取り込み）。
 - 開発ハーネス（`npm run check`、test-vault、リリース workflow、AGENTS.md、docs）を Mappy と同じ作りで整備した。
-- 最初のベータ 0.2.19 を GitHub の pre-release で配る（BRAT 向け、2026-10-10）。BRAT での導入記録とコミュニティ登録は未。
+- 新しいプラグインとして 0.0.1 から GitHub の pre-release で配る（BRAT 向け、2026-10-10）。BRAT での導入記録とコミュニティ登録は未。
 - 上流の型エラー 26 件を型だけの変更で解消した。挙動の差分は実機未確認。
 - 3D のフェーズ 0（ソース調査）完了。本人の回答で、高さの元は Up／Down 領域、起動時は 2D、モバイル対象外と決まった。
 
@@ -62,7 +62,7 @@
 - plugin ID と名前を決める（上流と同じ `excalibrain` のままなら上流版と同時インストール不可）。
 - `npm version x.y.z` → tag → Release → BRAT で導入できる。`artifacts/` に導入の記録。
 
-現在の実装（LEV-147）: plugin ID を `jevbrain`、名前を JevBrain、作者を Hiroya Iizuka にした（`manifest.json`、`package.json`＋lock、`disablePlugin()` に渡す自分の ID（`constants.PLUGIN_NAME` をやめて `this.manifest.id`）、`scripts/preflight.mjs`、`release.yml`／`check.yml` の artifact 名と `dist/jevbrain/`、tooling テストのサンプル）。上流版（`excalibrain`）と ID が違うので別プラグインとして入る（実機での同時インストールは未確認。既定の図面ファイルがどちらも `excalibrain.md` なので、並べて使うには片方の設定を変える）。command ID `excalibrain-*`・CSS クラス・設定のキー・既定の図面ファイル・`APPNAME` の表示文字列は互換のため据え置き（表示名の置き換えは別チケット）。ID が変わって `obsidianmd/commands/no-plugin-id-in-command-id` が指摘しなくなったので、lint のベースラインから外した（`harness.md` の表も）。BRAT 配布は Jev の実装後まで保留していた。JEV-3 の merge 後、2026-10-10 に 0.2.19 を最初の pre-release にすると本人が決めた（Jev の実機 E19・E20 は未のまま、本人が BRAT で試すため）。BRAT での導入確認と `artifacts/` の記録は未。
+現在の実装（LEV-147）: plugin ID を `jevbrain`、名前を JevBrain、作者を Hiroya Iizuka にした（`manifest.json`、`package.json`＋lock、`disablePlugin()` に渡す自分の ID（`constants.PLUGIN_NAME` をやめて `this.manifest.id`）、`scripts/preflight.mjs`、`release.yml`／`check.yml` の artifact 名と `dist/jevbrain/`、tooling テストのサンプル）。上流版（`excalibrain`）と ID が違うので別プラグインとして入る（実機での同時インストールは未確認。既定の図面ファイルがどちらも `excalibrain.md` なので、並べて使うには片方の設定を変える）。command ID `excalibrain-*`・CSS クラス・設定のキーは互換のため据え置き。画面に出る名前と既定の図面ファイルは 2026-10-10 に JevBrain／`jevbrain.md` にした（`architecture.md` D10）。ID が変わって `obsidianmd/commands/no-plugin-id-in-command-id` が指摘しなくなったので、lint のベースラインから外した（`harness.md` の表も）。BRAT 配布は Jev の実装後まで保留していた。JEV-3 の merge 後、2026-10-10 に 0.2.19 を最初の pre-release にすると本人が決めた（Jev の実機 E19・E20 は未のまま、本人が BRAT で試すため）。0.2.19 は画面の表示名が ExcaliBrain のままだったので同日に取り下げ、表示名を JevBrain にして 0.0.1 から出し直した（D10）。BRAT での導入確認と `artifacts/` の記録は未。
 
 ### 3D-2 見た目の作り直し（本人のフィードバック 2026-09-21）
 
@@ -179,7 +179,7 @@
 
 | 論点 | 現時点の判断 | 決める人・時期 |
 | --- | --- | --- |
-| plugin ID と名前 | 決定: ID `jevbrain`、名前 JevBrain、作者 Hiroya Iizuka（上流版と同時インストール可）。BRAT 配布は Jev の実装後まで保留し、0.2.19 を最初の pre-release にする（2026-10-10） | 決定済み（2026-09-21、配布は 2026-10-10） |
+| plugin ID と名前 | 決定: ID `jevbrain`、名前 JevBrain、作者 Hiroya Iizuka（上流版と同時インストール可）。BRAT 配布は Jev の実装後まで保留し、新しいプラグインとして 0.0.1 から pre-release で配る（2026-10-10） | 決定済み（2026-09-21、配布は 2026-10-10） |
 | 「Jev 支援」の意味 | 決定: 貼った後の `[[X]]` に既存の語彙のフィールドを順位付けして付ける。入口は エディタのサジェスター（`]]` 直後とホットキー）・型付け待ちキュー・一括確定と見直しの 3 つ。上流のサジェスター（`::` で先にフィールドを選ぶ）には足さない | 決定済み（2026-09-20、入口の追加は 2026-09-22） |
 | Jev の置き場所 | 決定: jevbrain 本体の `src/jev/`（判定・収集・書き込み、UI なし）＋ `src/Components/Jev*`・`src/Suggesters/Jev*`。別プラグイン案は撤回。既定オフ、キーがあるときだけ登録（`architecture.md` D9） | 決定済み（2026-09-22） |
 | 書き込み先 | 決定（2026-09-22 夕方に入れ替え）: 既定は本文のリンクにインライン。行にリンクだけなら `field:: [[X]]`、文中なら `(field:: [[X]])`。書き換えるのは入口が指した出現だけ（LEV-185）。`## Relations` 節への追記は設定で選べる。取り消しは `jev-log.json` で行単位・一括単位 | 決定済み（2026-09-22） |
