@@ -1,12 +1,12 @@
 # jev-brain ロードマップ
 
-更新日: 2026-09-22。受入条件の正本は `docs/product-plan.md`、各設計は下の表のリンク先。進捗は Linear（`docs/linear-workflow.md`）。
+更新日: 2026-10-10。受入条件の正本は `docs/product-plan.md`、各設計は下の表のリンク先。進捗は Linear（`docs/linear-workflow.md`）。
 
 ## 順序と依存
 
 ```text
 H0 ハーネス ──┬── ONT-1 Up/Down 領域 ── 3D-1 固定視点トグル ──┬── 3D-2 見た目 ── 3D-3 実測と重なり
-              │                                               ├── R1 ベータ配布（BRAT は JEV-3 の後）
+              │                                               ├── R1 ベータ配布（0.2.19 から BRAT）
               │                                               └── H1 引き継ぎコードの整地
               └── JEV-0 精度テスト ─────────────────────────────┐
                   JEV-1 判定の中核 ──┬── JEV-2 エディタのサジェスター │
@@ -20,7 +20,7 @@ H0 ハーネス ──┬── ONT-1 Up/Down 領域 ── 3D-1 固定視点ト
 | 2 | 3D-1 固定視点トグル | ツールパネルの 3D で、Up の親が上、Down の子が下に出る。起動時は 2D | `docs/3d-design.md` | 完了 |
 | 3 | 3D-2 見た目の作り直し | 斜投影（キャビネット図法）、床、Up／Down の垂直配置。本人のフィードバック（2026-09-21）を反映 | `docs/3d-design.md` §6、`docs/3d-feedback-2026-09-21.md` | 完了（LEV-123 埋め込みの中心だけ Todo） |
 | 4 | 3D-3 実測と重なり | 75 ノートの fixture で要素数・描画時間・重なりを実測し、帯の行間と zoom を直した | 同上 | 完了 |
-| 4 | R1 ベータ配布 | plugin ID `jevbrain`。tag → GitHub Release → BRAT | `docs/harness.md`「リリース手順」 | ID 変更は完了。BRAT 配布は JEV-3 の後（LEV-148 は上流版と並べたときの衝突） |
+| 4 | R1 ベータ配布 | plugin ID `jevbrain`。tag → GitHub Release → BRAT | `docs/harness.md`「リリース手順」 | ID 変更は完了。0.2.19 を最初の pre-release にする（2026-10-10）。BRAT での導入記録は未（LEV-148 は上流版と並べたときの衝突） |
 | 4 | H1 整地 | strict 化、lint ベースラインの解消、設定画面の見出し | `docs/harness.md`「lint のベースライン」 | 未着手 |
 | 5 | JEV-0 精度テスト | Evergreens の既存の型付きリンクを正解に Jev の精度を測り、しきい値を決める | `docs/jev-link-typer-design.md` §10 | 完了（LEV-162・163・186・164。既定 criteria は「絞る＋方向の 1 文」、自動確定と見直しは見送り） |
 | 5 | JEV-1 判定の中核 | 設定・Jev クライアント・state と判定・未型付けの収集・`## Relations` への書き込みと取り消し。UI なしのコマンド 1 本 | 同 §2・§3・§6・§9 | 完了（LEV-165〜170・185・187・188・191 merge、実機 E18・E22 PASS。既定はインライン書き込み＋上位 5 件＋使用回数 5 で絞る＋方向の 1 文。残り課題: LEV-193 リスト項目が Dataview のページ・フィールドにならない） |
